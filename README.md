@@ -21,7 +21,7 @@ This is a code-grounding system only. PMU vectors are intentionally not part of 
 
 ## Why this architecture
 
-Vertex AI RAG Engine supports local-file upload with `upload_file()` and documents that the local upload path is a synchronous single-file upload with a 25 MB per-file limit. The retrieval API takes a `rag_retrieval_config=rag.RagRetrievalConfig(top_k=...)`, and reranking can be added through `Ranking` / `LlmRanker`. Gemini 2.5 Pro is available on Vertex AI and supervised fine-tuning is supported for Gemini 2.5 Pro. citeturn0search7turn0search10turn0search11turn0search12turn0search9
+Vertex AI RAG Engine supports local-file upload with `upload_file()` and documents that the local upload path is a synchronous single-file upload with a 25 MB per-file limit. The retrieval API takes a `rag_retrieval_config=rag.RagRetrievalConfig(top_k=...)`, and reranking can be added through `Ranking` / `LlmRanker`. Gemini 2.5 Pro is available on Vertex AI and supervised fine-tuning is supported for Gemini 2.5 Pro.
 
 ## Install
 
@@ -113,7 +113,7 @@ This writes a compile log under `outputs/compile_logs/` and, on success, stores 
 python scripts/06_build_tuning_dataset.py --output train.jsonl
 ```
 
-This produces `data/tuning/train.jsonl` in a retrieval-conditioned full-file rewrite format suitable for later supervised fine-tuning. Google documents supervised fine-tuning for Gemini models, including Gemini 2.5 Pro, and provides a separate guide for preparing tuning data. citeturn0search3turn0search6turn0search16turn0search9
+This produces `data/tuning/train.jsonl` in a retrieval-conditioned full-file rewrite format suitable for later supervised fine-tuning. Google documents supervised fine-tuning for Gemini models, including Gemini 2.5 Pro, and provides a separate guide for preparing tuning data.
 
 ## Expected corpus contents
 
