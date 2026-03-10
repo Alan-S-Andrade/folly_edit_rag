@@ -230,6 +230,8 @@ def prepare_successful_edit_docs() -> list[dict]:
         if not meta_path.exists():
             continue
         meta = json.loads(meta_path.read_text())
+        if meta.get('performance_success') is False:
+            continue
         patch_text = patch_path.read_text(errors='ignore') if patch_path.exists() else ''
         final_text = final_path.read_text(errors='ignore') if final_path.exists() else ''
         doc = '\n'.join([

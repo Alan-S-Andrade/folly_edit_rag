@@ -10,7 +10,7 @@ EMBEDDING_MODEL = os.environ.get(
 )
 
 # Point this at your DCPerf checkout root.
-DC_PERF_ROOT = Path(os.environ.get('DC_PERF_ROOT', '/proj/os-class-PG0/DCPerf'))
+DC_PERF_ROOT = Path(os.environ.get('DC_PERF_ROOT', '/myd/wdl/DCPerf'))
 WDL_BENCH_ROOT = DC_PERF_ROOT / 'benchmarks' / 'wdl_bench'
 FOLLY_SRC_ROOT = WDL_BENCH_ROOT / 'wdl_sources' / 'folly'
 FOLLY_TEST_ROOT = FOLLY_SRC_ROOT / 'folly' / 'test'

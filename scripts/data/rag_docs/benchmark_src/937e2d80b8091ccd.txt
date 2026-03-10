@@ -1,0 +1,13 @@
+PATH: folly/test/ThreadLocalDestroyBenchmark.cpp
+KIND: benchmark_main
+FILENAME: ThreadLocalDestroyBenchmark.cpp
+HEADERS: condition_variable, folly/Benchmark.h, folly/ThreadLocal.h, mutex, thread
+TAGS: benchmark-file, benchmark-suspender, branch, gflags, has-main, loop, run-benchmarks, thread-local
+SUMMARY: Benchmark file main() / harness section.
+CODE:
+int main(int argc, char* argv[]) {
+  folly::gflags::ParseCommandLineFlags(&argc, &argv, true);
+  folly::runBenchmarks();
+
+  return 0;
+}

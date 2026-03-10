@@ -1,0 +1,7 @@
+PATH: CMakeLists.txt
+KIND: build_map
+BINARY_NAME: string_to_float_benchmark
+SOURCES: StringToFloatBenchmark.cpp
+SUMMARY: CMake BENCHMARK declaration mapping a binary name to its source file(s).
+CODE:
+      BENCHMARK string_to_float_benchmark SOURCES StringToFloatBenchmark.cpp

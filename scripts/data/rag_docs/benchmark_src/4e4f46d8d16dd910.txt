@@ -1,0 +1,13 @@
+PATH: folly/test/MathBenchmark.cpp
+KIND: benchmark_block
+FILENAME: MathBenchmark.cpp
+BENCHMARK_NAME: divRoundAwayUint32
+HEADERS: algorithm, folly/Benchmark.h, folly/Math.h, random
+TAGS: benchmark-file, branch, dnoa, gflags, has-main, loop, rng, run-benchmarks
+SUMMARY: Individual Folly BENCHMARK block for patch retrieval.
+CODE:
+BENCHMARK(divRoundAwayUint32, iters) {
+  runDivTests<uint32_t>(&folly::divRoundAway<uint32_t, uint32_t>, iters);
+}
+
+BENCHMARK_DRAW_LINE();

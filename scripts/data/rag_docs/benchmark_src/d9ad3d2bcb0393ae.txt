@@ -1,0 +1,24 @@
+PATH: folly/test/ExceptionWrapperBenchmark.cpp
+KIND: benchmark_block
+FILENAME: ExceptionWrapperBenchmark.cpp
+BENCHMARK_NAME: get_exception
+HEADERS: atomic, exception, folly/Benchmark.h, folly/ExceptionWrapper.h, folly/portability/GFlags.h, stdexcept, thread, vector
+TAGS: benchmark-file, benchmark-suspender, dnoa, gflags, has-main, loop, run-benchmarks
+SUMMARY: Individual Folly BENCHMARK block for patch retrieval.
+CODE:
+BENCHMARK(get_exception, iters) {
+  folly::BenchmarkSuspender benchSuspender;
+  folly::exception_wrapper ew{std::runtime_error("test")};
+  std::exception const* ep = nullptr;
+  benchSuspender.dismissing([&] {
+    while (iters--) {
+      ep = ew.get_exception();
+      folly::doNotOptimizeAway(ep);
+    }
+  });
+  CHECK_EQ("test", std::string(ep->what()));
+}
+
+BENCHMARK_DRAW_LINE();
+
+// Moving is 0.5ns.  Icelake, -bm_min_iters=1000000 -bm_max_secs=2

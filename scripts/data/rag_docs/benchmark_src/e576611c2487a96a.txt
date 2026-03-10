@@ -1,0 +1,17 @@
+PATH: folly/test/IPAddressBenchmark.cpp
+KIND: benchmark_block
+FILENAME: IPAddressBenchmark.cpp
+BENCHMARK_NAME: ipv6_try_from_string_valid
+HEADERS: fmt/core.h, folly/Benchmark.h, folly/Conv.h, folly/IPAddress.h, glog/logging.h
+TAGS: benchmark-file, dnoa, gflags, has-main, run-benchmarks
+SUMMARY: Individual Folly BENCHMARK block for patch retrieval.
+CODE:
+BENCHMARK(ipv6_try_from_string_valid, iters) {
+  while (iters--) {
+    auto maybeIp =
+        IPAddressV6::tryFromString("2803:6082:18e0:2c49:1a23:9ee0:5c87:9800");
+    CHECK(maybeIp.hasValue());
+    doNotOptimizeAway(maybeIp);
+    doNotOptimizeAway(maybeIp.value());
+  }
+}

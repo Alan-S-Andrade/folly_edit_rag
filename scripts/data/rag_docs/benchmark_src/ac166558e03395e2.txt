@@ -1,0 +1,17 @@
+PATH: folly/test/RangeFindBenchmark.cpp
+KIND: benchmark_block
+FILENAME: RangeFindBenchmark.cpp
+BENCHMARK_NAME: FindFirstOf32NeedlesBitSet
+HEADERS: algorithm, folly/Benchmark.h, folly/Range.h, folly/container/Foreach.h, iostream, random, string
+TAGS: benchmark-file, branch, dnoa, gflags, has-main, loop, rng, run-benchmarks
+SUMMARY: Individual Folly BENCHMARK block for patch retrieval.
+CODE:
+BENCHMARK_RELATIVE(FindFirstOf32NeedlesBitSet, n) {
+  findFirstOfRange(delims32, detail::qfind_first_byte_of_bitset, n);
+}
+
+BENCHMARK_DRAW_LINE();
+
+const string delims64 =
+    "!bcdefghijklmnopqrstuvwxyz_"
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789$";

@@ -1,0 +1,7 @@
+PATH: CMakeLists.txt
+KIND: build_map
+BINARY_NAME: json_json_benchmark
+SOURCES: JsonBenchmark.cpp
+SUMMARY: CMake BENCHMARK declaration mapping a binary name to its source file(s).
+CODE:
+      BENCHMARK json_json_benchmark SOURCES JsonBenchmark.cpp

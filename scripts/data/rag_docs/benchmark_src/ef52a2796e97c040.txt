@@ -1,0 +1,11 @@
+PATH: folly/test/AsciiCaseInsensitiveBenchmark.cpp
+KIND: benchmark_block
+FILENAME: AsciiCaseInsensitiveBenchmark.cpp
+BENCHMARK_NAME: LegacyCaseInsensitiveCheck
+HEADERS: algorithm, folly/Benchmark.h, folly/Range.h
+TAGS: benchmark-file, branch, dnoa, gflags, has-main, loop, run-benchmarks
+SUMMARY: Individual Folly BENCHMARK block for patch retrieval.
+CODE:
+BENCHMARK(LegacyCaseInsensitiveCheck, iters) {
+  test_operator_on_search<AsciiCaseInsensitiveLegacy>(iters);
+}

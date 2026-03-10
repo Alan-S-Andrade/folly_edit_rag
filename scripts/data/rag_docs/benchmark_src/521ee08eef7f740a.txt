@@ -1,0 +1,16 @@
+PATH: folly/test/FormatBenchmark.cpp
+KIND: benchmark_block
+FILENAME: FormatBenchmark.cpp
+BENCHMARK_NAME: copy_long_string
+HEADERS: folly/Benchmark.h, folly/FBVector.h, folly/Format.h, folly/Utility.h, folly/init/Init.h, folly/json/dynamic.h, glog/logging.h, utility
+TAGS: benchmark-file, benchmark-suspender, has-main, loop, run-benchmarks
+SUMMARY: Individual Folly BENCHMARK block for patch retrieval.
+CODE:
+BENCHMARK(copy_long_string, iters) {
+  BenchmarkSuspender suspender;
+  auto const& longString = getLongString();
+  while (iters--) {
+    fbstring out;
+    suspender.dismissing([&] { out = longString; });
+  }
+}

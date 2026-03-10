@@ -1,0 +1,13 @@
+PATH: folly/test/SynchronizedBenchmark.cpp
+KIND: benchmark_block
+FILENAME: SynchronizedBenchmark.cpp
+BENCHMARK_NAME: FourThreadsFourMutexesPersistent
+HEADERS: algorithm, condition_variable, folly/Benchmark.h, folly/Synchronized.h, folly/portability/GTest.h, map, memory, mutex, thread
+TAGS: benchmark-file, benchmark-suspender, branch, dnoa, gflags, has-main, loop, run-benchmarks
+SUMMARY: Individual Folly BENCHMARK block for patch retrieval.
+CODE:
+BENCHMARK(FourThreadsFourMutexesPersistent, iters) {
+  persistent(iters, 4, makeVector<std::mutex>(4));
+}
+
+BENCHMARK_DRAW_LINE();

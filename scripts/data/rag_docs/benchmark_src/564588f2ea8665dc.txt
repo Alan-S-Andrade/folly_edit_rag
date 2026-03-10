@@ -1,0 +1,11 @@
+PATH: folly/test/SingletonBenchmark.cpp
+KIND: benchmark_block
+FILENAME: SingletonBenchmark.cpp
+BENCHMARK_NAME: FollySingletonThreadLocal
+HEADERS: folly/Benchmark.h, folly/Singleton.h, folly/SingletonThreadLocal.h, folly/portability/GFlags.h, iostream, thread
+TAGS: benchmark-file, dnoa, gflags, has-main, loop, run-benchmarks, thread-local
+SUMMARY: Individual Folly BENCHMARK block for patch retrieval.
+CODE:
+BENCHMARK(FollySingletonThreadLocal, n) {
+  follySingletonThreadLocal(n);
+}

@@ -1,0 +1,33 @@
+PATH: folly/test/ThreadLocalBenchmark.cpp
+KIND: benchmark_main
+FILENAME: ThreadLocalBenchmark.cpp
+HEADERS: boost/thread/tss.hpp, folly/Benchmark.h, folly/ThreadLocal.h, folly/lang/Keep.h, folly/portability/GFlags.h, folly/synchronization/Latch.h, glog/logging.h, numeric, sys/types.h, thread
+TAGS: benchmark-file, benchmark-suspender, dnoa, gflags, has-main, loop, run-benchmarks, thread-local
+SUMMARY: Benchmark file main() / harness section.
+CODE:
+int main(int argc, char** argv) {
+  folly::gflags::ParseCommandLineFlags(&argc, &argv, true);
+  folly::gflags::SetCommandLineOptionWithMode(
+      "bm_max_iters", "100000000", folly::gflags::SET_FLAG_IF_DEFAULT);
+  folly::runBenchmarks();
+  return 0;
+}
+
+/*
+./buck-out/gen/folly/test/thread_local_benchmark --bm_min_iters=10000000
+--num_threads=1
+
+============================================================================
+folly/test/ThreadLocalBenchmark.cpp             relative  time/iter  iters/s
+============================================================================
+BM_mt_tlp                                                   2.10ns   476.69M
+BM_mt_pthread_get_specific                                  1.81ns   553.11M
+BM_mt_boost_tsp                                             6.88ns   145.42M
+----------------------------------------------------------------------------
+BM_mt_tlp_multi                                            11.91ns    83.94M
+BM_mt_pthread_get_specific_multi                           13.34ns    74.96M
+BM_mt_boost_tsp_multi                                      43.52ns    22.98M
+----------------------------------------------------------------------------
+BM_tlp_access_all_threads_iterate                          22.82ns    43.82M
+----------------------------------------------------------------------------
+*/

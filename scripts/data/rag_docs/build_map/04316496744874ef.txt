@@ -1,0 +1,7 @@
+PATH: CMakeLists.txt
+KIND: build_map
+BINARY_NAME: io_async_event_base_benchmark
+SOURCES: EventBaseBenchmark.cpp
+SUMMARY: CMake BENCHMARK declaration mapping a binary name to its source file(s).
+CODE:
+      BENCHMARK io_async_event_base_benchmark SOURCES EventBaseBenchmark.cpp

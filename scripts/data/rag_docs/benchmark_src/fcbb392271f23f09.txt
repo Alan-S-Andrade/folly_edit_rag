@@ -1,0 +1,26 @@
+PATH: folly/test/StringBenchmark.cpp
+KIND: benchmark_block
+FILENAME: StringBenchmark.cpp
+BENCHMARK_NAME: libc_tolower
+HEADERS: boost/algorithm/string.hpp, fmt/format.h, folly/Benchmark.h, folly/Format.h, folly/Random.h, folly/String.h, random
+TAGS: benchmark-file, branch, dnoa, gflags, has-main, loop, random, rng, run-benchmarks
+SUMMARY: Individual Folly BENCHMARK block for patch retrieval.
+CODE:
+BENCHMARK(libc_tolower, iters) {
+  static const size_t kSize = 256;
+  // This array is static to keep the compiler from optimizing the
+  // entire function down to a no-op if it has an inlined impl of
+  // tolower and thus is able to tell that there are no side-effects.
+  // No side-effects + no writes to anything other than local variables
+  // + no return value = no need to run any of the code in the function.
+  // gcc, for example, makes that optimization with -O2.
+  static char input[kSize];
+  for (size_t i = 0; i < kSize; i++) {
+    input[i] = (char)(i & 0xff);
+  }
+  for (auto i = iters; i > 0; i--) {
+    for (size_t offset = 0; offset < kSize; offset++) {
+      input[offset] = tolower(input[offset]);
+    }
+  }
+}

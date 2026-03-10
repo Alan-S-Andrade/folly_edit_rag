@@ -1,0 +1,56 @@
+PATH: folly/test/FormatBenchmark.cpp
+KIND: benchmark_block
+FILENAME: FormatBenchmark.cpp
+BENCHMARK_NAME: sformat_long_string_safe
+HEADERS: folly/Benchmark.h, folly/FBVector.h, folly/Format.h, folly/Utility.h, folly/init/Init.h, folly/json/dynamic.h, glog/logging.h, utility
+TAGS: benchmark-file, benchmark-suspender, has-main, loop, run-benchmarks
+SUMMARY: Individual Folly BENCHMARK block for patch retrieval.
+CODE:
+BENCHMARK_RELATIVE(sformat_long_string_safe, iters) {
+  BenchmarkSuspender suspender;
+  auto const& longString = getLongString();
+  while (iters--) {
+    std::string out;
+    suspender.dismissing([&] { out = sformat("{}", longString); });
+  }
+}
+
+// Benchmark results on my dev server (20-core Intel Xeon E5-2660 v2 @ 2.20GHz)
+//
+// ============================================================================
+// folly/test/FormatBenchmark.cpp                  relative  time/iter  iters/s
+// ============================================================================
+// octal_snprintf                                              79.30ns   12.61M
+// octal_uintToOctal                               3452.19%     2.30ns  435.35M
+// ----------------------------------------------------------------------------
+// hex_snprintf                                                73.59ns   13.59M
+// hex_uintToHex                                   4507.53%     1.63ns  612.49M
+// ----------------------------------------------------------------------------
+// intAppend_snprintf                                         191.50us    5.22K
+// intAppend_to                                     552.46%    34.66us   28.85K
+// intAppend_format                                 215.76%    88.76us   11.27K
+// ----------------------------------------------------------------------------
+// bigFormat_snprintf                                         178.03us    5.62K
+// bigFormat_format                                  90.41%   196.91us    5.08K
+// ----------------------------------------------------------------------------
+// format_nested_strings                                      317.65us    3.15K
+// format_nested_direct                             116.52%   272.62us    3.67K
+// ----------------------------------------------------------------------------
+// copy_short_string                                           28.33ns   35.30M
+// format_short_string_unsafe                        82.51%    34.33ns   29.13M
+// format_short_string_safe                          58.92%    48.08ns   20.80M
+// sformat_short_string_unsafe                       73.90%    38.33ns   26.09M
+// sformat_short_string_safe                         54.97%    51.53ns   19.41M
+// ----------------------------------------------------------------------------
+// copy_long_string                                            57.56ns   17.37M
+// format_long_string_unsafe                         68.79%    83.68ns   11.95M
+// format_long_string_safe                           69.44%    82.89ns   12.06M
+// sformat_long_string_unsafe                        65.58%    87.77ns   11.39M
+// sformat_long_string_safe                          68.14%    84.47ns   11.84M
+// ============================================================================
+
+int main(int argc, char* argv[]) {
+  folly::Init init(&argc, &argv, true);
+  runBenchmarks();
+  return 0;
+}

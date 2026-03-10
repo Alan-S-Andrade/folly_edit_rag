@@ -1,0 +1,15 @@
+PATH: folly/test/StringToFloatBenchmark.cpp
+KIND: benchmark_block
+FILENAME: StringToFloatBenchmark.cpp
+BENCHMARK_NAME: hardcoded_decimal_notation_STRTOFL_COPY
+HEADERS: charconv, cmath, double-conversion/double-conversion.h, fast_float/fast_float.h, folly/Benchmark.h, folly/Traits.h, folly/stop_watch.h, iostream, random, utility
+TAGS: benchmark-file, branch, gflags, has-main, loop, rng, run-benchmarks
+SUMMARY: Individual Folly BENCHMARK block for patch retrieval.
+CODE:
+BENCHMARK(hardcoded_decimal_notation_STRTOFL_COPY, n) {
+  char* end;
+  for (unsigned int i = 0; i < n; ++i) {
+    std::string s(kDecimalStr.data(), kDecimalStr.size());
+    strtod_l(s.c_str(), &end, PosixNumericLocale::get());
+  }
+}

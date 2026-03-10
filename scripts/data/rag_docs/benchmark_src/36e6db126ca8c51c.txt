@@ -1,0 +1,31 @@
+PATH: folly/test/GLogBenchmark.cpp
+KIND: benchmark_block
+FILENAME: GLogBenchmark.cpp
+BENCHMARK_NAME: dev_null_log_overhead
+HEADERS: folly/Benchmark.h, folly/GLog.h
+TAGS: benchmark-file, gflags, has-main, loop, run-benchmarks
+SUMMARY: Individual Folly BENCHMARK block for patch retrieval.
+CODE:
+BENCHMARK(dev_null_log_overhead, iter) {
+  auto prev = FLAGS_minloglevel;
+  FLAGS_minloglevel = 2;
+
+  for (unsigned i = 0; i < iter; ++i) {
+    FB_LOG_EVERY_MS(INFO, -1) << "every -1ms";
+  }
+
+  FLAGS_minloglevel = prev;
+}
+
+// ============================================================================
+// folly/test/GLogBenchmark.cpp                    relative  time/iter  iters/s
+// ============================================================================
+// skip_overhead                                               36.37ns   27.49M
+// dev_null_log_overhead                                        2.61us  382.57K
+// ============================================================================
+
+int main(int argc, char** argv) {
+  folly::gflags::ParseCommandLineFlags(&argc, &argv, true);
+  folly::runBenchmarks();
+  return 0;
+}

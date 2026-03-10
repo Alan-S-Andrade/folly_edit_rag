@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 
 import vertexai
-from vertexai import rag
+from vertexai.preview import rag
 
 from config.settings import (
     CORPUS_INFO_FILENAME,
@@ -24,17 +24,13 @@ CORPUS_DISPLAY_NAME = 'folly-benchmark-edit-rag'
 def main() -> None:
     vertexai.init(project=PROJECT_ID, location=LOCATION)
 
-    embedding_model_config = rag.RagEmbeddingModelConfig(
-        vertex_prediction_endpoint=rag.VertexPredictionEndpoint(
-            publisher_model=EMBEDDING_MODEL
-        )
+    embedding_model_config = rag.EmbeddingModelConfig(
+        publisher_model=EMBEDDING_MODEL
     )
 
     corpus = rag.create_corpus(
         display_name=CORPUS_DISPLAY_NAME,
-        backend_config=rag.RagVectorDbConfig(
-            rag_embedding_model_config=embedding_model_config
-        ),
+        embedding_model_config=embedding_model_config,
     )
     print('Created corpus:', corpus.name)
 

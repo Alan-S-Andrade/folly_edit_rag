@@ -1,0 +1,15 @@
+PATH: folly/test/BenchmarkIntegrationTest.cpp
+KIND: benchmark_block
+FILENAME: BenchmarkIntegrationTest.cpp
+BENCHMARK_NAME: gun
+HEADERS: algorithm, folly/Benchmark.h, folly/String.h, folly/container/Foreach.h, iostream, numeric, random, vector
+TAGS: benchmark-suspender, dnoa, gflags, has-main, loop, rng, run-benchmarks
+SUMMARY: Individual Folly BENCHMARK block for patch retrieval.
+CODE:
+BENCHMARK(gun) {
+  static double x = 1;
+  x *= 2000;
+  doNotOptimizeAway(x);
+}
+
+BENCHMARK_DRAW_LINE();

@@ -1,0 +1,16 @@
+PATH: folly/test/BenchmarkIntegrationTest.cpp
+KIND: benchmark_block
+FILENAME: BenchmarkIntegrationTest.cpp
+BENCHMARK_NAME: bmVector
+HEADERS: algorithm, folly/Benchmark.h, folly/String.h, folly/container/Foreach.h, iostream, numeric, random, vector
+TAGS: benchmark-suspender, dnoa, gflags, has-main, loop, rng, run-benchmarks
+SUMMARY: Individual Folly BENCHMARK block for patch retrieval.
+CODE:
+BENCHMARK_RELATIVE(bmVector) {
+  vector<int> v;
+  FOR_EACH_RANGE (i, 0, 100) {
+    v.resize(v.size() + 1, 42);
+  }
+}
+
+BENCHMARK_DRAW_LINE();

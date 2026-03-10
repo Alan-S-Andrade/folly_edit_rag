@@ -1,0 +1,14 @@
+PATH: folly/test/StringBenchmark.cpp
+KIND: benchmark_block
+FILENAME: StringBenchmark.cpp
+BENCHMARK_NAME: BM_cUnescape
+HEADERS: boost/algorithm/string.hpp, fmt/format.h, folly/Benchmark.h, folly/Format.h, folly/Random.h, folly/String.h, random
+TAGS: benchmark-file, branch, dnoa, gflags, has-main, loop, random, rng, run-benchmarks
+SUMMARY: Individual Folly BENCHMARK block for patch retrieval.
+CODE:
+BENCHMARK(BM_cUnescape, iters) {
+  while (iters--) {
+    cUnescapedString = cUnescape<fbstring>(cbmEscapedString);
+    doNotOptimizeAway(cUnescapedString.size());
+  }
+}

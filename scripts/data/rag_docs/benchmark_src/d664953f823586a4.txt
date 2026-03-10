@@ -1,0 +1,18 @@
+PATH: folly/test/FormatBenchmark.cpp
+KIND: benchmark_block
+FILENAME: FormatBenchmark.cpp
+BENCHMARK_NAME: sformat_short_string_safe
+HEADERS: folly/Benchmark.h, folly/FBVector.h, folly/Format.h, folly/Utility.h, folly/init/Init.h, folly/json/dynamic.h, glog/logging.h, utility
+TAGS: benchmark-file, benchmark-suspender, has-main, loop, run-benchmarks
+SUMMARY: Individual Folly BENCHMARK block for patch retrieval.
+CODE:
+BENCHMARK_RELATIVE(sformat_short_string_safe, iters) {
+  BenchmarkSuspender suspender;
+  auto const& shortString = getShortString();
+  while (iters--) {
+    std::string out;
+    suspender.dismissing([&] { out = sformat("{}", shortString); });
+  }
+}
+
+BENCHMARK_DRAW_LINE();

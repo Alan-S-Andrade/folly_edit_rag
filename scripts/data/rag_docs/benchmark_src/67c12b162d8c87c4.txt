@@ -1,0 +1,16 @@
+PATH: folly/test/StringBenchmark.cpp
+KIND: benchmark_block
+FILENAME: StringBenchmark.cpp
+BENCHMARK_NAME: splitOnSingleChar
+HEADERS: boost/algorithm/string.hpp, fmt/format.h, folly/Benchmark.h, folly/Format.h, folly/Random.h, folly/String.h, random
+TAGS: benchmark-file, branch, dnoa, gflags, has-main, loop, random, rng, run-benchmarks
+SUMMARY: Individual Folly BENCHMARK block for patch retrieval.
+CODE:
+BENCHMARK(splitOnSingleChar, iters) {
+  static const std::string line = "one:two:three:four";
+  for (size_t i = 0; i < iters << 4; ++i) {
+    std::vector<StringPiece> pieces;
+    folly::split(':', line, pieces);
+    folly::compiler_must_not_elide(pieces);
+  }
+}

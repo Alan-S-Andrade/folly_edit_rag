@@ -1,0 +1,7 @@
+PATH: CMakeLists.txt
+KIND: build_map
+BINARY_NAME: fingerprint_benchmark
+SOURCES: FingerprintBenchmark.cpp
+SUMMARY: CMake BENCHMARK declaration mapping a binary name to its source file(s).
+CODE:
+      BENCHMARK fingerprint_benchmark SOURCES FingerprintBenchmark.cpp

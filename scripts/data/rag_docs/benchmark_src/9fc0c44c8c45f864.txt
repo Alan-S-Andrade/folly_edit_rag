@@ -1,0 +1,46 @@
+PATH: folly/test/RangeFindBenchmark.cpp
+KIND: benchmark_block
+FILENAME: RangeFindBenchmark.cpp
+BENCHMARK_NAME: FindSingleCharRange
+HEADERS: algorithm, folly/Benchmark.h, folly/Range.h, folly/container/Foreach.h, iostream, random, string
+TAGS: benchmark-file, branch, dnoa, gflags, has-main, loop, rng, run-benchmarks
+SUMMARY: Individual Folly BENCHMARK block for patch retrieval.
+CODE:
+BENCHMARK_RELATIVE(FindSingleCharRange, n) {
+  const char c = 'b';
+  StringPiece haystack(str);
+  folly::StringPiece needle(&c, &c + 1);
+  FOR_EACH_RANGE (i, 0, n) {
+    doNotOptimizeAway(haystack.find(needle));
+    char x = haystack[0];
+    doNotOptimizeAway(&x);
+  }
+}
+
+BENCHMARK_DRAW_LINE();
+
+template <class Func>
+void countHits(Func func, size_t n) {
+  StringPiece needles = "\r\n\1";
+  FOR_EACH_RANGE (i, 0, n) {
+    size_t p, c = 0;
+    for (StringPiece left = file;
+         (p = func(left, needles)) != StringPiece::npos;
+         left.advance(p + 1)) {
+      ++c;
+    }
+    doNotOptimizeAway(c);
+  }
+}
+
+template <class Func>
+void findFirstOfRange(StringPiece needles, Func func, size_t n) {
+  FOR_EACH_RANGE (i, 0, n) {
+    const StringPiece haystack = vstrp[i % kVstrSize];
+    doNotOptimizeAway(func(haystack, needles));
+    char x = haystack[0];
+    doNotOptimizeAway(&x);
+  }
+}
+
+const string delims1 = "b";

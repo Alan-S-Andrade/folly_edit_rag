@@ -1,0 +1,7 @@
+PATH: CMakeLists.txt
+KIND: build_map
+BINARY_NAME: gen_parallel_benchmark
+SOURCES: ParallelBenchmark.cpp
+SUMMARY: CMake BENCHMARK declaration mapping a binary name to its source file(s).
+CODE:
+      BENCHMARK gen_parallel_benchmark SOURCES ParallelBenchmark.cpp

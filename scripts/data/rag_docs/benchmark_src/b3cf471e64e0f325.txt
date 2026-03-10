@@ -1,0 +1,16 @@
+PATH: folly/test/SynchronizedBenchmark.cpp
+KIND: benchmark_block
+FILENAME: SynchronizedBenchmark.cpp
+BENCHMARK_NAME: UncontendedReverseOrdered
+HEADERS: algorithm, condition_variable, folly/Benchmark.h, folly/Synchronized.h, folly/portability/GTest.h, map, memory, mutex, thread
+TAGS: benchmark-file, benchmark-suspender, branch, dnoa, gflags, has-main, loop, run-benchmarks
+SUMMARY: Individual Folly BENCHMARK block for patch retrieval.
+CODE:
+BENCHMARK(UncontendedReverseOrdered, iters) {
+  uncontended(iters, [](auto& one, auto& two) {
+    two.lock();
+    one.lock();
+  });
+}
+
+BENCHMARK_DRAW_LINE();

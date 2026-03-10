@@ -60,6 +60,8 @@ def main() -> None:
             if not (meta_path.exists() and original_path.exists() and final_path.exists()):
                 continue
             meta = json.loads(meta_path.read_text())
+            if meta.get('performance_success') is False:
+                continue
             original_text = original_path.read_text(errors='ignore')
             final_text = final_path.read_text(errors='ignore')
             retrieval_json_name = meta.get('retrieval_json', '')
@@ -70,6 +72,20 @@ def main() -> None:
                     hits = json.loads(retrieval_path.read_text())
                     retrieved_texts = '\n\n'.join(h['text'] for h in hits)
             row = build_row(meta, original_text, final_text, retrieved_texts)
+            row['metadata'].update({
+                key: meta.get(key)
+                for key in [
+                    'task_id',
+                    'source_microbenchmark',
+                    'feature_name',
+                    'direction',
+                    'magnitude',
+                    'performance_success',
+                    'new_microbenchmark_name',
+                    'observed_delta',
+                ]
+                if key in meta
+            })
             out.write(json.dumps(row) + '\n')
             count += 1
     print(f'Wrote {count} rows to {out_path}')

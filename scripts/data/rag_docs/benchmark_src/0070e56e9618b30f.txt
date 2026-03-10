@@ -1,0 +1,12 @@
+PATH: folly/test/UriBenchmark.cpp
+KIND: benchmark_main
+FILENAME: UriBenchmark.cpp
+HEADERS: folly/Benchmark.h, folly/Uri.h, folly/init/Init.h
+TAGS: benchmark-file, has-main, loop, run-benchmarks
+SUMMARY: Benchmark file main() / harness section.
+CODE:
+int main(int argc, char** argv) {
+  folly::Init init(&argc, &argv);
+  folly::runBenchmarks();
+  return 0;
+}

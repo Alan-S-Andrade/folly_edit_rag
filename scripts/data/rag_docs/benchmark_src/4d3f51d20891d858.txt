@@ -1,0 +1,17 @@
+PATH: folly/test/SingletonBenchmark.cpp
+KIND: benchmark_block
+FILENAME: SingletonBenchmark.cpp
+BENCHMARK_NAME: FollySingletonTryGet4Threads
+HEADERS: folly/Benchmark.h, folly/Singleton.h, folly/SingletonThreadLocal.h, folly/portability/GFlags.h, iostream, thread
+TAGS: benchmark-file, dnoa, gflags, has-main, loop, run-benchmarks, thread-local
+SUMMARY: Individual Folly BENCHMARK block for patch retrieval.
+CODE:
+BENCHMARK(FollySingletonTryGet4Threads, n) {
+  run4Threads([=]() { follySingletonTryGet(n); });
+}
+
+void follySingletonTryGetFast(size_t n) {
+  for (size_t i = 0; i < n; ++i) {
+    SingletonBenchmark<BenchmarkSingleton, TryGetFastTag>::try_get_fast();
+  }
+}

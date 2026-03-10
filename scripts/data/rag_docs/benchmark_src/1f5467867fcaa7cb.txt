@@ -1,0 +1,18 @@
+PATH: folly/test/ExceptionWrapperBenchmark.cpp
+KIND: benchmark_block
+FILENAME: ExceptionWrapperBenchmark.cpp
+BENCHMARK_NAME: exception_wrapper_create_and_cast
+HEADERS: atomic, exception, folly/Benchmark.h, folly/ExceptionWrapper.h, folly/portability/GFlags.h, stdexcept, thread, vector
+TAGS: benchmark-file, benchmark-suspender, dnoa, gflags, has-main, loop, run-benchmarks
+SUMMARY: Individual Folly BENCHMARK block for patch retrieval.
+CODE:
+BENCHMARK_RELATIVE(exception_wrapper_create_and_cast, iters) {
+  std::runtime_error e("payload");
+  for (size_t i = 0; i < iters; ++i) {
+    auto ew = folly::make_exception_wrapper<std::runtime_error>(e);
+    bool b = ew.is_compatible_with<std::runtime_error>();
+    folly::doNotOptimizeAway(b);
+  }
+}
+
+BENCHMARK_DRAW_LINE();

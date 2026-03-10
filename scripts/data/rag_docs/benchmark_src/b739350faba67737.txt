@@ -1,0 +1,17 @@
+PATH: folly/test/StringToFloatBenchmark.cpp
+KIND: benchmark_block
+FILENAME: StringToFloatBenchmark.cpp
+BENCHMARK_NAME: hardcoded_exponential_notation_STD_FROM_CHARS
+HEADERS: charconv, cmath, double-conversion/double-conversion.h, fast_float/fast_float.h, folly/Benchmark.h, folly/Traits.h, folly/stop_watch.h, iostream, random, utility
+TAGS: benchmark-file, branch, gflags, has-main, loop, rng, run-benchmarks
+SUMMARY: Individual Folly BENCHMARK block for patch retrieval.
+CODE:
+BENCHMARK(hardcoded_exponential_notation_STD_FROM_CHARS, n) {
+  for (unsigned int i = 0; i < n; ++i) {
+    double value{};
+    invoke_std_from_chars(
+        kexponentialNotationStr.data(),
+        kexponentialNotationStr.data() + kexponentialNotationStr.size(),
+        value);
+  }
+}

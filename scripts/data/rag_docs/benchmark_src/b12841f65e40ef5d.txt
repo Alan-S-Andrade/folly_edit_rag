@@ -1,0 +1,293 @@
+PATH: folly/test/SynchronizedBenchmark.cpp
+KIND: benchmark_block
+FILENAME: SynchronizedBenchmark.cpp
+BENCHMARK_NAME: SixteenThreadsSixteenMutexesPersistent
+HEADERS: algorithm, condition_variable, folly/Benchmark.h, folly/Synchronized.h, folly/portability/GTest.h, map, memory, mutex, thread
+TAGS: benchmark-file, benchmark-suspender, branch, dnoa, gflags, has-main, loop, run-benchmarks
+SUMMARY: Individual Folly BENCHMARK block for patch retrieval.
+CODE:
+BENCHMARK(SixteenThreadsSixteenMutexesPersistent, iters) {
+  persistent(iters, 16, makeVector<std::mutex>(16));
+}
+
+int main(int argc, char** argv) {
+  folly::gflags::ParseCommandLineFlags(&argc, &argv, true);
+  folly::runBenchmarks();
+}
+
+namespace {
+std::pair<int, int> getMutexIndices(int threadId, int mutexListSize) {
+  // assign two mutexes to the current thread, we need to prevent
+  // deadlocks here by resorting the indexes in increasing order,
+  // because a thread might pick the last mutex as the one it locks and
+  // then adding one to that will make it wrap around, breaking the
+  // ordering
+  auto index = threadId % mutexListSize;
+
+  auto firstMutexIndex = ((index + 1) == mutexListSize) ? 0 : index;
+  auto secondMutexIndex =
+      ((index + 1) == mutexListSize) ? (mutexListSize - 1) : (index + 1);
+
+  return std::make_pair(firstMutexIndex, secondMutexIndex);
+}
+
+template <typename NonMovableType>
+std::vector<std::unique_ptr<NonMovableType>> makeVector(int num) {
+  auto vector = std::vector<std::unique_ptr<NonMovableType>>{};
+  vector.reserve(num);
+  for (auto i = 0; i < num; ++i) {
+    vector.push_back(std::make_unique<NonMovableType>());
+  }
+  return vector;
+}
+
+template <typename Mutex>
+void ordered(
+    std::size_t iters,
+    int numThreads,
+    std::vector<std::unique_ptr<Mutex>> mutexes) {
+  auto suspender = BenchmarkSuspender{};
+
+  // Sort the mutexes so there is no deadlock because of lock acquisition
+  // ordering
+  std::sort(mutexes.begin(), mutexes.end(), [](auto& one, auto& two) {
+    return one.get() < two.get();
+  });
+
+  auto threads = std::vector<std::thread>{};
+  auto&& barrier = BenchmarkStartBarrier{numThreads};
+
+  for (auto thread = 0; thread < numThreads; ++thread) {
+    threads.emplace_back([&mutexes, iters, thread, &barrier] {
+      barrier.wait();
+
+      auto indices = getMutexIndices(thread, mutexes.size());
+      for (auto i = std::size_t{0}; i < iters; ++i) {
+        // lock the mutexes
+        mutexes[indices.first]->lock();
+        mutexes[indices.second]->lock();
+
+        spin(FLAGS_iterations);
+
+        mutexes[indices.first]->unlock();
+        mutexes[indices.second]->unlock();
+      }
+    });
+  }
+
+  barrier.wait();
+  suspender.dismissing([&] {
+    for (auto& thread : threads) {
+      thread.join();
+    }
+  });
+}
+
+template <typename Mutex>
+void smart(
+    std::size_t iters,
+    int numThreads,
+    std::vector<std::unique_ptr<Mutex>> mutexes) {
+  auto suspender = BenchmarkSuspender{};
+
+  auto threads = std::vector<std::thread>{};
+  auto&& barrier = BenchmarkStartBarrier{numThreads};
+
+  for (auto thread = 0; thread < numThreads; ++thread) {
+    threads.emplace_back([iters, &mutexes, thread, &barrier] {
+      barrier.wait();
+
+      auto indices = std::make_pair(
+          thread % mutexes.size(), (thread + 1) % mutexes.size());
+      for (auto iter = std::size_t{0}; iter < iters; ++iter) {
+        while (true) {
+          mutexes[indices.first]->lock();
+          if (mutexes[indices.second]->try_lock()) {
+            break;
+          }
+
+          mutexes[indices.first]->unlock();
+          std::swap(indices.first, indices.second);
+          std::this_thread::yield();
+        }
+
+        spin(FLAGS_iterations);
+
+        mutexes[indices.first]->unlock();
+        mutexes[indices.second]->unlock();
+      }
+    });
+  }
+
+  barrier.wait();
+  suspender.dismissing([&] {
+    for (auto& thread : threads) {
+      thread.join();
+    }
+  });
+}
+
+template <typename Mutex>
+void persistent(
+    std::size_t iters,
+    int numThreads,
+    std::vector<std::unique_ptr<Mutex>> mutexes) {
+  auto suspender = BenchmarkSuspender{};
+
+  auto threads = std::vector<std::thread>{};
+  auto&& barrier = BenchmarkStartBarrier{numThreads};
+
+  for (auto thread = 0; thread < numThreads; ++thread) {
+    threads.emplace_back([iters, &mutexes, thread, &barrier] {
+      barrier.wait();
+
+      auto indices = std::make_pair(
+          thread % mutexes.size(), (thread + 1) % mutexes.size());
+      for (auto iter = std::size_t{0}; iter < iters; ++iter) {
+        // lock the mutexes by first locking a mutex and then acquiring the
+        // next mutex (or mutexes) with a try_lock()
+        while (true) {
+          mutexes[indices.first]->lock();
+          if (mutexes[indices.second]->try_lock()) {
+            break;
+          }
+
+          mutexes[indices.first]->unlock();
+        }
+
+        spin(FLAGS_iterations);
+
+        mutexes[indices.first]->unlock();
+        mutexes[indices.second]->unlock();
+      }
+    });
+  }
+
+  barrier.wait();
+  suspender.dismissing([&] {
+    for (auto& thread : threads) {
+      thread.join();
+    }
+  });
+}
+
+template <typename LockingFunc>
+void simple(std::size_t iters, LockingFunc func) {
+  auto&& suspender = BenchmarkSuspender{};
+  auto&& one = std::mutex{};
+  auto&& two = std::mutex{};
+  auto&& barrier = BenchmarkStartBarrier{3};
+
+  auto threadOne = std::thread{[&] {
+    barrier.wait();
+
+    for (auto i = std::size_t{0}; i < iters; ++i) {
+      auto lckOne = std::unique_lock{one, std::defer_lock};
+      auto lckTwo = std::unique_lock{two, std::defer_lock};
+      func(lckOne, lckTwo);
+
+      spin(FLAGS_iterations);
+    }
+  }};
+
+  auto threadTwo = std::thread{[&] {
+    barrier.wait();
+
+    for (auto i = std::size_t{0}; i < iters; ++i) {
+      auto lck = std::unique_lock{one};
+      spin(FLAGS_iterations * FLAGS_iterations);
+    }
+  }};
+
+  auto threadThree = std::thread{[&] {
+    barrier.wait();
+
+    for (auto i = std::size_t{0}; i < iters; ++i) {
+      auto lck = std::unique_lock{two};
+      spin(FLAGS_iterations * FLAGS_iterations);
+    }
+  }};
+
+  barrier.wait();
+  suspender.dismissing([&] {
+    threadOne.join();
+    threadTwo.join();
+    threadThree.join();
+  });
+}
+
+template <typename LockingFunc>
+void pathological(std::size_t iters, LockingFunc func) {
+  auto&& suspender = BenchmarkSuspender{};
+  auto&& one = std::mutex{};
+  auto&& two = std::mutex{};
+  auto&& three = std::mutex{};
+  auto&& barrier = BenchmarkStartBarrier{3};
+
+  auto threadOne = std::thread{[&] {
+    barrier.wait();
+
+    for (auto i = std::size_t{0}; i < iters; ++i) {
+      auto lckOne = std::unique_lock{one, std::defer_lock};
+      auto lckTwo = std::unique_lock{two, std::defer_lock};
+      auto lckThree = std::unique_lock{three, std::defer_lock};
+      func(lckOne, lckTwo, lckThree);
+
+      spin(FLAGS_iterations);
+    }
+  }};
+
+  auto threadTwo = std::thread{[&] {
+    barrier.wait();
+
+    for (auto i = std::size_t{0}; i < iters; ++i) {
+      auto lck = std::unique_lock{one};
+
+      spin(FLAGS_iterations * FLAGS_iterations);
+    }
+  }};
+
+  auto threadThree = std::thread{[&] {
+    barrier.wait();
+
+    for (auto i = std::size_t{0}; i < iters; ++i) {
+      auto lckTwo = std::unique_lock{two};
+      auto lckThree = std::unique_lock{three};
+
+      spin(FLAGS_iterations * FLAGS_iterations);
+    }
+  }};
+
+  barrier.wait();
+  suspender.dismissing([&] {
+    threadOne.join();
+    threadTwo.join();
+    threadThree.join();
+  });
+}
+
+template <typename LockingFunc>
+void uncontended(std::size_t iters, LockingFunc func) {
+  auto&& suspender = BenchmarkSuspender{};
+  auto&& one = std::mutex{};
+  auto&& two = std::mutex{};
+
+  suspender.dismissing([&] {
+    for (auto i = std::size_t{0}; i < iters; ++i) {
+      func(one, two);
+
+      spin(FLAGS_iterations);
+
+      one.unlock();
+      two.unlock();
+    }
+  });
+}
+
+void spin(int iterations) {
+  for (auto i = 0; i < iterations; ++i) {
+    doNotOptimizeAway(i);
+  }
+}
+
+} // namespace

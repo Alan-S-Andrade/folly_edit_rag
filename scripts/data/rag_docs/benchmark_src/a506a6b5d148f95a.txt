@@ -1,0 +1,43 @@
+PATH: folly/test/StringBenchmark.cpp
+KIND: benchmark_main
+FILENAME: StringBenchmark.cpp
+HEADERS: boost/algorithm/string.hpp, fmt/format.h, folly/Benchmark.h, folly/Format.h, folly/Random.h, folly/String.h, random
+TAGS: benchmark-file, branch, dnoa, gflags, has-main, loop, random, rng, run-benchmarks
+SUMMARY: Benchmark file main() / harness section.
+CODE:
+int main(int argc, char** argv) {
+  folly::gflags::ParseCommandLineFlags(&argc, &argv, true);
+  initBenchmark();
+  folly::runBenchmarks();
+  return 0;
+}
+
+/*
+Results on x86_64:
+============================================================================
+folly/test/StringBenchmark.cpp                  relative  time/iter  iters/s
+============================================================================
+libc_tolower                                               773.30ns    1.29M
+folly_toLowerAscii                                          65.04ns   15.38M
+stringPrintfOutputSize(1)                                  224.67ns    4.45M
+stringPrintfOutputSize(4)                                  231.53ns    4.32M
+stringPrintfOutputSize(16)                                 286.54ns    3.49M
+stringPrintfOutputSize(64)                                 305.47ns    3.27M
+stringPrintfOutputSize(256)                                  1.48us  674.45K
+stringPrintfOutputSize(1024)                                 5.89us  169.72K
+stringPrintfAppendfBenchmark                                34.43ms    29.04
+BM_cEscape                                                 461.51us    2.17K
+BM_cUnescape                                               328.19us    3.05K
+BM_uriEscape                                                 4.36us  229.25K
+BM_uriUnescape                                               2.22us  450.64K
+splitOnSingleChar                                            1.46us  687.21K
+splitOnSingleCharFixed                                     133.02ns    7.52M
+splitOnSingleCharFixedAllowExtra                            74.35ns   13.45M
+splitStr                                                     2.36us  424.00K
+splitStrFixed                                              282.38ns    3.54M
+boost_splitOnSingleChar                                      2.83us  353.12K
+joinCharStr                                                  2.65us  376.93K
+joinStrStr                                                   2.64us  378.09K
+joinInt                                                      3.89us  257.37K
+============================================================================
+*/

@@ -1,0 +1,12 @@
+PATH: folly/test/RandomBenchmark.cpp
+KIND: benchmark_main
+FILENAME: RandomBenchmark.cpp
+HEADERS: ext/random, folly/Benchmark.h, folly/Portability.h, folly/Random.h, glog/logging.h, random
+TAGS: benchmark-file, benchmark-suspender, dnoa, gflags, has-main, loop, random, rng, run-benchmarks, thread-local
+SUMMARY: Benchmark file main() / harness section.
+CODE:
+int main(int argc, char** argv) {
+  folly::gflags::ParseCommandLineFlags(&argc, &argv, true);
+  folly::runBenchmarks();
+  return 0;
+}

@@ -1,0 +1,11 @@
+PATH: folly/test/MathBenchmark.cpp
+KIND: benchmark_block
+FILENAME: MathBenchmark.cpp
+BENCHMARK_NAME: divFloorInt8
+HEADERS: algorithm, folly/Benchmark.h, folly/Math.h, random
+TAGS: benchmark-file, branch, dnoa, gflags, has-main, loop, rng, run-benchmarks
+SUMMARY: Individual Folly BENCHMARK block for patch retrieval.
+CODE:
+BENCHMARK(divFloorInt8, iters) {
+  runDivTests<int8_t>(&folly::divFloor<int8_t, int8_t>, iters);
+}

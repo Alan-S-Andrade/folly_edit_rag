@@ -1,0 +1,16 @@
+PATH: folly/test/RangeFindBenchmark.cpp
+KIND: benchmark_block
+FILENAME: RangeFindBenchmark.cpp
+BENCHMARK_NAME: FindSingleCharMemchr
+HEADERS: algorithm, folly/Benchmark.h, folly/Range.h, folly/container/Foreach.h, iostream, random, string
+TAGS: benchmark-file, branch, dnoa, gflags, has-main, loop, rng, run-benchmarks
+SUMMARY: Individual Folly BENCHMARK block for patch retrieval.
+CODE:
+BENCHMARK(FindSingleCharMemchr, n) {
+  StringPiece haystack(str);
+  FOR_EACH_RANGE (i, 0, n) {
+    doNotOptimizeAway(haystack.find('b'));
+    char x = haystack[0];
+    doNotOptimizeAway(&x);
+  }
+}

@@ -1,0 +1,11 @@
+PATH: folly/test/RangeFindBenchmark.cpp
+KIND: benchmark_block
+FILENAME: RangeFindBenchmark.cpp
+BENCHMARK_NAME: FindFirstOf8NeedlesNoSIMD
+HEADERS: algorithm, folly/Benchmark.h, folly/Range.h, folly/container/Foreach.h, iostream, random, string
+TAGS: benchmark-file, branch, dnoa, gflags, has-main, loop, rng, run-benchmarks
+SUMMARY: Individual Folly BENCHMARK block for patch retrieval.
+CODE:
+BENCHMARK_RELATIVE(FindFirstOf8NeedlesNoSIMD, n) {
+  findFirstOfRange(delims8, detail::qfind_first_byte_of_nosimd, n);
+}

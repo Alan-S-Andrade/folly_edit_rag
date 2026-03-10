@@ -1,0 +1,11 @@
+PATH: folly/test/MathBenchmark.cpp
+KIND: benchmark_block
+FILENAME: MathBenchmark.cpp
+BENCHMARK_NAME: branchlessDivCeilInt16
+HEADERS: algorithm, folly/Benchmark.h, folly/Math.h, random
+TAGS: benchmark-file, branch, dnoa, gflags, has-main, loop, rng, run-benchmarks
+SUMMARY: Individual Folly BENCHMARK block for patch retrieval.
+CODE:
+BENCHMARK_RELATIVE(branchlessDivCeilInt16, iters) {
+  runDivTests<int16_t>(&folly::detail::divCeilBranchless<int16_t>, iters);
+}

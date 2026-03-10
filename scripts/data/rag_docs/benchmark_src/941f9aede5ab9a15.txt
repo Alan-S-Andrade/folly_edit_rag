@@ -1,0 +1,23 @@
+PATH: folly/test/StringBenchmark.cpp
+KIND: benchmark_block
+FILENAME: StringBenchmark.cpp
+BENCHMARK_NAME: BM_unhexlify
+HEADERS: boost/algorithm/string.hpp, fmt/format.h, folly/Benchmark.h, folly/Format.h, folly/Random.h, folly/String.h, random
+TAGS: benchmark-file, branch, dnoa, gflags, has-main, loop, random, rng, run-benchmarks
+SUMMARY: Individual Folly BENCHMARK block for patch retrieval.
+CODE:
+BENCHMARK(BM_unhexlify, iters) {
+  // iters/sec = bytes output per sec
+  std::string unhexed;
+  folly::StringPiece hex = hexlifyOutput;
+  for (; iters >= hex.size(); iters -= hex.size()) {
+    folly::unhexlify(hex, unhexed);
+  }
+  iters -= iters % 2; // round down to an even number of chars
+  hex = hex.subpiece(0, iters);
+  folly::unhexlify(hex, unhexed);
+}
+
+} // namespace
+
+//////////////////////////////////////////////////////////////////////

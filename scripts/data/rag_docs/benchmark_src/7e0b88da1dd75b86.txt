@@ -1,0 +1,19 @@
+PATH: folly/test/IPAddressBenchmark.cpp
+KIND: benchmark_block
+FILENAME: IPAddressBenchmark.cpp
+BENCHMARK_NAME: ipv6_to_string_inet_ntop
+HEADERS: fmt/core.h, folly/Benchmark.h, folly/Conv.h, folly/IPAddress.h, glog/logging.h
+TAGS: benchmark-file, dnoa, gflags, has-main, run-benchmarks
+SUMMARY: Individual Folly BENCHMARK block for patch retrieval.
+CODE:
+BENCHMARK(ipv6_to_string_inet_ntop, iters) {
+  IPAddressV6 ipv6Addr("F1E0:0ACE:FB94:7ADF:22E8:6DE6:9672:3725");
+  in6_addr ip = ipv6Addr.toAddr();
+  char outputString[INET6_ADDRSTRLEN] = {0};
+
+  while (iters--) {
+    const char* val =
+        inet_ntop(AF_INET6, &ip, outputString, sizeof(outputString));
+    folly::doNotOptimizeAway(val);
+  }
+}

@@ -1,0 +1,7 @@
+PATH: CMakeLists.txt
+KIND: build_map
+BINARY_NAME: synchronization_hazptr_bench
+SOURCES: HazptrBench.cpp
+SUMMARY: CMake BENCHMARK declaration mapping a binary name to its source file(s).
+CODE:
+      BENCHMARK synchronization_hazptr_bench SOURCES HazptrBench.cpp

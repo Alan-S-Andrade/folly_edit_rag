@@ -1,0 +1,13 @@
+PATH: folly/test/BenchmarkIntegrationTest.cpp
+KIND: benchmark_block
+FILENAME: BenchmarkIntegrationTest.cpp
+BENCHMARK_NAME: superslow
+HEADERS: algorithm, folly/Benchmark.h, folly/String.h, folly/container/Foreach.h, iostream, numeric, random, vector
+TAGS: benchmark-suspender, dnoa, gflags, has-main, loop, rng, run-benchmarks
+SUMMARY: Individual Folly BENCHMARK block for patch retrieval.
+CODE:
+BENCHMARK(superslow) {
+  sleep(1);
+}
+
+BENCHMARK_DRAW_LINE();

@@ -1,0 +1,7 @@
+PATH: CMakeLists.txt
+KIND: build_map
+BINARY_NAME: container_bit_iterator_bench
+SOURCES: BitIteratorBench.cpp
+SUMMARY: CMake BENCHMARK declaration mapping a binary name to its source file(s).
+CODE:
+      BENCHMARK container_bit_iterator_bench SOURCES BitIteratorBench.cpp

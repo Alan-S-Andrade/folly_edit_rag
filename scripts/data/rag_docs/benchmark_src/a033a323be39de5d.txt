@@ -1,0 +1,47 @@
+PATH: folly/test/StringBenchmark.cpp
+KIND: benchmark_block
+FILENAME: StringBenchmark.cpp
+BENCHMARK_NAME: stringPrintfAppendfBenchmark
+HEADERS: boost/algorithm/string.hpp, fmt/format.h, folly/Benchmark.h, folly/Format.h, folly/Random.h, folly/String.h, random
+TAGS: benchmark-file, branch, dnoa, gflags, has-main, loop, random, rng, run-benchmarks
+SUMMARY: Individual Folly BENCHMARK block for patch retrieval.
+CODE:
+BENCHMARK(stringPrintfAppendfBenchmark, iters) {
+  for (size_t i = 0; i < iters; ++i) {
+    string s;
+    BENCHMARK_SUSPEND {
+      s.reserve(kAppendBufSize);
+    }
+    for (size_t j = 0; j < kAppendBufSize; ++j) {
+      stringAppendf(&s, "%d", 1);
+    }
+    DCHECK_EQ(s.size(), kAppendBufSize);
+  }
+}
+
+// A simple benchmark that tests various output sizes for a simple
+// input; the goal is to measure the output buffer resize code cost.
+// Intended for comparison with stringPrintf.
+void fmtOutputSize(int iters, int param) {
+  string buffer;
+  BENCHMARK_SUSPEND {
+    buffer.resize(param, 'x');
+  }
+
+  for (int64_t i = 0; i < iters; ++i) {
+    string s = fmt::format("msg: {}, {}, {}", 10, 20, buffer);
+  }
+}
+
+// The first few of these tend to fit in the inline buffer, while the
+// subsequent ones cross that limit, trigger a second vsnprintf, and
+// exercise a different codepath.
+BENCHMARK_PARAM(fmtOutputSize, 1)
+BENCHMARK_PARAM(fmtOutputSize, 4)
+BENCHMARK_PARAM(fmtOutputSize, 16)
+BENCHMARK_PARAM(fmtOutputSize, 64)
+BENCHMARK_PARAM(fmtOutputSize, 256)
+BENCHMARK_PARAM(fmtOutputSize, 1024)
+
+// Benchmark simple fmt append behavior; intended as a comparison
+// against stringAppendf.

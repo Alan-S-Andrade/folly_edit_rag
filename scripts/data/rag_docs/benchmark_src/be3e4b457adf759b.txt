@@ -1,0 +1,42 @@
+PATH: folly/test/ConvBenchmark.cpp
+KIND: benchmark_block
+FILENAME: ConvBenchmark.cpp
+BENCHMARK_NAME: preallocateTestInt64
+HEADERS: array, boost/lexical_cast.hpp, folly/Benchmark.h, folly/Conv.h, folly/container/Foreach.h, folly/lang/ToAscii.h, limits, stdexcept
+TAGS: benchmark-file, branch, dnoa, gflags, has-main, loop, run-benchmarks
+SUMMARY: Individual Folly BENCHMARK block for patch retrieval.
+CODE:
+BENCHMARK(preallocateTestInt64, n) {
+  for (size_t i = 0; i < n; ++i) {
+    doNotOptimizeAway(
+        to<std::string>(
+            i64s[0],
+            ',',
+            u64s[0],
+            ',',
+            i64s[1],
+            ',',
+            u64s[1],
+            ',',
+            i64s[2],
+            ',',
+            u64s[2])
+            .size());
+  }
+}
+
+#if FOLLY_HAVE_INT128_T
+namespace {
+
+__int128 i128s[] = {
+    -(static_cast<__int128>(1) << 2),
+    static_cast<__int128>(1) << 100,
+    -(static_cast<__int128>(1) << 126),
+};
+
+unsigned __int128 u128s[] = {
+    static_cast<unsigned __int128>(1) << 2,
+    static_cast<unsigned __int128>(1) << 100,
+    static_cast<unsigned __int128>(1) << 127,
+};
+} // namespace

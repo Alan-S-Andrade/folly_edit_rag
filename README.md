@@ -39,7 +39,7 @@ gcloud config set project YOUR_PROJECT_ID
 gcloud auth application-default set-quota-project YOUR_PROJECT_ID
 ```
 
-Vertex AI quickstart docs explicitly call out ADC / `gcloud auth application-default login` for local development. citeturn0search8
+Vertex AI quickstart docs explicitly call out ADC / `gcloud auth application-default login` for local development.
 
 ## Configure
 
@@ -88,7 +88,7 @@ python scripts/03_retrieve_edit_context.py \
 python scripts/04_generate_full_file.py \
   --task "Add a new random benchmark variant in the same style as mt19937 and xoshiro256." \
   --target-file "folly/test/RandomBenchmark.cpp" \
-  --current-file "$DC_PERF_ROOT/benchmarks/wdl_bench/wdl_sources/folly/folly/test/RandomBenchmark.cpp" \
+  --current-file "/myd/wdl/DCPerf/benchmarks/wdl_bench/wdl_sources/folly/folly/test/RandomBenchmark.cpp" \
   --retrieval-json random_retrieval.json \
   --output random_candidate_full.cpp
 ```

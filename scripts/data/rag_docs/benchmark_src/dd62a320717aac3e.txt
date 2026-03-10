@@ -1,0 +1,27 @@
+PATH: folly/test/FormatBenchmark.cpp
+KIND: benchmark_block
+FILENAME: FormatBenchmark.cpp
+BENCHMARK_NAME: bigFormat_format
+HEADERS: folly/Benchmark.h, folly/FBVector.h, folly/Format.h, folly/Utility.h, folly/init/Init.h, folly/json/dynamic.h, glog/logging.h, utility
+TAGS: benchmark-file, benchmark-suspender, has-main, loop, run-benchmarks
+SUMMARY: Individual Folly BENCHMARK block for patch retrieval.
+CODE:
+BENCHMARK_RELATIVE(bigFormat_format, iters) {
+  BenchmarkSuspender suspender;
+  char* p;
+  auto writeToBuf = [&p](StringPiece sp) mutable {
+    memcpy(p, sp.data(), sp.size());
+    p += sp.size();
+  };
+
+  while (iters--) {
+    for (int i = -100; i < 100; i++) {
+      p = bigBuf.data();
+      suspender.dismissing([&] {
+        format20Numbers(i, std::make_index_sequence<20>())(writeToBuf);
+      });
+    }
+  }
+}
+
+BENCHMARK_DRAW_LINE();

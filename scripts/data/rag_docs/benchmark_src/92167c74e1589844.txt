@@ -1,0 +1,37 @@
+PATH: folly/test/BenchmarkIntegrationTest.cpp
+KIND: benchmark_block
+FILENAME: BenchmarkIntegrationTest.cpp
+BENCHMARK_NAME: optimizerDisabled1TrivialPtr
+HEADERS: algorithm, folly/Benchmark.h, folly/String.h, folly/container/Foreach.h, iostream, numeric, random, vector
+TAGS: benchmark-suspender, dnoa, gflags, has-main, loop, rng, run-benchmarks
+SUMMARY: Individual Folly BENCHMARK block for patch retrieval.
+CODE:
+BENCHMARK(optimizerDisabled1TrivialPtr, n) {
+  long x = 0;
+  for (long i = 0; i < n; ++i) {
+    for (long j = 0; j < 10000; ++j) {
+      x += i + j;
+      doNotOptimizeAway(&x);
+    }
+  }
+}
+
+namespace {
+class NonTrivialLong {
+ public:
+  explicit NonTrivialLong(long v) : value_(v) {}
+  virtual ~NonTrivialLong() {}
+
+  void operator++() { ++value_; }
+  void operator+=(long rhs) { value_ += rhs; }
+  void operator+=(const NonTrivialLong& rhs) { value_ += rhs.value_; }
+  bool operator<(long rhs) { return value_ < rhs; }
+  NonTrivialLong operator+(const NonTrivialLong& rhs) {
+    return NonTrivialLong(value_ + rhs.value_);
+  }
+
+ private:
+  [[maybe_unused]] long value_;
+  [[maybe_unused]] long otherStuff_[3];
+};
+} // namespace

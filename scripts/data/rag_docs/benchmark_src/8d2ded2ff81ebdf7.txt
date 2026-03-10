@@ -1,0 +1,17 @@
+PATH: folly/test/SingletonBenchmark.cpp
+KIND: benchmark_block
+FILENAME: SingletonBenchmark.cpp
+BENCHMARK_NAME: NormalSingleton4Threads
+HEADERS: folly/Benchmark.h, folly/Singleton.h, folly/SingletonThreadLocal.h, folly/portability/GFlags.h, iostream, thread
+TAGS: benchmark-file, dnoa, gflags, has-main, loop, run-benchmarks, thread-local
+SUMMARY: Individual Folly BENCHMARK block for patch retrieval.
+CODE:
+BENCHMARK(NormalSingleton4Threads, n) {
+  run4Threads([=]() { normalSingleton(n); });
+}
+
+void meyersSingleton(size_t n) {
+  for (size_t i = 0; i < n; ++i) {
+    doNotOptimizeAway(getMeyersSingleton());
+  }
+}

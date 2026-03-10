@@ -1,0 +1,16 @@
+PATH: folly/test/StringBenchmark.cpp
+KIND: benchmark_block
+FILENAME: StringBenchmark.cpp
+BENCHMARK_NAME: joinCharStr
+HEADERS: boost/algorithm/string.hpp, fmt/format.h, folly/Benchmark.h, folly/Format.h, folly/Random.h, folly/String.h, random
+TAGS: benchmark-file, branch, dnoa, gflags, has-main, loop, random, rng, run-benchmarks
+SUMMARY: Individual Folly BENCHMARK block for patch retrieval.
+CODE:
+BENCHMARK(joinCharStr, iters) {
+  static const std::vector<std::string> input = {
+      "one", "two", "three", "four", "five", "six", "seven"};
+  for (size_t i = 0; i < iters << 4; ++i) {
+    std::string output;
+    folly::join(':', input, output);
+  }
+}

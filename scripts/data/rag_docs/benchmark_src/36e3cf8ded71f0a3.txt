@@ -1,0 +1,23 @@
+PATH: folly/test/ExceptionWrapperBenchmark.cpp
+KIND: benchmark_block
+FILENAME: ExceptionWrapperBenchmark.cpp
+BENCHMARK_NAME: move_exception_wrapper_twice
+HEADERS: atomic, exception, folly/Benchmark.h, folly/ExceptionWrapper.h, folly/portability/GFlags.h, stdexcept, thread, vector
+TAGS: benchmark-file, benchmark-suspender, dnoa, gflags, has-main, loop, run-benchmarks
+SUMMARY: Individual Folly BENCHMARK block for patch retrieval.
+CODE:
+BENCHMARK(move_exception_wrapper_twice, iters) {
+  folly::BenchmarkSuspender benchSuspender;
+  folly::exception_wrapper ew{std::runtime_error("test")};
+  benchSuspender.dismissing([&] {
+    while (iters--) {
+      folly::exception_wrapper moved = std::move(ew);
+      folly::doNotOptimizeAway(moved);
+      ew = std::move(moved);
+    }
+  });
+  CHECK_EQ("std::runtime_error: test", ew.what());
+}
+
+// Copying `exception_ptr` is 23ns: a few function calls plus an atomic
+// refcount increment.  Icelake, -bm_min_iters=1000000 -bm_max_secs=2

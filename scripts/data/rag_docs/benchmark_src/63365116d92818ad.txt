@@ -1,0 +1,70 @@
+PATH: folly/test/ConvBenchmark.cpp
+KIND: benchmark_block
+FILENAME: ConvBenchmark.cpp
+BENCHMARK_NAME: preallocateTestFloat
+HEADERS: array, boost/lexical_cast.hpp, folly/Benchmark.h, folly/Conv.h, folly/container/Foreach.h, folly/lang/ToAscii.h, limits, stdexcept
+TAGS: benchmark-file, branch, dnoa, gflags, has-main, loop, run-benchmarks
+SUMMARY: Individual Folly BENCHMARK block for patch retrieval.
+CODE:
+BENCHMARK(preallocateTestFloat, n) {
+  for (size_t i = 0; i < n; ++i) {
+    doNotOptimizeAway(to<std::string>(stdString, ',', fValue, dValue).size());
+    doNotOptimizeAway(to<std::string>(stdString, ',', dValue).size());
+  }
+}
+
+namespace folly {
+namespace conv_bench_detail {
+
+// Keep this data global and non-const, so the compiler cannot make
+// any assumptions about the actual values at compile time
+
+int8_t i8s[] = {
+    -(static_cast<int8_t>(1) << 4),
+    static_cast<int8_t>(1) << 5,
+    -(static_cast<int8_t>(1) << 6),
+};
+
+uint8_t u8s[] = {
+    static_cast<uint8_t>(1) << 4,
+    static_cast<uint8_t>(1) << 5,
+    static_cast<uint8_t>(1) << 7,
+};
+
+int16_t i16s[] = {
+    -(static_cast<int16_t>(1) << 8),
+    static_cast<int16_t>(1) << 12,
+    -(static_cast<int16_t>(1) << 14),
+};
+
+uint16_t u16s[] = {
+    static_cast<uint16_t>(1) << 8,
+    static_cast<uint16_t>(1) << 12,
+    static_cast<uint16_t>(1) << 15,
+};
+
+int32_t i32s[] = {
+    -(static_cast<int32_t>(1) << 16),
+    static_cast<int32_t>(1) << 25,
+    -(static_cast<int32_t>(1) << 30),
+};
+
+uint32_t u32s[] = {
+    static_cast<uint32_t>(1) << 16,
+    static_cast<uint32_t>(1) << 25,
+    static_cast<uint32_t>(1) << 31,
+};
+
+int64_t i64s[] = {
+    -(static_cast<int64_t>(1) << 32),
+    static_cast<int64_t>(1) << 50,
+    -(static_cast<int64_t>(1) << 62),
+};
+
+uint64_t u64s[] = {
+    static_cast<uint64_t>(1) << 32,
+    static_cast<uint64_t>(1) << 50,
+    static_cast<uint64_t>(1) << 63,
+};
+} // namespace conv_bench_detail
+} // namespace folly

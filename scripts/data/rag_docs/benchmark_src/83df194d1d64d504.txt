@@ -1,0 +1,16 @@
+PATH: folly/test/FormatBenchmark.cpp
+KIND: benchmark_block
+FILENAME: FormatBenchmark.cpp
+BENCHMARK_NAME: format_long_string_safe
+HEADERS: folly/Benchmark.h, folly/FBVector.h, folly/Format.h, folly/Utility.h, folly/init/Init.h, folly/json/dynamic.h, glog/logging.h, utility
+TAGS: benchmark-file, benchmark-suspender, has-main, loop, run-benchmarks
+SUMMARY: Individual Folly BENCHMARK block for patch retrieval.
+CODE:
+BENCHMARK_RELATIVE(format_long_string_safe, iters) {
+  BenchmarkSuspender suspender;
+  auto const& longString = getLongString();
+  while (iters--) {
+    fbstring out;
+    suspender.dismissing([&] { format(&out, "{}", longString); });
+  }
+}

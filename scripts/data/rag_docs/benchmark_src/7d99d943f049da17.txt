@@ -1,0 +1,27 @@
+PATH: folly/test/ExceptionWrapperBenchmark.cpp
+KIND: benchmark_block
+FILENAME: ExceptionWrapperBenchmark.cpp
+BENCHMARK_NAME: copy_exception_wrapper_twice
+HEADERS: atomic, exception, folly/Benchmark.h, folly/ExceptionWrapper.h, folly/portability/GFlags.h, stdexcept, thread, vector
+TAGS: benchmark-file, benchmark-suspender, dnoa, gflags, has-main, loop, run-benchmarks
+SUMMARY: Individual Folly BENCHMARK block for patch retrieval.
+CODE:
+BENCHMARK_RELATIVE(copy_exception_wrapper_twice, iters) {
+  folly::BenchmarkSuspender benchSuspender;
+  folly::exception_wrapper ew{std::runtime_error("test")};
+  benchSuspender.dismissing([&] {
+    while (iters--) {
+      folly::exception_wrapper copy = ew;
+      ew = copy;
+    }
+  });
+  CHECK_EQ("std::runtime_error: test", ew.what());
+}
+
+BENCHMARK_DRAW_LINE();
+
+/*
+ * Use case 1: Library wraps errors in either exception_wrapper or
+ * exception_ptr, but user does not care what the exception is after learning
+ * that there is one.
+ */

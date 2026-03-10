@@ -1,0 +1,15 @@
+PATH: folly/test/FunctionRefBenchmark.cpp
+KIND: benchmark_block
+FILENAME: FunctionRefBenchmark.cpp
+BENCHMARK_NAME: SmallFunctionFollyInlineFunctionRefInvoke
+HEADERS: cstdint, folly/Benchmark.h, folly/Function.h, folly/synchronization/detail/InlineFunctionRef.h, functional, memory, tuple, type_traits
+TAGS: benchmark-file, benchmark-suspender, dnoa, gflags, has-main, loop, run-benchmarks
+SUMMARY: Individual Folly BENCHMARK block for patch retrieval.
+CODE:
+BENCHMARK(SmallFunctionFollyInlineFunctionRefInvoke, iters) {
+  runSmallInvokeBenchmark(iters, [](auto f) {
+    return detail::InlineFunctionRef<size_t(size_t&), 24>{std::move(f)};
+  });
+}
+
+BENCHMARK_DRAW_LINE();

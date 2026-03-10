@@ -1,0 +1,16 @@
+PATH: folly/test/BenchmarkIntegrationTest.cpp
+KIND: benchmark_block
+FILENAME: BenchmarkIntegrationTest.cpp
+BENCHMARK_NAME: optimizerCanDiscardTrivial
+HEADERS: algorithm, folly/Benchmark.h, folly/String.h, folly/container/Foreach.h, iostream, numeric, random, vector
+TAGS: benchmark-suspender, dnoa, gflags, has-main, loop, rng, run-benchmarks
+SUMMARY: Individual Folly BENCHMARK block for patch retrieval.
+CODE:
+BENCHMARK(optimizerCanDiscardTrivial, n) {
+  [[maybe_unused]] long x = 0;
+  for (long i = 0; i < n; ++i) {
+    for (long j = 0; j < 10000; ++j) {
+      x += j;
+    }
+  }
+}

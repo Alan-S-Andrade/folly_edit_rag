@@ -1,0 +1,15 @@
+PATH: folly/test/FormatBenchmark.cpp
+KIND: benchmark_block
+FILENAME: FormatBenchmark.cpp
+BENCHMARK_NAME: intAppend_snprintf
+HEADERS: folly/Benchmark.h, folly/FBVector.h, folly/Format.h, folly/Utility.h, folly/init/Init.h, folly/json/dynamic.h, glog/logging.h, utility
+TAGS: benchmark-file, benchmark-suspender, has-main, loop, run-benchmarks
+SUMMARY: Individual Folly BENCHMARK block for patch retrieval.
+CODE:
+BENCHMARK(intAppend_snprintf) {
+  fbstring out;
+  for (int i = -1000; i < 1000; i++) {
+    snprintf(bigBuf.data(), bigBuf.size(), "%d", i);
+    out.append(bigBuf.data());
+  }
+}

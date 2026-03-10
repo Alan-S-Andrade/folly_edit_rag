@@ -1,0 +1,19 @@
+PATH: folly/test/StringToFloatBenchmark.cpp
+KIND: benchmark_block
+FILENAME: StringToFloatBenchmark.cpp
+BENCHMARK_NAME: single_digit_ints_DoubleConversion
+HEADERS: charconv, cmath, double-conversion/double-conversion.h, fast_float/fast_float.h, folly/Benchmark.h, folly/Traits.h, folly/stop_watch.h, iostream, random, utility
+TAGS: benchmark-file, branch, gflags, has-main, loop, rng, run-benchmarks
+SUMMARY: Individual Folly BENCHMARK block for patch retrieval.
+CODE:
+BENCHMARK(single_digit_ints_DoubleConversion, n) {
+  int processedCharsCount;
+  // mask to select one of the first 8 out of 10 values.
+  // this is done to avoid additional branching or modulus.
+  constexpr std::size_t kSelectionMask = 8 - 1;
+  for (std::size_t i = 0; i < n; i++) {
+    std::string& input = singleDigitIntValues[i & kSelectionMask];
+    conv.StringToFloat(
+        input.data(), static_cast<int>(input.size()), &processedCharsCount);
+  }
+}

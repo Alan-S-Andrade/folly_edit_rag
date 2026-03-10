@@ -1,0 +1,23 @@
+PATH: folly/test/FormatBenchmark.cpp
+KIND: benchmark_block
+FILENAME: FormatBenchmark.cpp
+BENCHMARK_NAME: format_nested_strings
+HEADERS: folly/Benchmark.h, folly/FBVector.h, folly/Format.h, folly/Utility.h, folly/init/Init.h, folly/json/dynamic.h, glog/logging.h, utility
+TAGS: benchmark-file, benchmark-suspender, has-main, loop, run-benchmarks
+SUMMARY: Individual Folly BENCHMARK block for patch retrieval.
+CODE:
+BENCHMARK(format_nested_strings, iters) {
+  BenchmarkSuspender suspender;
+  while (iters--) {
+    for (int i = 0; i < 1000; ++i) {
+      fbstring out;
+      suspender.dismissing([&] {
+        format(
+            &out,
+            "{} {}",
+            sformat("{} {}", i, i + 1),
+            sformat("{} {}", -i, -i - 1));
+      });
+    }
+  }
+}

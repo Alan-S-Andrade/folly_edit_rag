@@ -1,0 +1,44 @@
+PATH: folly/test/StringToFloatBenchmark.cpp
+KIND: benchmark_block
+FILENAME: StringToFloatBenchmark.cpp
+BENCHMARK_NAME: hardcoded_decimal_notation_STRTOF_COPY
+HEADERS: charconv, cmath, double-conversion/double-conversion.h, fast_float/fast_float.h, folly/Benchmark.h, folly/Traits.h, folly/stop_watch.h, iostream, random, utility
+TAGS: benchmark-file, branch, gflags, has-main, loop, rng, run-benchmarks
+SUMMARY: Individual Folly BENCHMARK block for patch retrieval.
+CODE:
+BENCHMARK(hardcoded_decimal_notation_STRTOF_COPY, n) {
+  char* end;
+  for (unsigned int i = 0; i < n; ++i) {
+    std::string s(kDecimalStr.data(), kDecimalStr.size());
+    std::strtod(s.c_str(), &end);
+  }
+}
+
+namespace {
+/// Single instance of a "C" Numeric category locale.
+/// This is used to have "C" based locale formatting in
+/// `str_to_floating_strtof`.
+class PosixNumericLocale {
+ public:
+  static const auto& get() {
+    static PosixNumericLocale p;
+    return p.locale_;
+  }
+
+ private:
+#if defined(_WIN32)
+  _locale_t locale_;
+  PosixNumericLocale() : locale_(_create_locale(LC_NUMERIC, "C")) {}
+  ~PosixNumericLocale() { _free_locale(locale_); }
+#else
+  locale_t locale_;
+  PosixNumericLocale()
+      : locale_(newlocale(LC_NUMERIC_MASK, "C", static_cast<locale_t>(0))) {}
+  ~PosixNumericLocale() { freelocale(locale_); }
+#endif
+};
+} // namespace
+
+#if defined(_WIN32)
+constexpr auto strtod_l = _strtod_l;
+#endif

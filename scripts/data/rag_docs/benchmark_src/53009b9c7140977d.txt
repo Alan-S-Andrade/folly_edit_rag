@@ -1,0 +1,33 @@
+PATH: folly/test/RangeFindBenchmark.cpp
+KIND: benchmark_block
+FILENAME: RangeFindBenchmark.cpp
+BENCHMARK_NAME: FindFirstOfOffsetRange
+HEADERS: algorithm, folly/Benchmark.h, folly/Range.h, folly/container/Foreach.h, iostream, random, string
+TAGS: benchmark-file, branch, dnoa, gflags, has-main, loop, rng, run-benchmarks
+SUMMARY: Individual Folly BENCHMARK block for patch retrieval.
+CODE:
+BENCHMARK(FindFirstOfOffsetRange, n) {
+  StringPiece haystack(str);
+  folly::StringPiece needles("bc");
+  DCHECK_EQ(haystack.size() - 1, haystack.find_first_of(needles, 1)); // works!
+  FOR_EACH_RANGE (i, 0, n) {
+    size_t pos = i % 2; // not a constant to prevent optimization
+    doNotOptimizeAway(haystack.find_first_of(needles, pos));
+    char x = haystack[0];
+    doNotOptimizeAway(&x);
+  }
+}
+
+BENCHMARK_DRAW_LINE();
+
+int main(int argc, char** argv) {
+  folly::gflags::ParseCommandLineFlags(&argc, &argv, true);
+
+  for (int len : {1, 8, 10, 16, 32, 64, 128, 256, 10 * 1024, 1024 * 1024}) {
+    initStr(len);
+    initDelims(len);
+    initFile(len);
+    runBenchmarks();
+  }
+  return 0;
+}

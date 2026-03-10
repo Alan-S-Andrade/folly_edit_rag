@@ -1,0 +1,67 @@
+PATH: folly/test/ProducerConsumerQueueBenchmark.cpp
+KIND: benchmark_main
+FILENAME: ProducerConsumerQueueBenchmark.cpp
+HEADERS: cstdio, folly/Benchmark.h, folly/ProducerConsumerQueue.h, folly/portability/GFlags.h, folly/portability/PThread.h, folly/stats/Histogram.h, glog/logging.h, iostream, thread
+TAGS: benchmark-file, benchmark-suspender, branch, dnoa, gflags, has-main, loop, run-benchmarks
+SUMMARY: Benchmark file main() / harness section.
+CODE:
+int main(int argc, char** argv) {
+  google::InitGoogleLogging(argv[0]);
+  folly::gflags::ParseCommandLineFlags(&argc, &argv, true);
+
+  runBenchmarks();
+  return 0;
+}
+
+#if 0
+/*
+Benchmark
+
+$ lscpu
+Architecture:          x86_64
+CPU op-mode(s):        32-bit, 64-bit
+Byte Order:            Little Endian
+CPU(s):                24
+On-line CPU(s) list:   0-23
+Thread(s) per core:    1
+Core(s) per socket:    1
+Socket(s):             24
+NUMA node(s):          1
+Vendor ID:             GenuineIntel
+CPU family:            6
+Model:                 60
+Model name:            Intel Core Processor (Haswell, no TSX)
+Stepping:              1
+CPU MHz:               2494.244
+BogoMIPS:              4988.48
+Hypervisor vendor:     KVM
+Virtualization type:   full
+L1d cache:             32K
+L1i cache:             32K
+L2 cache:              4096K
+NUMA node0 CPU(s):     0-23
+
+$ ../buck-out/gen/folly/test/producer_consumer_queue_benchmark
+5       6       1       5
+6       7       1893    11358
+7       8       39671   277697
+8       9       34921   279368
+9       10      17799   160191
+10      11      3685    36850
+11      12      1075    11825
+12      13      456     5472
+13      14      422     5486
+14      15      64      896
+15      16      7       105
+16      17      3       48
+17      18      3       51
+============================================================================
+folly/test/ProducerConsumerQueueBenchmark.cpp   relative  time/iter  iters/s
+============================================================================
+----------------------------------------------------------------------------
+BM_ProducerConsumer(1048574)                                 5.82ns  171.75M
+BM_ProducerConsumerAffinity(1048574)                         7.36ns  135.83M
+BM_ProducerConsumerLatency(1048574)                         1.67min    9.99m
+============================================================================
+*/
+#endif

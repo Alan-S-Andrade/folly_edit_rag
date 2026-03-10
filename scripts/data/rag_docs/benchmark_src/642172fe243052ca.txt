@@ -1,0 +1,18 @@
+PATH: folly/test/IPAddressBenchmark.cpp
+KIND: benchmark_block
+FILENAME: IPAddressBenchmark.cpp
+BENCHMARK_NAME: ipv4_to_fully_qualified
+HEADERS: fmt/core.h, folly/Benchmark.h, folly/Conv.h, folly/IPAddress.h, glog/logging.h
+TAGS: benchmark-file, dnoa, gflags, has-main, run-benchmarks
+SUMMARY: Individual Folly BENCHMARK block for patch retrieval.
+CODE:
+BENCHMARK_RELATIVE(ipv4_to_fully_qualified, iters) {
+  IPAddressV4 ip("127.0.0.1");
+  while (iters--) {
+    string outputString = ip.toFullyQualified();
+    folly::doNotOptimizeAway(outputString);
+    folly::doNotOptimizeAway(outputString.data());
+  }
+}
+
+BENCHMARK_DRAW_LINE();

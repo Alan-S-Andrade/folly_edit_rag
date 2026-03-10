@@ -1,0 +1,26 @@
+PATH: folly/test/FormatBenchmark.cpp
+KIND: benchmark_block
+FILENAME: FormatBenchmark.cpp
+BENCHMARK_NAME: bigFormat_snprintf
+HEADERS: folly/Benchmark.h, folly/FBVector.h, folly/Format.h, folly/Utility.h, folly/init/Init.h, folly/json/dynamic.h, glog/logging.h, utility
+TAGS: benchmark-file, benchmark-suspender, has-main, loop, run-benchmarks
+SUMMARY: Individual Folly BENCHMARK block for patch retrieval.
+CODE:
+BENCHMARK(bigFormat_snprintf, iters) {
+  while (iters--) {
+    for (int i = -100; i < 100; i++) {
+      snprintf20Numbers(i, std::make_index_sequence<20>());
+    }
+  }
+}
+
+template <size_t... Indexes>
+decltype(auto) format20Numbers(int i, std::index_sequence<Indexes...>) {
+  static_assert(20 == sizeof...(Indexes), "Must have exactly 20 indexes");
+  return format(
+      "{} {} {} {} {}"
+      "{} {} {} {} {}"
+      "{} {} {} {} {}"
+      "{} {} {} {} {}",
+      (i + static_cast<int>(Indexes))...);
+}

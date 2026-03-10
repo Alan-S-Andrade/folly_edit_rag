@@ -1,0 +1,22 @@
+PATH: folly/test/IPAddressBenchmark.cpp
+KIND: benchmark_block
+FILENAME: IPAddressBenchmark.cpp
+BENCHMARK_NAME: ipv4_append_to_fully_qualified_port
+HEADERS: fmt/core.h, folly/Benchmark.h, folly/Conv.h, folly/IPAddress.h, glog/logging.h
+TAGS: benchmark-file, dnoa, gflags, has-main, run-benchmarks
+SUMMARY: Individual Folly BENCHMARK block for patch retrieval.
+CODE:
+BENCHMARK_RELATIVE(ipv4_append_to_fully_qualified_port, iters) {
+  IPAddressV4 ip("255.255.255.255");
+  while (iters--) {
+    string outputString;
+    outputString.reserve(IPAddressV4::kMaxToFullyQualifiedSize + 1 + 5);
+    ip.toFullyQualifiedAppend(outputString);
+    outputString += ':';
+    folly::toAppend(65535, &outputString);
+    folly::doNotOptimizeAway(outputString);
+    folly::doNotOptimizeAway(outputString.data());
+  }
+}
+
+BENCHMARK_DRAW_LINE();

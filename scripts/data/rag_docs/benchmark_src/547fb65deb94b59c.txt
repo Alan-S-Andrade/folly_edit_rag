@@ -1,0 +1,24 @@
+PATH: folly/test/AsciiCaseInsensitiveBenchmark.cpp
+KIND: benchmark_main
+FILENAME: AsciiCaseInsensitiveBenchmark.cpp
+HEADERS: algorithm, folly/Benchmark.h, folly/Range.h
+TAGS: benchmark-file, branch, dnoa, gflags, has-main, loop, run-benchmarks
+SUMMARY: Benchmark file main() / harness section.
+CODE:
+int main(int argc, char** argv) {
+  folly::gflags::ParseCommandLineFlags(&argc, &argv, true);
+  folly::runBenchmarks();
+  if (FLAGS_benchmark) {
+    folly::runBenchmarks();
+  }
+  return 0;
+}
+
+/*
+============================================================================
+folly/test/AsciiCaseInsensitiveBenchmark.cpp    relative  time/iter  iters/s
+============================================================================
+LegacyCaseInsensitiveCheck                                   9.04us  110.60K
+CurrentCaseInsensitiveCheck                                  2.96us  337.59K
+============================================================================
+*/

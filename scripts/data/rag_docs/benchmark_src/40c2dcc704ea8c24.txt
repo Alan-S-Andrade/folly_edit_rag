@@ -1,0 +1,18 @@
+PATH: folly/test/BenchmarkIntegrationTest.cpp
+KIND: benchmark_block
+FILENAME: BenchmarkIntegrationTest.cpp
+BENCHMARK_NAME: optimizerCanPowerReduceInner2NonTrivial
+HEADERS: algorithm, folly/Benchmark.h, folly/String.h, folly/container/Foreach.h, iostream, numeric, random, vector
+TAGS: benchmark-suspender, dnoa, gflags, has-main, loop, rng, run-benchmarks
+SUMMARY: Individual Folly BENCHMARK block for patch retrieval.
+CODE:
+BENCHMARK(optimizerCanPowerReduceInner2NonTrivial, n) {
+  NonTrivialLong x(0);
+  for (NonTrivialLong i(0); i < n; ++i) {
+    makeUnpredictable(i);
+    for (NonTrivialLong j(0); j < 10000; ++j) {
+      x += i + j;
+    }
+  }
+  doNotOptimizeAway(x);
+}

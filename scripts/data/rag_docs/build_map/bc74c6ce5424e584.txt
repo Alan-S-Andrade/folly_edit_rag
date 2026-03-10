@@ -1,0 +1,7 @@
+PATH: CMakeLists.txt
+KIND: build_map
+BINARY_NAME: lang_to_ascii_benchmark
+SOURCES: ToAsciiBench.cpp
+SUMMARY: CMake BENCHMARK declaration mapping a binary name to its source file(s).
+CODE:
+      BENCHMARK lang_to_ascii_benchmark SOURCES ToAsciiBench.cpp

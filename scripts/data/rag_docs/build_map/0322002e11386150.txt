@@ -1,0 +1,7 @@
+PATH: CMakeLists.txt
+KIND: build_map
+BINARY_NAME: synchronization_baton_benchmark
+SOURCES: BatonBenchmark.cpp
+SUMMARY: CMake BENCHMARK declaration mapping a binary name to its source file(s).
+CODE:
+      BENCHMARK synchronization_baton_benchmark SOURCES BatonBenchmark.cpp

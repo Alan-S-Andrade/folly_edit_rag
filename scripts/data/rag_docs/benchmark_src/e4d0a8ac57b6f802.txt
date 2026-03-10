@@ -1,0 +1,19 @@
+PATH: folly/test/ConvBenchmark.cpp
+KIND: benchmark_block
+FILENAME: ConvBenchmark.cpp
+BENCHMARK_NAME: preallocateTestNoFloat
+HEADERS: array, boost/lexical_cast.hpp, folly/Benchmark.h, folly/Conv.h, folly/container/Foreach.h, folly/lang/ToAscii.h, limits, stdexcept
+TAGS: benchmark-file, branch, dnoa, gflags, has-main, loop, run-benchmarks
+SUMMARY: Individual Folly BENCHMARK block for patch retrieval.
+CODE:
+BENCHMARK(preallocateTestNoFloat, n) {
+  for (size_t i = 0; i < n; ++i) {
+    doNotOptimizeAway(
+        to<std::string>(bigInt, someString, stdString, otherString).size());
+    doNotOptimizeAway(to<std::string>(reallyShort, smallInt).size());
+    doNotOptimizeAway(to<std::string>(bigInt, stdString).size());
+    doNotOptimizeAway(
+        to<std::string>(bigInt, stdString, dValue, otherString).size());
+    doNotOptimizeAway(to<std::string>(bigInt, someString, reallyShort).size());
+  }
+}

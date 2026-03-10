@@ -1,0 +1,12 @@
+PATH: folly/test/MemoryIdlerBenchmark.cpp
+KIND: benchmark_main
+FILENAME: MemoryIdlerBenchmark.cpp
+HEADERS: folly/Benchmark.h, folly/detail/MemoryIdler.h
+TAGS: benchmark-file, gflags, has-main, loop, run-benchmarks
+SUMMARY: Benchmark file main() / harness section.
+CODE:
+int main(int argc, char** argv) {
+  folly::gflags::ParseCommandLineFlags(&argc, &argv, true);
+  folly::runBenchmarks();
+  return 0;
+}

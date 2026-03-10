@@ -1,0 +1,13 @@
+PATH: folly/test/BenchmarkIntegrationTest.cpp
+KIND: benchmark_main
+FILENAME: BenchmarkIntegrationTest.cpp
+HEADERS: algorithm, folly/Benchmark.h, folly/String.h, folly/container/Foreach.h, iostream, numeric, random, vector
+TAGS: benchmark-suspender, dnoa, gflags, has-main, loop, rng, run-benchmarks
+SUMMARY: Benchmark file main() / harness section.
+CODE:
+int main(int argc, char** argv) {
+  folly::gflags::ParseCommandLineFlags(&argc, &argv, true);
+  folly::addBenchmark("-", std::string("string_name"), [] { return 0; });
+  runBenchmarks();
+  runBenchmarksOnFlag();
+}

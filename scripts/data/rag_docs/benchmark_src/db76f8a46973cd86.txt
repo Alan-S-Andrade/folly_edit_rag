@@ -1,0 +1,31 @@
+PATH: folly/test/BenchmarkIntegrationTest.cpp
+KIND: benchmark_block
+FILENAME: BenchmarkIntegrationTest.cpp
+BENCHMARK_NAME: BenchmarkSuspender_dismissing_value
+HEADERS: algorithm, folly/Benchmark.h, folly/String.h, folly/container/Foreach.h, iostream, numeric, random, vector
+TAGS: benchmark-suspender, dnoa, gflags, has-main, loop, rng, run-benchmarks
+SUMMARY: Individual Folly BENCHMARK block for patch retrieval.
+CODE:
+BENCHMARK(BenchmarkSuspender_dismissing_value, iter) {
+  BenchmarkSuspender braces;
+  mt19937_64 rng;
+  while (iter--) {
+    vector<size_t> v(1 << 12, 0);
+    iota(v.begin(), v.end(), 0);
+    shuffle(v.begin(), v.end(), rng);
+    auto s = braces.dismissing([&] {
+      sort(v.begin(), v.end());
+      return accumulate(v.begin(), v.end(), 0, [](size_t a, size_t e) {
+        return a + e;
+      });
+    });
+    doNotOptimizeAway(s);
+  }
+}
+
+int main(int argc, char** argv) {
+  folly::gflags::ParseCommandLineFlags(&argc, &argv, true);
+  folly::addBenchmark("-", std::string("string_name"), [] { return 0; });
+  runBenchmarks();
+  runBenchmarksOnFlag();
+}

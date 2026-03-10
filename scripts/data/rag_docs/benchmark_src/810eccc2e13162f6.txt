@@ -1,0 +1,21 @@
+PATH: folly/test/ConcurrentSkipListBenchmark.cpp
+KIND: benchmark_block
+FILENAME: ConcurrentSkipListBenchmark.cpp
+BENCHMARK_NAME: Accessor
+HEADERS: folly/Benchmark.h, folly/ConcurrentSkipList.h, folly/hash/Hash.h, folly/portability/GFlags.h, folly/synchronization/RWSpinLock.h, glog/logging.h, map, memory, random, set, thread
+TAGS: benchmark-file, benchmark-suspender, branch, gflags, has-main, loop, rng, run-benchmarks
+SUMMARY: Individual Folly BENCHMARK block for patch retrieval.
+CODE:
+BENCHMARK(Accessor, iters) {
+  BenchmarkSuspender susp;
+  auto skiplist = SkipListType::createInstance(kInitHeadHeight);
+  auto sl = skiplist.get();
+
+  susp.dismiss();
+  for (size_t i = 0; i < iters; ++i) {
+    SkipListAccessor accessor(sl);
+  }
+}
+
+// a benchmark to estimate the
+// low bound of doing a ref counting for an Accessor

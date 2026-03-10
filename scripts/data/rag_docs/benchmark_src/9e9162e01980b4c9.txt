@@ -1,0 +1,18 @@
+PATH: folly/test/IPAddressBenchmark.cpp
+KIND: benchmark_block
+FILENAME: IPAddressBenchmark.cpp
+BENCHMARK_NAME: ipv6_ctor_valid
+HEADERS: fmt/core.h, folly/Benchmark.h, folly/Conv.h, folly/IPAddress.h, glog/logging.h
+TAGS: benchmark-file, dnoa, gflags, has-main, run-benchmarks
+SUMMARY: Individual Folly BENCHMARK block for patch retrieval.
+CODE:
+BENCHMARK(ipv6_ctor_valid, iters) {
+  while (iters--) {
+    try {
+      IPAddressV6 ip("2803:6082:18e0:2c49:1a23:9ee0:5c87:9800");
+      doNotOptimizeAway(ip);
+    } catch (const IPAddressFormatException& ex) {
+      doNotOptimizeAway(ex);
+    }
+  }
+}

@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 
 import vertexai
-from vertexai import rag
+from vertexai.preview import rag
 
 from config.settings import (
     CORPUS_INFO_FILENAME,
@@ -27,19 +27,17 @@ def load_corpus_name() -> str:
 def retrieve_context(query_text: str, top_k: int = TOP_K, rerank: bool = True) -> list[dict]:
     vertexai.init(project=PROJECT_ID, location=LOCATION)
     corpus_name = load_corpus_name()
-    retrieval_config = rag.RagRetrievalConfig(top_k=top_k)
     if rerank:
-        retrieval_config = rag.RagRetrievalConfig(
-            top_k=top_k,
-            ranking=rag.Ranking(
-                llm_ranker=rag.LlmRanker(model_name=RETRIEVAL_RERANK_MODEL)
-            ),
+        print(
+            'Warning: installed vertexai SDK does not support LLM reranking via '
+            f'preview RAG API; proceeding with vector retrieval only (requested '
+            f'rerank model: {RETRIEVAL_RERANK_MODEL}).'
         )
 
     response = rag.retrieval_query(
         rag_resources=[rag.RagResource(rag_corpus=corpus_name)],
         text=query_text,
-        rag_retrieval_config=retrieval_config,
+        similarity_top_k=top_k,
     )
 
     out = []

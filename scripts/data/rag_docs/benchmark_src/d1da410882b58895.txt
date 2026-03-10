@@ -1,0 +1,57 @@
+PATH: folly/test/ThreadLocalBenchmark.cpp
+KIND: benchmark_block
+FILENAME: ThreadLocalBenchmark.cpp
+BENCHMARK_NAME: FB_CONCATENATE(BM_mt_
+HEADERS: boost/thread/tss.hpp, folly/Benchmark.h, folly/ThreadLocal.h, folly/lang/Keep.h, folly/portability/GFlags.h, folly/synchronization/Latch.h, glog/logging.h, numeric, sys/types.h, thread
+TAGS: benchmark-file, benchmark-suspender, dnoa, gflags, has-main, loop, run-benchmarks, thread-local
+SUMMARY: Individual Folly BENCHMARK block for patch retrieval.
+CODE:
+BENCHMARK(FB_CONCATENATE(BM_mt_, var), iters) {         \
+    const int itersPerThread = iters / FLAGS_num_threads; \
+    std::vector<std::thread> threads;                     \
+    for (int i = 0; i < FLAGS_num_threads; ++i) {         \
+      threads.push_back(std::thread([&]() {               \
+        var.reset(new int(0));                            \
+        for (int j = 0; j < itersPerThread; ++j) {        \
+          ++(*var.get());                                 \
+        }                                                 \
+      }));                                                \
+    }                                                     \
+    for (auto& t : threads) {                             \
+      t.join();                                           \
+    }                                                     \
+  }
+
+ThreadLocalPtr<int> tlp;
+REG(tlp)
+PThreadGetSpecific<int> pthread_get_specific;
+REG(pthread_get_specific)
+boost::thread_specific_ptr<int> boost_tsp;
+REG(boost_tsp)
+BENCHMARK_DRAW_LINE();
+
+struct foo {
+  int a{0};
+  int b{0};
+};
+
+template <typename TL>
+void run_multi(uint32_t iters) {
+  const int itersPerThread = iters / FLAGS_num_threads;
+  std::vector<std::thread> threads;
+  TL var;
+  for (int i = 0; i < FLAGS_num_threads; ++i) {
+    threads.push_back(std::thread([&]() {
+      var.reset(new foo);
+      for (int j = 0; j < itersPerThread; ++j) {
+        ++var.get()->a;
+        var.get()->b += var.get()->a;
+        --var.get()->a;
+        var.get()->b += var.get()->a;
+      }
+    }));
+  }
+  for (auto& t : threads) {
+    t.join();
+  }
+}

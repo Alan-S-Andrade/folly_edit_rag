@@ -1,0 +1,18 @@
+PATH: folly/test/RangeFindBenchmark.cpp
+KIND: benchmark_main
+FILENAME: RangeFindBenchmark.cpp
+HEADERS: algorithm, folly/Benchmark.h, folly/Range.h, folly/container/Foreach.h, iostream, random, string
+TAGS: benchmark-file, branch, dnoa, gflags, has-main, loop, rng, run-benchmarks
+SUMMARY: Benchmark file main() / harness section.
+CODE:
+int main(int argc, char** argv) {
+  folly::gflags::ParseCommandLineFlags(&argc, &argv, true);
+
+  for (int len : {1, 8, 10, 16, 32, 64, 128, 256, 10 * 1024, 1024 * 1024}) {
+    initStr(len);
+    initDelims(len);
+    initFile(len);
+    runBenchmarks();
+  }
+  return 0;
+}

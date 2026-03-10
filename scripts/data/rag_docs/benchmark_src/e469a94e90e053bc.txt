@@ -1,0 +1,12 @@
+PATH: folly/test/ThreadLocalBenchmark.cpp
+KIND: benchmark_block
+FILENAME: ThreadLocalBenchmark.cpp
+BENCHMARK_NAME: BM_mt_boost_tsp_multi
+HEADERS: boost/thread/tss.hpp, folly/Benchmark.h, folly/ThreadLocal.h, folly/lang/Keep.h, folly/portability/GFlags.h, folly/synchronization/Latch.h, glog/logging.h, numeric, sys/types.h, thread
+TAGS: benchmark-file, benchmark-suspender, dnoa, gflags, has-main, loop, run-benchmarks, thread-local
+SUMMARY: Individual Folly BENCHMARK block for patch retrieval.
+CODE:
+BENCHMARK(BM_mt_boost_tsp_multi, iters) {
+  run_multi<boost::thread_specific_ptr<foo>>(iters);
+}
+BENCHMARK_DRAW_LINE();

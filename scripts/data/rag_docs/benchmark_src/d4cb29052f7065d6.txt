@@ -1,0 +1,19 @@
+PATH: folly/test/StringToFloatBenchmark.cpp
+KIND: benchmark_block
+FILENAME: StringToFloatBenchmark.cpp
+BENCHMARK_NAME: four_digit_percentages_DoubleConversion
+HEADERS: charconv, cmath, double-conversion/double-conversion.h, fast_float/fast_float.h, folly/Benchmark.h, folly/Traits.h, folly/stop_watch.h, iostream, random, utility
+TAGS: benchmark-file, branch, gflags, has-main, loop, rng, run-benchmarks
+SUMMARY: Individual Folly BENCHMARK block for patch retrieval.
+CODE:
+BENCHMARK(four_digit_percentages_DoubleConversion, n) {
+  int processedCharsCount;
+  // mask to select one of the first 8096 out of 10,000 values.
+  // this is done to avoid additional branching or modulus.
+  constexpr std::size_t kSelectioMask = 8096 - 1;
+  for (std::size_t i = 0; i < n; i++) {
+    std::string& input = fourDigitPercentageValues[i & kSelectioMask];
+    conv.StringToFloat(
+        input.data(), static_cast<int>(input.size()), &processedCharsCount);
+  }
+}

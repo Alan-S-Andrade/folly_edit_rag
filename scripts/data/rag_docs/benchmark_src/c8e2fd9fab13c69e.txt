@@ -1,0 +1,24 @@
+PATH: folly/test/UriBenchmark.cpp
+KIND: benchmark_block
+FILENAME: UriBenchmark.cpp
+BENCHMARK_NAME: init_uri_complex
+HEADERS: folly/Benchmark.h, folly/Uri.h, folly/init/Init.h
+TAGS: benchmark-file, has-main, loop, run-benchmarks
+SUMMARY: Individual Folly BENCHMARK block for patch retrieval.
+CODE:
+BENCHMARK(init_uri_complex, iters) {
+  const fbstring s(
+      "https://mock.example.com/farm/track.php?TmOxQUDF=uSmTS_VwhjKnh_JME&DI"
+      "h=fbbN&GRsoIm=bGshjaUqavZxQai&UMT=36k18N4dn21&3U=CD8o4A4497W152j6m0V%14"
+      "%57&Hy=t%05mpr.80JUZ7ne_%23zS8DcA%0qc_%291ymamz096%11Zfb3r%09ZqPD%311ZX"
+      "tqJd600ot&5U96U-Rh-VZ=-D_6-9xKYj%1gW6b43s1B9-j21P0oUW5-t46G4kgt&ezgj=mcW"
+      "TTQ.c&Oh=%2PblUfuC%7C997048884827569%03xnyJ%2L1pi7irBioQ6D4r7nNHNdo6v7Y%"
+      "84aurnSJ%2wCFePHMlGZmIHGfCe7392_lImWsSvN&sBeNN=Nf%80yOE%6X10M64F4gG197aX"
+      "R2B4g2533x235A0i4e%57%58uWB%04Erw.60&VMS4=Ek_%02GC0Pkx%6Ov_%207WICUz007%"
+      "04nYX8N%46zzpv%999h&KGmBt988y=q4P57C-Dh-Nz-x_7-5oPxz%1gz3N03t6c7-R67N4DT"
+      "Y6-f98W1&Lts&%02dOty%8eEYEnLz4yexQQLnL4MGU2JFn3OcmXcatBcabZgBdDdy67hdgW"
+      "tYn4");
+  for (size_t i = 0; i < iters; ++i) {
+    Uri u(s);
+  }
+}

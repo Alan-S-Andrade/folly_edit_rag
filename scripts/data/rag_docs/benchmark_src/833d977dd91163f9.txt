@@ -1,0 +1,19 @@
+PATH: folly/test/RandomBenchmark.cpp
+KIND: benchmark_block
+FILENAME: RandomBenchmark.cpp
+BENCHMARK_NAME: sfmt19937
+HEADERS: ext/random, folly/Benchmark.h, folly/Portability.h, folly/Random.h, glog/logging.h, random
+TAGS: benchmark-file, benchmark-suspender, dnoa, gflags, has-main, loop, random, rng, run-benchmarks, thread-local
+SUMMARY: Individual Folly BENCHMARK block for patch retrieval.
+CODE:
+BENCHMARK(sfmt19937, n) {
+  BenchmarkSuspender braces;
+  std::random_device rd;
+  __gnu_cxx::sfmt19937 rng(rd());
+
+  braces.dismiss();
+
+  for (unsigned i = 0; i < n; i++) {
+    doNotOptimizeAway(rng());
+  }
+}

@@ -1,0 +1,7 @@
+PATH: CMakeLists.txt
+KIND: build_map
+BINARY_NAME: hash_checksum_benchmark
+SOURCES: ChecksumBenchmark.cpp
+SUMMARY: CMake BENCHMARK declaration mapping a binary name to its source file(s).
+CODE:
+      BENCHMARK hash_checksum_benchmark SOURCES ChecksumBenchmark.cpp

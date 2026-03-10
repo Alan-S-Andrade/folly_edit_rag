@@ -1,0 +1,16 @@
+PATH: folly/test/IPAddressBenchmark.cpp
+KIND: benchmark_block
+FILENAME: IPAddressBenchmark.cpp
+BENCHMARK_NAME: ipv6_to_fully_qualified_port
+HEADERS: fmt/core.h, folly/Benchmark.h, folly/Conv.h, folly/IPAddress.h, glog/logging.h
+TAGS: benchmark-file, dnoa, gflags, has-main, run-benchmarks
+SUMMARY: Individual Folly BENCHMARK block for patch retrieval.
+CODE:
+BENCHMARK(ipv6_to_fully_qualified_port, iters) {
+  IPAddressV6 ip("F1E0:0ACE:FB94:7ADF:22E8:6DE6:9672:3725");
+  while (iters--) {
+    string outputString = fmt::format("{}:{}", ip.toFullyQualified(), 65535);
+    folly::doNotOptimizeAway(outputString);
+    folly::doNotOptimizeAway(outputString.data());
+  }
+}

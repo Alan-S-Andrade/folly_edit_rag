@@ -1,0 +1,7 @@
+PATH: CMakeLists.txt
+KIND: build_map
+BINARY_NAME: crypto_lt_hash_benchmark
+SOURCES: LtHashBenchmark.cpp
+SUMMARY: CMake BENCHMARK declaration mapping a binary name to its source file(s).
+CODE:
+        BENCHMARK crypto_lt_hash_benchmark SOURCES LtHashBenchmark.cpp

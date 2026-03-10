@@ -1,0 +1,7 @@
+PATH: CMakeLists.txt
+KIND: build_map
+BINARY_NAME: range_find_benchmark
+SOURCES: RangeFindBenchmark.cpp
+SUMMARY: CMake BENCHMARK declaration mapping a binary name to its source file(s).
+CODE:
+      BENCHMARK range_find_benchmark SOURCES RangeFindBenchmark.cpp

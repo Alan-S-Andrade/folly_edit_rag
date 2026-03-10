@@ -1,0 +1,62 @@
+PATH: folly/test/ExceptionWrapperBenchmark.cpp
+KIND: benchmark_block
+FILENAME: ExceptionWrapperBenchmark.cpp
+BENCHMARK_NAME: exception_wrapper_create_and_cast_concurrent
+HEADERS: atomic, exception, folly/Benchmark.h, folly/ExceptionWrapper.h, folly/portability/GFlags.h, stdexcept, thread, vector
+TAGS: benchmark-file, benchmark-suspender, dnoa, gflags, has-main, loop, run-benchmarks
+SUMMARY: Individual Folly BENCHMARK block for patch retrieval.
+CODE:
+BENCHMARK_RELATIVE(exception_wrapper_create_and_cast_concurrent, iters) {
+  std::atomic<bool> go(false);
+  std::vector<std::thread> threads;
+  BENCHMARK_SUSPEND {
+    for (int t = 0; t < FLAGS_num_threads; ++t) {
+      threads.emplace_back([&go, iters] {
+        while (!go) {
+        }
+        std::runtime_error e("payload");
+        for (size_t i = 0; i < iters; ++i) {
+          auto ew = folly::make_exception_wrapper<std::runtime_error>(e);
+          bool b = ew.is_compatible_with<std::runtime_error>();
+          folly::doNotOptimizeAway(b);
+        }
+      });
+    }
+  }
+  go.store(true);
+  for (auto& t : threads) {
+    t.join();
+  }
+}
+
+int main(int argc, char* argv[]) {
+  folly::gflags::ParseCommandLineFlags(&argc, &argv, true);
+  folly::runBenchmarks();
+  return 0;
+}
+
+/*
+_bin/folly/test/exception_wrapper_benchmark --bm_min_iters=100000
+============================================================================
+folly/test/ExceptionWrapperBenchmark.cpp        relative  time/iter  iters/s
+============================================================================
+get_exception                                              22.78ns    43.90M
+----------------------------------------------------------------------------
+move_exception_wrapper_twice                              936.25ps     1.07G
+copy_exception_wrapper_twice                    1.9884%    47.09ns    21.24M
+----------------------------------------------------------------------------
+exception_ptr_create_and_test                                2.03us  492.88K
+exception_wrapper_create_and_test               2542.59%    79.80ns   12.53M
+----------------------------------------------------------------------------
+exception_ptr_create_and_test_concurrent                   162.39us    6.16K
+exception_wrapper_create_and_test_concurrent    95847.91%   169.43ns    5.90M
+----------------------------------------------------------------------------
+exception_ptr_create_and_throw                               4.24us  236.06K
+exception_wrapper_create_and_throw               141.15%     3.00us  333.20K
+exception_wrapper_create_and_cast               5321.54%    79.61ns   12.56M
+----------------------------------------------------------------------------
+exception_ptr_create_and_throw_concurrent                  330.88us    3.02K
+exception_wrapper_create_and_throw_concurrent    143.66%   230.32us    4.34K
+exception_wrapper_create_and_cast_concurrent    194828.54%   169.83ns    5.89M
+============================================================================
+*/

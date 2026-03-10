@@ -1,0 +1,18 @@
+PATH: folly/test/StringToFloatBenchmark.cpp
+KIND: benchmark_block
+FILENAME: StringToFloatBenchmark.cpp
+BENCHMARK_NAME: random_input_FAST_FLOAT
+HEADERS: charconv, cmath, double-conversion/double-conversion.h, fast_float/fast_float.h, folly/Benchmark.h, folly/Traits.h, folly/stop_watch.h, iostream, random, utility
+TAGS: benchmark-file, branch, gflags, has-main, loop, rng, run-benchmarks
+SUMMARY: Individual Folly BENCHMARK block for patch retrieval.
+CODE:
+BENCHMARK(random_input_FAST_FLOAT, n) {
+  double value{};
+  for (unsigned int i = 0; i < n; ++i) {
+    std::string& input = randomValues[fastFloatRandomInputIndex];
+    fastFloatRandomInputIndex += 1;
+    char* b = input.data();
+    char* e = b + input.size();
+    fast_float::from_chars(b, e, value);
+  }
+}

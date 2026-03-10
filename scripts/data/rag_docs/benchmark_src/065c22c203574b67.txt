@@ -1,0 +1,11 @@
+PATH: folly/test/RandomBenchmark.cpp
+KIND: benchmark_block
+FILENAME: RandomBenchmark.cpp
+BENCHMARK_NAME: Random64
+HEADERS: ext/random, folly/Benchmark.h, folly/Portability.h, folly/Random.h, glog/logging.h, random
+TAGS: benchmark-file, benchmark-suspender, dnoa, gflags, has-main, loop, random, rng, run-benchmarks, thread-local
+SUMMARY: Individual Folly BENCHMARK block for patch retrieval.
+CODE:
+BENCHMARK(Random64) {
+  doNotOptimizeAway(Random::rand64());
+}

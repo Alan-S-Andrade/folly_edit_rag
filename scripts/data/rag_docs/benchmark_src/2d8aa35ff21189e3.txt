@@ -1,0 +1,329 @@
+PATH: folly/test/ConvBenchmark.cpp
+KIND: benchmark_block
+FILENAME: ConvBenchmark.cpp
+BENCHMARK_NAME: preallocateTestNoFloatWithInt128
+HEADERS: array, boost/lexical_cast.hpp, folly/Benchmark.h, folly/Conv.h, folly/container/Foreach.h, folly/lang/ToAscii.h, limits, stdexcept
+TAGS: benchmark-file, branch, dnoa, gflags, has-main, loop, run-benchmarks
+SUMMARY: Individual Folly BENCHMARK block for patch retrieval.
+CODE:
+BENCHMARK(preallocateTestNoFloatWithInt128, n) {
+  for (size_t i = 0; i < n; ++i) {
+    doNotOptimizeAway(
+        to<std::string>(bigInt, someString, stdString, otherString).size());
+    doNotOptimizeAway(
+        to<std::string>(reallyShort, u128s[0], smallInt, i128s[2]).size());
+    doNotOptimizeAway(
+        to<std::string>(bigInt, i128s[0], stdString, u128s[1]).size());
+    doNotOptimizeAway(
+        to<std::string>(bigInt, stdString, dValue, otherString).size());
+    doNotOptimizeAway(
+        to<std::string>(bigInt, u128s[2], someString, reallyShort).size());
+  }
+}
+#endif
+
+BENCHMARK_DRAW_LINE();
+
+static const StringIdenticalToBM<std::string> stringIdenticalToBM;
+static const StringVariadicToBM<std::string> stringVariadicToBM;
+static const StringIdenticalToBM<fbstring> fbstringIdenticalToBM;
+static const StringVariadicToBM<fbstring> fbstringVariadicToBM;
+
+#define DEFINE_BENCHMARK_GROUP(n)                \
+  BENCHMARK_PARAM(u64ToAsciiClassicBM, n)        \
+  BENCHMARK_RELATIVE_PARAM(u64ToAsciiTableBM, n) \
+  BENCHMARK_RELATIVE_PARAM(u64ToAsciiFollyBM, n) \
+  BENCHMARK_DRAW_LINE()
+
+DEFINE_BENCHMARK_GROUP(1);
+DEFINE_BENCHMARK_GROUP(2);
+DEFINE_BENCHMARK_GROUP(3);
+DEFINE_BENCHMARK_GROUP(4);
+DEFINE_BENCHMARK_GROUP(5);
+DEFINE_BENCHMARK_GROUP(6);
+DEFINE_BENCHMARK_GROUP(7);
+DEFINE_BENCHMARK_GROUP(8);
+DEFINE_BENCHMARK_GROUP(9);
+DEFINE_BENCHMARK_GROUP(10);
+DEFINE_BENCHMARK_GROUP(11);
+DEFINE_BENCHMARK_GROUP(12);
+DEFINE_BENCHMARK_GROUP(13);
+DEFINE_BENCHMARK_GROUP(14);
+DEFINE_BENCHMARK_GROUP(15);
+DEFINE_BENCHMARK_GROUP(16);
+DEFINE_BENCHMARK_GROUP(17);
+DEFINE_BENCHMARK_GROUP(18);
+DEFINE_BENCHMARK_GROUP(19);
+DEFINE_BENCHMARK_GROUP(20);
+
+#undef DEFINE_BENCHMARK_GROUP
+
+#define DEFINE_BENCHMARK_GROUP(n)                         \
+  BENCHMARK_PARAM(u64ToStringClibMeasure, n)              \
+  BENCHMARK_RELATIVE_PARAM(u64ToStringFollyMeasure, n)    \
+  BENCHMARK_RELATIVE_PARAM(i64ToStringFollyMeasurePos, n) \
+  BENCHMARK_RELATIVE_PARAM(i64ToStringFollyMeasureNeg, n) \
+  BENCHMARK_DRAW_LINE()
+
+DEFINE_BENCHMARK_GROUP(1);
+DEFINE_BENCHMARK_GROUP(2);
+DEFINE_BENCHMARK_GROUP(3);
+DEFINE_BENCHMARK_GROUP(4);
+DEFINE_BENCHMARK_GROUP(5);
+DEFINE_BENCHMARK_GROUP(6);
+DEFINE_BENCHMARK_GROUP(7);
+DEFINE_BENCHMARK_GROUP(8);
+DEFINE_BENCHMARK_GROUP(9);
+DEFINE_BENCHMARK_GROUP(10);
+DEFINE_BENCHMARK_GROUP(11);
+DEFINE_BENCHMARK_GROUP(12);
+DEFINE_BENCHMARK_GROUP(13);
+DEFINE_BENCHMARK_GROUP(14);
+DEFINE_BENCHMARK_GROUP(15);
+DEFINE_BENCHMARK_GROUP(16);
+DEFINE_BENCHMARK_GROUP(17);
+DEFINE_BENCHMARK_GROUP(18);
+DEFINE_BENCHMARK_GROUP(19);
+
+// Only for u64
+BENCHMARK_PARAM(u64ToStringClibMeasure, 20)
+BENCHMARK_RELATIVE_PARAM(u64ToStringFollyMeasure, 20)
+BENCHMARK_DRAW_LINE();
+
+#undef DEFINE_BENCHMARK_GROUP
+
+#if FOLLY_HAVE_INT128_T
+
+void u128ToStringFollyMeasure(unsigned int n, size_t index) {
+  checkArrayIndex(uint128Num, index);
+  FOR_EACH_RANGE (i, 0, n) {
+    doNotOptimizeAway(to<std::string>(uint128Num[index] + (i % 8)).size());
+  }
+}
+
+void i128ToStringFollyMeasurePos(unsigned int n, size_t index) {
+  checkArrayIndex(int128Pos, index);
+  FOR_EACH_RANGE (i, 0, n) {
+    doNotOptimizeAway(to<std::string>(int128Pos[index] + (i % 8)).size());
+  }
+}
+
+void i128ToStringFollyMeasureNeg(unsigned int n, size_t index) {
+  checkArrayIndex(int128Neg, index);
+  FOR_EACH_RANGE (i, 0, n) {
+    doNotOptimizeAway(to<std::string>(int128Neg[index] + (i % 8)).size());
+  }
+}
+
+#define DEFINE_BENCHMARK_GROUP(n)                          \
+  BENCHMARK_PARAM(u128ToStringFollyMeasure, n)             \
+  BENCHMARK_RELATIVE_PARAM(i128ToStringFollyMeasurePos, n) \
+  BENCHMARK_RELATIVE_PARAM(i128ToStringFollyMeasureNeg, n) \
+  BENCHMARK_DRAW_LINE()
+
+DEFINE_BENCHMARK_GROUP(1);
+DEFINE_BENCHMARK_GROUP(2);
+DEFINE_BENCHMARK_GROUP(3);
+DEFINE_BENCHMARK_GROUP(4);
+DEFINE_BENCHMARK_GROUP(5);
+DEFINE_BENCHMARK_GROUP(6);
+DEFINE_BENCHMARK_GROUP(7);
+DEFINE_BENCHMARK_GROUP(8);
+DEFINE_BENCHMARK_GROUP(9);
+DEFINE_BENCHMARK_GROUP(10);
+DEFINE_BENCHMARK_GROUP(11);
+DEFINE_BENCHMARK_GROUP(12);
+DEFINE_BENCHMARK_GROUP(13);
+DEFINE_BENCHMARK_GROUP(14);
+DEFINE_BENCHMARK_GROUP(15);
+DEFINE_BENCHMARK_GROUP(16);
+DEFINE_BENCHMARK_GROUP(17);
+DEFINE_BENCHMARK_GROUP(18);
+DEFINE_BENCHMARK_GROUP(19);
+DEFINE_BENCHMARK_GROUP(20);
+DEFINE_BENCHMARK_GROUP(21);
+DEFINE_BENCHMARK_GROUP(22);
+DEFINE_BENCHMARK_GROUP(23);
+DEFINE_BENCHMARK_GROUP(24);
+DEFINE_BENCHMARK_GROUP(25);
+DEFINE_BENCHMARK_GROUP(26);
+DEFINE_BENCHMARK_GROUP(27);
+DEFINE_BENCHMARK_GROUP(28);
+DEFINE_BENCHMARK_GROUP(29);
+DEFINE_BENCHMARK_GROUP(30);
+DEFINE_BENCHMARK_GROUP(31);
+DEFINE_BENCHMARK_GROUP(32);
+DEFINE_BENCHMARK_GROUP(33);
+DEFINE_BENCHMARK_GROUP(34);
+DEFINE_BENCHMARK_GROUP(35);
+DEFINE_BENCHMARK_GROUP(36);
+DEFINE_BENCHMARK_GROUP(37);
+DEFINE_BENCHMARK_GROUP(38);
+DEFINE_BENCHMARK_GROUP(39);
+
+BENCHMARK_DRAW_LINE();
+
+#undef DEFINE_BENCHMARK_GROUP
+
+#endif
+
+#define DEFINE_BENCHMARK_GROUP(n)                     \
+  BENCHMARK_PARAM(clibAtoiMeasure, n)                 \
+  BENCHMARK_RELATIVE_PARAM(lexicalCastMeasure, n)     \
+  BENCHMARK_RELATIVE_PARAM(handwrittenAtoiMeasure, n) \
+  BENCHMARK_RELATIVE_PARAM(follyAtoiMeasure, n)       \
+  BENCHMARK_DRAW_LINE()
+
+DEFINE_BENCHMARK_GROUP(1);
+DEFINE_BENCHMARK_GROUP(2);
+DEFINE_BENCHMARK_GROUP(3);
+DEFINE_BENCHMARK_GROUP(4);
+DEFINE_BENCHMARK_GROUP(5);
+DEFINE_BENCHMARK_GROUP(6);
+DEFINE_BENCHMARK_GROUP(7);
+DEFINE_BENCHMARK_GROUP(8);
+DEFINE_BENCHMARK_GROUP(9);
+DEFINE_BENCHMARK_GROUP(10);
+DEFINE_BENCHMARK_GROUP(11);
+DEFINE_BENCHMARK_GROUP(12);
+DEFINE_BENCHMARK_GROUP(13);
+DEFINE_BENCHMARK_GROUP(14);
+DEFINE_BENCHMARK_GROUP(15);
+DEFINE_BENCHMARK_GROUP(16);
+DEFINE_BENCHMARK_GROUP(17);
+DEFINE_BENCHMARK_GROUP(18);
+DEFINE_BENCHMARK_GROUP(19);
+
+#undef DEFINE_BENCHMARK_GROUP
+
+#define DEFINE_BENCHMARK_GROUP(T, n)            \
+  BENCHMARK_PARAM(T##VariadicToBM, n)           \
+  BENCHMARK_RELATIVE_PARAM(T##IdenticalToBM, n) \
+  BENCHMARK_DRAW_LINE()
+
+DEFINE_BENCHMARK_GROUP(string, 32);
+DEFINE_BENCHMARK_GROUP(string, 1024);
+DEFINE_BENCHMARK_GROUP(string, 32768);
+DEFINE_BENCHMARK_GROUP(fbstring, 32);
+DEFINE_BENCHMARK_GROUP(fbstring, 1024);
+DEFINE_BENCHMARK_GROUP(fbstring, 32768);
+
+#undef DEFINE_BENCHMARK_GROUP
+
+namespace {
+
+template <typename T>
+inline void stringToTypeClassic(const char* str, uint32_t n) {
+  for (uint32_t i = 0; i < n; ++i) {
+    try {
+      auto val = to<T>(str);
+      doNotOptimizeAway(val);
+    } catch (const std::exception& e) {
+      doNotOptimizeAway(e.what());
+    }
+    doNotOptimizeAway(i);
+  }
+}
+
+template <typename T>
+inline void stringToTypeOptional(const char* str, uint32_t n) {
+  for (uint32_t i = 0; i < n; ++i) {
+    auto val = tryTo<T>(str);
+    if (val.hasValue()) {
+      doNotOptimizeAway(val.value());
+    }
+  }
+}
+
+template <typename T>
+inline void ptrPairToIntClassic(StringPiece sp, uint32_t n) {
+  for (uint32_t i = 0; i < n; ++i) {
+    try {
+      auto val = to<T>(sp.begin(), sp.end());
+      doNotOptimizeAway(val);
+    } catch (const std::exception& e) {
+      doNotOptimizeAway(e.what());
+    }
+    doNotOptimizeAway(i);
+  }
+}
+
+template <typename T>
+inline void ptrPairToIntOptional(StringPiece sp, uint32_t n) {
+  for (uint32_t i = 0; i < n; ++i) {
+    auto val = tryTo<T>(sp.begin(), sp.end());
+    if (val.hasValue()) {
+      doNotOptimizeAway(val.value());
+    }
+  }
+}
+
+constexpr uint32_t kArithNumIter = 10000;
+
+template <typename T, typename U>
+inline size_t arithToArithClassic(const U* in, uint32_t numItems) {
+  for (uint32_t i = 0; i < kArithNumIter; ++i) {
+    for (uint32_t j = 0; j < numItems; ++j) {
+      try {
+        auto val = to<T>(in[j]);
+        doNotOptimizeAway(val);
+      } catch (const std::exception& e) {
+        doNotOptimizeAway(e.what());
+      }
+      doNotOptimizeAway(j);
+    }
+    doNotOptimizeAway(i);
+  }
+
+  return kArithNumIter * numItems;
+}
+
+template <typename T, typename U>
+inline size_t arithToArithOptional(const U* in, uint32_t numItems) {
+  for (uint32_t i = 0; i < kArithNumIter; ++i) {
+    for (uint32_t j = 0; j < numItems; ++j) {
+      auto val = tryTo<T>(*in);
+      doNotOptimizeAway(val.hasValue());
+      if (val.hasValue()) {
+        auto v2 = val.value();
+        doNotOptimizeAway(v2);
+      }
+      doNotOptimizeAway(j);
+    }
+    doNotOptimizeAway(i);
+  }
+
+  return kArithNumIter * numItems;
+}
+
+} // namespace
+
+namespace folly {
+namespace conv_bench_detail {
+
+// Keep this data global and non-const, so the compiler cannot make
+// any assumptions about the actual values at compile time
+
+std::array<int, 4> int2ScharGood{{-128, 127, 0, -50}};
+std::array<int, 4> int2ScharBad{{-129, 128, 255, 10000}};
+std::array<int, 4> int2UcharGood{{0, 1, 254, 255}};
+std::array<int, 4> int2UcharBad{{-128, -1000, 256, -1}};
+
+std::array<long long, 4> ll2SintOrFloatGood{{-2, -1, 0, 1}};
+std::array<long long, 4> ll2SintOrFloatBad{{
+    std::numeric_limits<long long>::min() / 5,
+    std::numeric_limits<long long>::min() / 2,
+    std::numeric_limits<long long>::max() / 2,
+    std::numeric_limits<long long>::max() / 5,
+}};
+std::array<long long, 4> ll2UintGood{{1, 2, 3, 4}};
+std::array<long long, 4> ll2UintBad{{-1, -2, -3, -4}};
+
+std::array<double, 4> double2FloatGood{{1.0, 1.25, 2.5, 1000.0}};
+std::array<double, 4> double2FloatBad{{1e100, 1e101, 1e102, 1e103}};
+std::array<double, 4> double2IntGood{{1.0, 10.0, 100.0, 1000.0}};
+std::array<double, 4> double2IntBad{{1e100, 1.25, 2.5, 100.00001}};
+} // namespace conv_bench_detail
+} // namespace folly
+
+#define STRING_TO_TYPE_BENCHMARK(type, name, pass, fail) \

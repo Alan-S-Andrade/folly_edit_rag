@@ -1,0 +1,30 @@
+PATH: folly/test/SingletonBenchmark.cpp
+KIND: benchmark_block
+FILENAME: SingletonBenchmark.cpp
+BENCHMARK_NAME: MeyersSingleton4Threads
+HEADERS: folly/Benchmark.h, folly/Singleton.h, folly/SingletonThreadLocal.h, folly/portability/GFlags.h, iostream, thread
+TAGS: benchmark-file, dnoa, gflags, has-main, loop, run-benchmarks, thread-local
+SUMMARY: Individual Folly BENCHMARK block for patch retrieval.
+CODE:
+BENCHMARK(MeyersSingleton4Threads, n) {
+  run4Threads([=]() { meyersSingleton(n); });
+}
+
+struct BenchmarkTag {};
+template <typename T, typename Tag = detail::DefaultTag>
+using SingletonBenchmark = Singleton<T, Tag, BenchmarkTag>;
+
+struct GetTag {};
+struct TryGetTag {};
+struct TryGetFastTag {};
+
+SingletonBenchmark<BenchmarkSingleton, GetTag> benchmark_singleton_get;
+SingletonBenchmark<BenchmarkSingleton, TryGetTag> benchmark_singleton_try_get;
+SingletonBenchmark<BenchmarkSingleton, TryGetFastTag>
+    benchmark_singleton_try_get_fast;
+
+void follySingletonRaw(size_t n) {
+  for (size_t i = 0; i < n; ++i) {
+    SingletonBenchmark<BenchmarkSingleton, GetTag>::get();
+  }
+}

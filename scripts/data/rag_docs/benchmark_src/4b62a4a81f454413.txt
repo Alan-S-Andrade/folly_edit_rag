@@ -1,0 +1,11 @@
+PATH: folly/test/ConvBenchmark.cpp
+KIND: benchmark_block
+FILENAME: ConvBenchmark.cpp
+BENCHMARK_NAME: stringTo##name##ClassicError
+HEADERS: array, boost/lexical_cast.hpp, folly/Benchmark.h, folly/Conv.h, folly/container/Foreach.h, folly/lang/ToAscii.h, limits, stdexcept
+TAGS: benchmark-file, branch, dnoa, gflags, has-main, loop, run-benchmarks
+SUMMARY: Individual Folly BENCHMARK block for patch retrieval.
+CODE:
+BENCHMARK(stringTo##name##ClassicError, n) {           \
+    stringToTypeClassic<type>(fail, n);                  \
+  }                                                      \

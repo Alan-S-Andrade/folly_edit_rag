@@ -1,0 +1,13 @@
+PATH: folly/test/MemoryIdlerBenchmark.cpp
+KIND: benchmark_block
+FILENAME: MemoryIdlerBenchmark.cpp
+BENCHMARK_NAME: releaseStack
+HEADERS: folly/Benchmark.h, folly/detail/MemoryIdler.h
+TAGS: benchmark-file, gflags, has-main, loop, run-benchmarks
+SUMMARY: Individual Folly BENCHMARK block for patch retrieval.
+CODE:
+BENCHMARK(releaseStack, iters) {
+  for (size_t i = 0; i < iters; ++i) {
+    MemoryIdler::unmapUnusedStack();
+  }
+}

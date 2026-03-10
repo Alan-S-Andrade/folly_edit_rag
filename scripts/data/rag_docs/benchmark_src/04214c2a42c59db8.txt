@@ -1,0 +1,22 @@
+PATH: folly/test/SingletonBenchmark.cpp
+KIND: benchmark_block
+FILENAME: SingletonBenchmark.cpp
+BENCHMARK_NAME: FollyLeakySingleton4Threads
+HEADERS: folly/Benchmark.h, folly/Singleton.h, folly/SingletonThreadLocal.h, folly/portability/GFlags.h, iostream, thread
+TAGS: benchmark-file, dnoa, gflags, has-main, loop, run-benchmarks, thread-local
+SUMMARY: Individual Folly BENCHMARK block for patch retrieval.
+CODE:
+BENCHMARK(FollyLeakySingleton4Threads, n) {
+  run4Threads([=]() { follyLeakySingleton(n); });
+}
+
+int main(int argc, char** argv) {
+  folly::gflags::ParseCommandLineFlags(&argc, &argv, true);
+  folly::gflags::SetCommandLineOptionWithMode(
+      "bm_min_usec", "100000", folly::gflags::SET_FLAG_IF_DEFAULT);
+
+  folly::SingletonVault::singleton<BenchmarkTag>()->registrationComplete();
+  folly::runBenchmarks();
+
+  return 0;
+}

@@ -1,0 +1,19 @@
+PATH: folly/test/IPAddressBenchmark.cpp
+KIND: benchmark_block
+FILENAME: IPAddressBenchmark.cpp
+BENCHMARK_NAME: ipv4_to_string_inet_ntop
+HEADERS: fmt/core.h, folly/Benchmark.h, folly/Conv.h, folly/IPAddress.h, glog/logging.h
+TAGS: benchmark-file, dnoa, gflags, has-main, run-benchmarks
+SUMMARY: Individual Folly BENCHMARK block for patch retrieval.
+CODE:
+BENCHMARK(ipv4_to_string_inet_ntop, iters) {
+  folly::IPAddressV4 ipv4Addr("127.0.0.1");
+  in_addr ip = ipv4Addr.toAddr();
+  char outputString[INET_ADDRSTRLEN] = {0};
+
+  while (iters--) {
+    const char* val =
+        inet_ntop(AF_INET, &ip, outputString, sizeof(outputString));
+    folly::doNotOptimizeAway(val);
+  }
+}

@@ -1,0 +1,38 @@
+PATH: folly/test/ExceptionWrapperBenchmark.cpp
+KIND: benchmark_block
+FILENAME: ExceptionWrapperBenchmark.cpp
+BENCHMARK_NAME: exception_wrapper_create_and_test_concurrent
+HEADERS: atomic, exception, folly/Benchmark.h, folly/ExceptionWrapper.h, folly/portability/GFlags.h, stdexcept, thread, vector
+TAGS: benchmark-file, benchmark-suspender, dnoa, gflags, has-main, loop, run-benchmarks
+SUMMARY: Individual Folly BENCHMARK block for patch retrieval.
+CODE:
+BENCHMARK_RELATIVE(exception_wrapper_create_and_test_concurrent, iters) {
+  std::atomic<bool> go(false);
+  std::vector<std::thread> threads;
+  BENCHMARK_SUSPEND {
+    for (int t = 0; t < FLAGS_num_threads; ++t) {
+      threads.emplace_back([&go, iters] {
+        while (!go) {
+        }
+        std::runtime_error e("payload");
+        for (size_t i = 0; i < iters; ++i) {
+          auto ew = folly::make_exception_wrapper<std::runtime_error>(e);
+          bool b = static_cast<bool>(ew);
+          folly::doNotOptimizeAway(b);
+        }
+      });
+    }
+  }
+  go.store(true);
+  for (auto& t : threads) {
+    t.join();
+  }
+}
+
+BENCHMARK_DRAW_LINE();
+
+/*
+ * Use case 2: Library wraps errors in either exception_wrapper or
+ * exception_ptr, and user wants to handle std::runtime_error. This can be done
+ * either by rehtrowing or with dynamic_cast.
+ */
