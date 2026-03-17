@@ -1,5 +1,153 @@
 [
   {
+    "doc_file": "benchmark_src/16e39fbc4fc9c3a3.txt",
+    "logical_name": "thrift/lib/cpp/util/test/VarintUtilsBench.cpp",
+    "sha256": "16e39fbc4fc9c3a3f078d38c00a1029bec18a9670e1d58daf6735e07280aea2e",
+    "size_bytes": 14082,
+    "oversize_local_upload": false,
+    "kind": "benchmark_src_file",
+    "source_path": "/myd/wdl/DCPerf/benchmarks/wdl_bench/wdl_sources/fbthrift/thrift/lib/cpp/util/test/VarintUtilsBench.cpp",
+    "relative_path": "thrift/lib/cpp/util/test/VarintUtilsBench.cpp",
+    "headers": [
+      "folly/Benchmark.h",
+      "folly/init/Init.h",
+      "folly/io/Cursor.h",
+      "folly/io/IOBuf.h",
+      "folly/io/IOBufQueue.h",
+      "folly/lang/Keep.h",
+      "thrift/lib/cpp/util/VarintUtils.h",
+      "thrift/lib/cpp/util/test/VarintUtilsTestUtil.h"
+    ],
+    "tags": [
+      "benchmark-suspender",
+      "branch",
+      "dnoa",
+      "has-main",
+      "loop",
+      "run-benchmarks"
+    ],
+    "benchmark_names": []
+  },
+  {
+    "doc_file": "benchmark_src/926d004035f192f6.txt",
+    "logical_name": "thrift/lib/cpp/util/test/VarintUtilsBench.cpp::main",
+    "sha256": "926d004035f192f61f777d49eeacb706946b512d0a6a7d0da3611fc37d7a785b",
+    "size_bytes": 6521,
+    "oversize_local_upload": false,
+    "kind": "benchmark_main",
+    "source_path": "/myd/wdl/DCPerf/benchmarks/wdl_bench/wdl_sources/fbthrift/thrift/lib/cpp/util/test/VarintUtilsBench.cpp",
+    "relative_path": "thrift/lib/cpp/util/test/VarintUtilsBench.cpp",
+    "headers": [
+      "folly/Benchmark.h",
+      "folly/init/Init.h",
+      "folly/io/Cursor.h",
+      "folly/io/IOBuf.h",
+      "folly/io/IOBufQueue.h",
+      "folly/lang/Keep.h",
+      "thrift/lib/cpp/util/VarintUtils.h",
+      "thrift/lib/cpp/util/test/VarintUtilsTestUtil.h"
+    ],
+    "tags": [
+      "benchmark-suspender",
+      "branch",
+      "dnoa",
+      "has-main",
+      "loop",
+      "run-benchmarks"
+    ]
+  },
+  {
+    "doc_file": "benchmark_src/37d6411519f2e465.txt",
+    "logical_name": "thrift/lib/cpp2/test/ProtocolBench.cpp",
+    "sha256": "37d6411519f2e465df8f6df64dbdf2ecef35b2a83ce20fec2ecf9a788999e20b",
+    "size_bytes": 7226,
+    "oversize_local_upload": false,
+    "kind": "benchmark_src_file",
+    "source_path": "/myd/wdl/DCPerf/benchmarks/wdl_bench/wdl_sources/fbthrift/thrift/lib/cpp2/test/ProtocolBench.cpp",
+    "relative_path": "thrift/lib/cpp2/test/ProtocolBench.cpp",
+    "headers": [
+      "folly/Benchmark.h",
+      "folly/BenchmarkUtil.h",
+      "folly/Optional.h",
+      "folly/init/Init.h",
+      "folly/portability/GFlags.h",
+      "glog/logging.h",
+      "thrift/lib/cpp2/frozen/FrozenUtil.h",
+      "thrift/lib/cpp2/protocol/Object.h",
+      "thrift/lib/cpp2/protocol/Serializer.h",
+      "thrift/lib/cpp2/test/Structs.h"
+    ],
+    "tags": [
+      "benchmark-suspender",
+      "branch",
+      "dnoa",
+      "has-main",
+      "run-benchmarks"
+    ],
+    "benchmark_names": [
+      "Prefix##proto##Protocol_##rdwr##_##bench"
+    ]
+  },
+  {
+    "doc_file": "benchmark_src/c5c24fbeba5fff92.txt",
+    "logical_name": "thrift/lib/cpp2/test/ProtocolBench.cpp::Prefix##proto##Protocol_##rdwr##_##bench",
+    "sha256": "c5c24fbeba5fff92b2b6453d1ea76298136256d8e094a73b710875a35d88427a",
+    "size_bytes": 3020,
+    "oversize_local_upload": false,
+    "kind": "benchmark_block",
+    "source_path": "/myd/wdl/DCPerf/benchmarks/wdl_bench/wdl_sources/fbthrift/thrift/lib/cpp2/test/ProtocolBench.cpp",
+    "relative_path": "thrift/lib/cpp2/test/ProtocolBench.cpp",
+    "benchmark_name": "Prefix##proto##Protocol_##rdwr##_##bench",
+    "headers": [
+      "folly/Benchmark.h",
+      "folly/BenchmarkUtil.h",
+      "folly/Optional.h",
+      "folly/init/Init.h",
+      "folly/portability/GFlags.h",
+      "glog/logging.h",
+      "thrift/lib/cpp2/frozen/FrozenUtil.h",
+      "thrift/lib/cpp2/protocol/Object.h",
+      "thrift/lib/cpp2/protocol/Serializer.h",
+      "thrift/lib/cpp2/test/Structs.h"
+    ],
+    "tags": [
+      "benchmark-suspender",
+      "branch",
+      "dnoa",
+      "has-main",
+      "run-benchmarks"
+    ]
+  },
+  {
+    "doc_file": "benchmark_src/4066ad32ee4cad97.txt",
+    "logical_name": "thrift/lib/cpp2/test/ProtocolBench.cpp::main",
+    "sha256": "4066ad32ee4cad97eed2713e9c36386163da8e4a2d41aeb3f4e6022dd589bdf2",
+    "size_bytes": 617,
+    "oversize_local_upload": false,
+    "kind": "benchmark_main",
+    "source_path": "/myd/wdl/DCPerf/benchmarks/wdl_bench/wdl_sources/fbthrift/thrift/lib/cpp2/test/ProtocolBench.cpp",
+    "relative_path": "thrift/lib/cpp2/test/ProtocolBench.cpp",
+    "headers": [
+      "folly/Benchmark.h",
+      "folly/BenchmarkUtil.h",
+      "folly/Optional.h",
+      "folly/init/Init.h",
+      "folly/portability/GFlags.h",
+      "glog/logging.h",
+      "thrift/lib/cpp2/frozen/FrozenUtil.h",
+      "thrift/lib/cpp2/protocol/Object.h",
+      "thrift/lib/cpp2/protocol/Serializer.h",
+      "thrift/lib/cpp2/test/Structs.h"
+    ],
+    "tags": [
+      "benchmark-suspender",
+      "branch",
+      "dnoa",
+      "has-main",
+      "run-benchmarks"
+    ]
+  },
+  {
     "doc_file": "benchmark_src/95fcd94b9913fdcd.txt",
     "logical_name": "folly/test/AsciiCaseInsensitiveBenchmark.cpp",
     "sha256": "95fcd94b9913fdcdc089534735a35012faf7752008bcfde93b191e41f8926003",
@@ -13492,5 +13640,27 @@
     "relative_path": "CMakeLists.txt",
     "binary_name": "crypto_lt_hash_benchmark",
     "sources": "LtHashBenchmark.cpp"
+  },
+  {
+    "doc_file": "build_map/68ec8e156f294b6c.txt",
+    "logical_name": "VarintUtilsBench:VarintUtilsBench.cpp",
+    "sha256": "68ec8e156f294b6cd473441913960def178ee0634f2976b9aca4f5994bfb5475",
+    "size_bytes": 248,
+    "oversize_local_upload": false,
+    "kind": "build_map",
+    "relative_path": "thrift/lib/cpp/util/test/CMakeLists.txt",
+    "binary_name": "VarintUtilsBench",
+    "sources": "VarintUtilsBench.cpp"
+  },
+  {
+    "doc_file": "build_map/234cee55c7b4dea9.txt",
+    "logical_name": "ProtocolBench:ProtocolBench.cpp + generated thrift sources",
+    "sha256": "234cee55c7b4dea9c33d3676b6c2a8365eb78c0876b1d3bb953be4fa124e4ec4",
+    "size_bytes": 312,
+    "oversize_local_upload": false,
+    "kind": "build_map",
+    "relative_path": "thrift/lib/cpp2/test/CMakeLists.txt",
+    "binary_name": "ProtocolBench",
+    "sources": "ProtocolBench.cpp + generated thrift sources"
   }
 ]

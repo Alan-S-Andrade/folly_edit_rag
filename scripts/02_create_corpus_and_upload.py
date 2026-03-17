@@ -22,6 +22,11 @@ CORPUS_DISPLAY_NAME = 'folly-benchmark-edit-rag'
 
 
 def main() -> None:
+    if not PROJECT_ID or PROJECT_ID == 'your-project-id':
+        raise SystemExit(
+            'Set VERTEX_PROJECT_ID to a Google Cloud project you can access before running step 2.'
+        )
+
     vertexai.init(project=PROJECT_ID, location=LOCATION)
 
     embedding_model_config = rag.EmbeddingModelConfig(

@@ -64,10 +64,25 @@ python scripts/01_prepare_folly_rag.py
 
 This writes local docs under `data/rag_docs/` and a manifest under `data/manifests/folly_rag_manifest.json`.
 
+The prepared corpus now includes:
+- Folly benchmark sources and Folly `CMakeLists.txt` mappings
+- fbthrift benchmark sources for `ProtocolBench` and `VarintUtilsBench`
+- successful edit exemplars, when available
+
 ### 2) Create the Vertex RAG corpus and upload local docs
 
 ```bash
 python scripts/02_create_corpus_and_upload.py
+```
+
+If this fails with a project permission error, set a real Google Cloud project first:
+
+```bash
+gcloud config set project YOUR_PROJECT_ID
+gcloud auth application-default set-quota-project YOUR_PROJECT_ID
+
+export VERTEX_PROJECT_ID=YOUR_PROJECT_ID
+export VERTEX_LOCATION=us-central1
 ```
 
 ### 3) Retrieve editing context
@@ -125,6 +140,158 @@ The corpus is designed to retrieve:
 - prior successful full-file rewrite exemplars.
 
 This keeps RAG tightly focused on compilable Folly edits instead of broad repository summarization.
+
+## Property-edit task pipeline
+
+After step 2, generate the task manifest from `search_engine/all_features.xlsx`:
+
+```bash
+python scripts/07_generate_property_edit_tasks.py generate \
+  --output data/property_edit_tasks/property_edit_tasks.jsonl
+```
+
+This creates one task row per:
+- source microbenchmark
+- target feature
+- direction: `increase` or `decrease`
+- magnitude: `minimally`, `moderately`, `substantially`, `significantly`
+
+The default target feature set is exactly:
+
+- `block_size_P50`
+- `family::arith_P50`
+- `family::branch_P50`
+- `family::load_P50`
+- `family::logic_P50`
+- `family::mem_P50`
+- `family::move_P50`
+- `family::other_P50`
+- `family::store_P50`
+- `jumps_P50`
+- `not_taken_runs_P50`
+- `raw_distances_P50`
+- `taken_runs_P50`
+- `IPC`
+- `L1-dcache-load-misses_MPKI`
+- `L1-dcache-loads_MPKI`
+- `L1-dcache-stores_MPKI`
+- `L1-icache-load-misses_MPKI`
+- `L2-icache-load-misses_MPKI`
+- `LLC-load-misses_MPKI`
+- `branch-load-misses_MPKI`
+- `branch-misses_MPKI`
+- `iTLB-load-misses_MPKI`
+- `TMA_Backend_Bound(%)`
+- `TMA_Bad_Speculation(%)`
+- `TMA_Frontend_Bound(%)`
+- `TMA_Retiring(%)`
+
+The `_P50` features come from the Intel PT path:
+- `perf record`
+- PT disassembly
+- `frequencies.py`
+
+After `generate`, the normal next step is to run a small filtered batch through retrieval, rewrite, compile/repair, and feature evaluation:
+
+```bash
+python scripts/07_generate_property_edit_tasks.py run \
+  --manifest data/property_edit_tasks/property_edit_tasks.jsonl \
+  --binary random_benchmark \
+  --limit 10
+```
+
+`--limit 10` means "run only the first 10 matching task rows from the manifest." It is only a batch-size cap so you can test the pipeline without launching the full dataset.
+
+Useful first runs:
+
+```bash
+python scripts/07_generate_property_edit_tasks.py run \
+  --manifest data/property_edit_tasks/property_edit_tasks.jsonl \
+  --binary random_benchmark \
+  --limit 10
+```
+
+```bash
+python scripts/07_generate_property_edit_tasks.py run \
+  --manifest data/property_edit_tasks/property_edit_tasks.jsonl \
+  --binary ProtocolBench \
+  --limit 10
+```
+
+```bash
+python scripts/07_generate_property_edit_tasks.py run \
+  --manifest data/property_edit_tasks/property_edit_tasks.jsonl \
+  --binary VarintUtilsBench \
+  --limit 10
+```
+
+If you want a smaller manifest before running, generate one per binary or feature:
+
+```bash
+python scripts/07_generate_property_edit_tasks.py generate \
+  --binary random_benchmark \
+  --feature-name perf_stat.L1-icache-load-misses_MPKI \
+  --output data/property_edit_tasks/random_icache_tasks.jsonl
+```
+
+Then run that smaller manifest:
+
+```bash
+python scripts/07_generate_property_edit_tasks.py run \
+  --manifest data/property_edit_tasks/random_icache_tasks.jsonl \
+  --limit 10
+```
+
+The `run` command marks an edit as successful only if:
+- the edited source compiles
+- a new microbenchmark appears in `--bm_list`
+- post-build feature extraction is run on the new candidate
+- the extracted feature value for the target metric moves in the requested direction
+- the observed delta lands in the requested magnitude band
+
+This means success labels are not inferred from the prompt alone. Every candidate is tagged by actually compiling it, extracting features from the built binary, and checking the requested metric delta against the baseline microbenchmark.
+
+After enough successful runs accumulate under `data/successful_edits/`, export the supervised tuning dataset:
+
+```bash
+python scripts/06_build_tuning_dataset.py --output train.jsonl
+```
+
+## Live cloud flow
+
+From the repository root, you can run the live cloud path with one command:
+
+```bash
+cd /myd/wdl/BenchmarkReplication
+./run_cloud_tuning_e2e.sh \
+  --output-dir /myd/wdl/BenchmarkReplication/outputs/cloud_demo \
+  --benchmark-name bench_ilp_cloud \
+  --cloud-total-seconds 10 \
+  --cloud-workload-warmup-seconds 2 \
+  --cloud-segment-seconds 3 \
+  -- ./bench_ilp
+```
+
+This wrapper will:
+- rebuild the canonical ScaNN index
+- start local `adjustor.py` and `input_to_search_delta.py` services
+- run `run_feature_extraction.py` in `--cloud-mode`
+- run `cloud_segment_frontend.py`
+- write the final replacement plan JSON
+
+The main outputs are:
+- `<output-dir>/<benchmark-name>_feature_extraction.json`
+- `<output-dir>/<benchmark-name>_segment_replacements.json`
+
+`<benchmark-name>_segment_replacements.json` now includes an `accuracy_report` section with:
+- mean per-segment accuracy
+- mean per-segment normalized absolute error
+- mean-profile accuracy comparing the average chosen benchmark profile against the average extracted segment profile
+- axis breakdowns for `overall`, `IPC`, and `branch_cache_tlb_mpki`
+
+Before running it:
+- export `VERTEX_PROJECT_ID`
+- run `sudo -v` so the perf-based collectors and evaluation path do not block on a password prompt
 
 ## Notes
 

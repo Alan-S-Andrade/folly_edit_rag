@@ -75,6 +75,7 @@ def main() -> None:
             row['metadata'].update({
                 key: meta.get(key)
                 for key in [
+                    'grouped_job_id',
                     'task_id',
                     'source_microbenchmark',
                     'feature_name',
@@ -82,6 +83,8 @@ def main() -> None:
                     'magnitude',
                     'performance_success',
                     'new_microbenchmark_name',
+                    'baseline_value',
+                    'candidate_value',
                     'observed_delta',
                 ]
                 if key in meta

@@ -27,12 +27,32 @@ from config.settings import (
     MAX_LOCAL_UPLOAD_BYTES,
     RAG_DOCS_DIR,
     SUCCESSFUL_EDITS_DIR,
+    WDL_BENCH_ROOT,
 )
 
 INCLUDE_RE = re.compile(r'#include\s*[<"]([^>"]+)[>"]')
 BENCHMARK_START_RE = re.compile(r'^\s*BENCHMARK(?:_RELATIVE)?\s*\(([^,\)]+)')
 MAIN_RE = re.compile(r'\bint\s+main\s*\(')
 CMAKE_BENCH_RE = re.compile(r'^\s*BENCHMARK\s+(\S+)\s+SOURCES\s+(.+?)\s*$')
+FBTHRIFT_SRC_ROOT = WDL_BENCH_ROOT / 'wdl_sources' / 'fbthrift'
+EXTRA_BENCHMARK_SOURCES = [
+    FBTHRIFT_SRC_ROOT / 'thrift' / 'lib' / 'cpp' / 'util' / 'test' / 'VarintUtilsBench.cpp',
+    FBTHRIFT_SRC_ROOT / 'thrift' / 'lib' / 'cpp2' / 'test' / 'ProtocolBench.cpp',
+]
+FBTHRIFT_BUILD_MAPS = [
+    (
+        'VarintUtilsBench',
+        Path('thrift/lib/cpp/util/test/CMakeLists.txt'),
+        'VarintUtilsBench.cpp',
+        'add_executable(VarintUtilsBench VarintUtilsBench.cpp)',
+    ),
+    (
+        'ProtocolBench',
+        Path('thrift/lib/cpp2/test/CMakeLists.txt'),
+        'ProtocolBench.cpp + generated thrift sources',
+        'add_executable(ProtocolBench ${SOURCE_FILES} ${ADDITIONAL_SOURCE_FILES} ${GENERATED_THRIFT_SOURCES})',
+    ),
+]
 
 
 def clean_text(s: str) -> str:
@@ -105,12 +125,17 @@ def write_doc(text: str, subdir: str, logical_name: str) -> dict:
 def prepare_benchmark_source_docs(limit: int | None = None) -> list[dict]:
     manifest: list[dict] = []
     files = sorted(FOLLY_TEST_ROOT.glob('*Benchmark*.cpp'))
+    files.extend([p for p in EXTRA_BENCHMARK_SOURCES if p.exists()])
+    files = sorted(set(files))
     if limit is not None:
         files = files[:limit]
 
     for path in files:
         code = clean_text(path.read_text(errors='ignore'))
-        rel = path.relative_to(FOLLY_SRC_ROOT)
+        if path.is_relative_to(FOLLY_SRC_ROOT):
+            rel = path.relative_to(FOLLY_SRC_ROOT)
+        else:
+            rel = path.relative_to(FBTHRIFT_SRC_ROOT)
         headers = sorted(set(INCLUDE_RE.findall(code)))
         tags = infer_tags(code, path)
         blocks = extract_benchmark_blocks(code)
@@ -208,6 +233,25 @@ def prepare_build_map_docs() -> list[dict]:
         entry.update({
             'kind': 'build_map',
             'relative_path': str(rel),
+            'binary_name': binary,
+            'sources': sources,
+        })
+        manifest.append(entry)
+
+    for binary, cmake_rel, sources, code_line in FBTHRIFT_BUILD_MAPS:
+        doc = '\n'.join([
+            f'PATH: {cmake_rel}',
+            'KIND: build_map',
+            f'BINARY_NAME: {binary}',
+            f'SOURCES: {sources}',
+            'SUMMARY: fbthrift CMake executable mapping for a benchmark binary.',
+            'CODE:',
+            code_line,
+        ])
+        entry = write_doc(doc, 'build_map', f'{binary}:{sources}')
+        entry.update({
+            'kind': 'build_map',
+            'relative_path': str(cmake_rel),
             'binary_name': binary,
             'sources': sources,
         })
