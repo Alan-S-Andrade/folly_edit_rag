@@ -1,8 +1,8 @@
 from pathlib import Path
 import os
 
-PROJECT_ID = os.environ.get('VERTEX_PROJECT_ID', 'your-project-id')
-LOCATION = os.environ.get('VERTEX_LOCATION', 'us-central1')
+PROJECT_ID = os.environ.get('VERTEX_PROJECT_ID', 'dcperf')
+LOCATION = os.environ.get('VERTEX_LOCATION', 'us-south1')
 MODEL_NAME = os.environ.get('VERTEX_MODEL_NAME', 'gemini-2.5-pro')
 EMBEDDING_MODEL = os.environ.get(
     'VERTEX_EMBEDDING_MODEL',
