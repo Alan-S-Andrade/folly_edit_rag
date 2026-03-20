@@ -13692,6 +13692,35 @@
     }
   },
   {
+    "doc_file": "successful_edit/cc24ede8547e1261.txt",
+    "logical_name": "container_hash_maps_bench_clear_f14node_nonssostring_a_128_11264_intel_pt_family_load_751c42b6b2",
+    "sha256": "cc24ede8547e1261a51b5bd21ccb68af16d90f7491f9b7ec22e146c3c7c61c01",
+    "size_bytes": 15545,
+    "oversize_local_upload": false,
+    "kind": "successful_edit",
+    "edit_id": "container_hash_maps_bench_clear_f14node_nonssostring_a_128_11264_intel_pt_family_load_751c42b6b2",
+    "metadata": {
+      "grouped_job_id": "container_hash_maps_bench_clear_f14node_nonssostring_a_128_11264_intel_pt_family_load_751c42b6b2",
+      "task_id": "container_hash_maps_bench_clear_f14node_nonssostring_a_128_11264_intel_pt_family_load_6b0db7b83d",
+      "task": "Add a new container hash maps bench variant to HashMapsBench.cpp for the container_hash_maps_bench binary. Keep the coding style and benchmark registration patterns consistent with the existing Clear  f14node<NonSSOString, a[128]>[11264] benchmark and nearby variants such as Clear  f14node<NonSSOString, a[128]>[11], %InsertGrow   f14vec<NonSSOString, a[128]>[11264]. Do not delete, rename, or weaken existing benchmarks; preserve the existing benchmark harness and main() unless a build fix absolutely requires a local adjustment. The new variant should appear as an additional microbenchmark in --bm_list and should increase family::load_P50 with a large change relative to Clear  f14node<NonSSOString, a[128]>[11264]. Target delta for family::load_P50: about +1.125 with acceptable range >= +0.9. Current baseline for Clear  f14node<NonSSOString, a[128]>[11264]: family::load_P50=0.",
+      "target_file": "folly/container/test/HashMapsBench.cpp",
+      "binary_name": "container_hash_maps_bench",
+      "source_microbenchmark": "Clear  f14node<NonSSOString, a[128]>[11264]",
+      "feature_name": "intel_pt.family::load_P50",
+      "direction": "increase",
+      "magnitude": "large",
+      "baseline_value": 0.0,
+      "candidate_value": 1.0,
+      "observed_delta": 1.0,
+      "new_microbenchmark_name": "Clear  f14node<NonSSOString, a[128]>[11264]__wdl_increase_large",
+      "retrieval_json": "container_hash_maps_bench_clear_f14node_nonssostring_a_128_11264_intel_pt_family_load_751c42b6b2_retrieval.json",
+      "performance_success": true,
+      "evaluation_path": "/myd/wdl/BenchmarkReplication/folly_edit_rag/scripts/outputs/property_edit_runs/container_hash_maps_bench_clear_f14node_nonssostring_a_128_11264_intel_pt_family_load_751c42b6b2/evaluation.json",
+      "expected_suffix": "__wdl_increase_large",
+      "winning_attempt_index": 1
+    }
+  },
+  {
     "doc_file": "successful_edit/871956bc2393c16c.txt",
     "logical_name": "container_hash_maps_bench_clear_f14val_nonssostring_a_128_352_perf_stat_branch_load_m_87b366842d",
     "sha256": "871956bc2393c16c1661bc2567aa42363a55c9edd90873e074c37ffdf8303f22",

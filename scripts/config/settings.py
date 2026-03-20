@@ -4,6 +4,8 @@ import os
 PROJECT_ID = os.environ.get('VERTEX_PROJECT_ID', 'dcperf')
 LOCATION = os.environ.get('VERTEX_LOCATION', 'us-south1')
 MODEL_NAME = os.environ.get('VERTEX_MODEL_NAME', 'gemini-2.5-pro')
+GENERATION_MODEL_NAME = os.environ.get('VERTEX_GENERATION_MODEL_NAME', MODEL_NAME)
+REPAIR_MODEL_NAME = os.environ.get('VERTEX_REPAIR_MODEL_NAME', 'gemini-2.5-flash')
 EMBEDDING_MODEL = os.environ.get(
     'VERTEX_EMBEDDING_MODEL',
     'publishers/google/models/text-embedding-005',
@@ -15,7 +17,7 @@ WDL_BENCH_ROOT = DC_PERF_ROOT / 'benchmarks' / 'wdl_bench'
 FOLLY_SRC_ROOT = WDL_BENCH_ROOT / 'wdl_sources' / 'folly'
 FOLLY_TEST_ROOT = FOLLY_SRC_ROOT / 'folly' / 'test'
 FOLLY_CMAKE = FOLLY_SRC_ROOT / 'CMakeLists.txt'
-DEFAULT_BUILD_DIR = WDL_BENCH_ROOT / 'wdl_build' / 'build' / 'folly'
+DEFAULT_BUILD_DIR = WDL_BENCH_ROOT / 'wdl_build' / 'build' / 'folly_rag'
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DATA_DIR = REPO_ROOT / 'data'

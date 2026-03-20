@@ -10,8 +10,8 @@ import vertexai
 from vertexai.generative_models import GenerativeModel
 
 from config.settings import (
+    GENERATION_MODEL_NAME,
     LOCATION,
-    MODEL_NAME,
     PROJECT_ID,
     SUCCESSFUL_EDITS_DIR,
     REPAIRED_DIR,
@@ -25,6 +25,8 @@ Rules:
 - Preserve benchmark harness structure, includes, namespace usage, and main() unless the task explicitly requires a change.
 - Use only APIs present in the retrieved context or already present in the target file.
 - Keep unrelated code unchanged where possible.
+- When adding a benchmark variant, add exactly one new benchmark registration and do not introduce any other new benchmark names.
+- Keep the source benchmark intact and place the new variant immediately after it unless the task explicitly says otherwise.
 - Do not invent new build targets or unrelated helper utilities.
 - Keep the result compilable in the existing Folly/DCPerf build.
 
@@ -33,6 +35,18 @@ Task:
 
 Target file:
 {target_file}
+
+Attempt:
+{attempt_index} of {max_attempts}
+
+Feature-specific edit guidance:
+{feature_guidance}
+
+Refinement feedback:
+{refinement_feedback}
+
+Prior successful examples for the same target file:
+{successful_examples}
 
 Current target file contents:
 {current_file}
@@ -190,14 +204,42 @@ def _trim_example_text(text: str, max_chars: int = 2200) -> str:
     return cleaned[:max_chars].rstrip() + "\n..."
 
 
-def _load_successful_examples(target_file: str, limit: int = 2) -> str:
-    examples: list[tuple[str, str]] = []
+def _successful_example_rank(metadata: dict, target_file: str, binary_name: str) -> tuple[int, int, int, str]:
+    metadata_target = str(metadata.get("target_file", "")).strip()
+    metadata_binary = str(metadata.get("binary_name", "")).strip()
+    metadata_parent = str(Path(metadata_target).parent) if metadata_target else ""
+    target_parent = str(Path(target_file).parent)
+    same_file = metadata_target == target_file
+    same_binary = bool(binary_name) and metadata_binary == binary_name
+    same_parent = metadata_parent == target_parent
+    return (
+        0 if same_file else 1,
+        0 if same_binary else 1,
+        0 if same_parent else 1,
+        metadata_target,
+    )
+
+
+def _successful_example_match_label(metadata: dict, target_file: str, binary_name: str) -> str:
+    metadata_target = str(metadata.get("target_file", "")).strip()
+    metadata_binary = str(metadata.get("binary_name", "")).strip()
+    if metadata_target == target_file:
+        return "same_target_file"
+    if binary_name and metadata_binary == binary_name:
+        return "same_binary"
+    if metadata_target and Path(metadata_target).parent == Path(target_file).parent:
+        return "same_directory"
+    return "related"
+
+
+def _load_successful_examples(target_file: str, binary_name: str = "", limit: int = 2) -> str:
+    examples: list[tuple[tuple[int, int, int, str], str, str, str]] = []
     for metadata_path in sorted(SUCCESSFUL_EDITS_DIR.glob("*/metadata.json")):
         try:
             metadata = json.loads(load_text(metadata_path))
         except Exception:
             continue
-        if str(metadata.get("target_file")) != target_file:
+        if not bool(metadata.get("compile_success", True)):
             continue
         edit_dir = metadata_path.parent
         task_path = edit_dir / "task.json"
@@ -208,17 +250,27 @@ def _load_successful_examples(target_file: str, limit: int = 2) -> str:
             task = json.loads(load_text(task_path))
         except Exception:
             continue
-        examples.append((str(task.get("task", "")).strip(), _trim_example_text(load_text(final_path))))
+        rank = _successful_example_rank(metadata, target_file, binary_name)
+        match_label = _successful_example_match_label(metadata, target_file, binary_name)
+        examples.append(
+            (
+                rank,
+                match_label,
+                str(task.get("task", "")).strip(),
+                _trim_example_text(load_text(final_path)),
+            )
+        )
 
     if not examples:
         return "- No prior successful examples were found for this target file."
 
+    examples.sort(key=lambda row: row[0])
     rendered: list[str] = []
-    for idx, (task_text, final_text) in enumerate(examples[:limit], start=1):
+    for idx, (_, match_label, task_text, final_text) in enumerate(examples[:limit], start=1):
         rendered.append(
             "\n".join(
                 [
-                    f"[SUCCESS EXAMPLE {idx}]",
+                    f"[SUCCESS EXAMPLE {idx} | {match_label}]",
                     f"Task: {task_text}",
                     "Successful file excerpt:",
                     final_text,
@@ -231,10 +283,23 @@ def _load_successful_examples(target_file: str, limit: int = 2) -> str:
 def generate_single(model: GenerativeModel, args: argparse.Namespace) -> None:
     retrieved = load_retrieved_context(args.retrieval_json)
     current_file = load_text(Path(args.current_file))
+    retry_feedback = ""
+    if args.retry_feedback_file:
+        retry_path = Path(args.retry_feedback_file)
+        if retry_path.exists():
+            retry_feedback = load_text(retry_path).strip()
+    if not retry_feedback:
+        retry_feedback = "- No previous attempt feedback. Produce the best first-pass candidate for this target."
+    successful_examples = _load_successful_examples(str(args.target_file), str(args.binary_name))
 
     prompt = FULLFILE_PROMPT.format(
         task=args.task.strip(),
         target_file=args.target_file,
+        attempt_index=args.attempt_index,
+        max_attempts=args.max_attempts,
+        feature_guidance=args.feature_guidance.strip() or "- No additional feature guidance was provided.",
+        refinement_feedback=retry_feedback,
+        successful_examples=successful_examples,
         current_file=current_file,
         retrieved=retrieved,
     )
@@ -251,7 +316,10 @@ def generate_grouped(model: GenerativeModel, args: argparse.Namespace) -> None:
     child_keys = list(child_tasks.keys())
     retrieved = load_retrieved_context(args.retrieval_json)
     current_file = load_text(Path(args.current_file))
-    successful_examples = _load_successful_examples(str(grouped_task["target_file"]))
+    successful_examples = _load_successful_examples(
+        str(grouped_task["target_file"]),
+        str(grouped_task.get("binary", "")),
+    )
 
     child_specs = []
     for child_key in child_keys:
@@ -327,16 +395,21 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--task", default="")
     parser.add_argument("--target-file", required=True)
+    parser.add_argument("--binary-name", default="")
     parser.add_argument("--current-file", required=True)
     parser.add_argument("--retrieval-json", default="sample_retrieval.json")
     parser.add_argument("--output", default="candidate_full.cpp")
+    parser.add_argument("--attempt-index", type=int, default=1)
+    parser.add_argument("--max-attempts", type=int, default=1)
+    parser.add_argument("--feature-guidance", default="")
+    parser.add_argument("--retry-feedback-file", default="")
     parser.add_argument("--grouped-task-json", default="")
     parser.add_argument("--output-manifest", default="grouped_candidates.json")
     parser.add_argument("--example-id", default="latest_group")
     args = parser.parse_args()
 
     vertexai.init(project=PROJECT_ID, location=LOCATION)
-    model = GenerativeModel(MODEL_NAME)
+    model = GenerativeModel(GENERATION_MODEL_NAME)
 
     if args.grouped_task_json:
         generate_grouped(model, args)
