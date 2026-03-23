@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import difflib
 import re
 from pathlib import Path
+
+_PROMPT_OMITTED_BLOCK_PREFIX = "__PROMPT_OMITTED_DISABLED_APPENDIX_"
 
 
 def _strip_code_fences(text: str) -> str:
@@ -21,6 +24,138 @@ def normalize_generated_patch(text: str) -> str:
     if stripped and not stripped.endswith("\n"):
         stripped += "\n"
     return stripped
+
+
+def normalize_generated_file(text: str) -> str:
+    stripped = _strip_code_fences(text)
+    if stripped and not stripped.endswith("\n"):
+        stripped += "\n"
+    return stripped
+
+
+def _normalize_benchmark_name(name: str) -> str:
+    return " ".join(str(name).split()).strip()
+
+
+def _ignored_benchmark_name(name: str) -> bool:
+    normalized = _normalize_benchmark_name(name)
+    return not normalized or normalized == "-"
+
+
+def _extract_explicit_benchmark_names(text: str) -> set[str]:
+    names: set[str] = set()
+    for match in re.finditer(
+        r"\b(?:BENCHMARK|BENCHMARK_RELATIVE|BENCHMARK_MULTI|FBBENCHMARK)\s*\(\s*([A-Za-z_][A-Za-z0-9_:]*)",
+        text,
+    ):
+        name = _normalize_benchmark_name(match.group(1))
+        if not _ignored_benchmark_name(name):
+            names.add(name)
+    for match in re.finditer(
+        r"\baddBenchmark\s*\(\s*(?:__FILE__|[^,]+)\s*,\s*\"([^\"\n]+)\"",
+        text,
+        flags=re.S,
+    ):
+        name = _normalize_benchmark_name(match.group(1))
+        if not _ignored_benchmark_name(name):
+            names.add(name)
+    return names
+
+
+def _added_explicit_benchmark_names(original_text: str, updated_text: str) -> set[str]:
+    return _extract_explicit_benchmark_names(updated_text) - _extract_explicit_benchmark_names(original_text)
+
+
+def _looks_like_benchmark_output_appendix(block: str) -> bool:
+    text = str(block)
+    if "#if 0" not in text or "#endif" not in text:
+        return False
+    if len(text) < 1200:
+        return False
+
+    benchmarkish_patterns = [
+        r"relative\s+time/iter\s+iters/s",
+        r"\b[A-Za-z0-9_]+:\s+k=\d+",
+        r"\b[A-Za-z0-9_]+:\s+k=2\^\d+",
+        r"\bCPU\b",
+    ]
+    hits = 0
+    for pattern in benchmarkish_patterns:
+        if re.search(pattern, text):
+            hits += 1
+    return hits >= 2
+
+
+def prepare_prompt_file_view(text: str) -> tuple[str, dict[str, str]]:
+    """Replace large disabled benchmark-result appendices with placeholders for prompting.
+
+    The prompt should stay focused on editable code, but the returned file still needs to
+    preserve omitted appendices. This helper emits a prompt-safe view plus a mapping that can
+    be rehydrated on model output.
+    """
+
+    source = str(text)
+    pattern = re.compile(r"(?ms)^[ \t]*#if 0\b.*?^[ \t]*#endif[ \t]*\n?")
+    omitted: dict[str, str] = {}
+    rendered: list[str] = []
+    last = 0
+    omitted_count = 0
+
+    for match in pattern.finditer(source):
+        block = match.group(0)
+        is_trailing = match.end() >= int(len(source) * 0.70)
+        if not (is_trailing and _looks_like_benchmark_output_appendix(block)):
+            continue
+        omitted_count += 1
+        placeholder = (
+            f"/* {_PROMPT_OMITTED_BLOCK_PREFIX}{omitted_count}\n"
+            "   Omitted disabled benchmark-output appendix preserved unchanged outside the edited region.\n"
+            "   Keep this placeholder exactly unchanged in the returned file unless the task explicitly requires editing inside it.\n"
+            "*/\n"
+        )
+        omitted[placeholder] = block
+        rendered.append(source[last:match.start()])
+        rendered.append(placeholder)
+        last = match.end()
+
+    rendered.append(source[last:])
+    prompt_view = "".join(rendered)
+    if prompt_view and not prompt_view.endswith("\n"):
+        prompt_view += "\n"
+    return prompt_view, omitted
+
+
+def restore_prompt_file_omissions(text: str, omitted_blocks: dict[str, str]) -> str:
+    restored = str(text)
+    trailing_blocks: list[str] = []
+    for placeholder, original in omitted_blocks.items():
+        if placeholder in restored:
+            restored = restored.replace(placeholder, original)
+        else:
+            trailing_blocks.append(original)
+    if trailing_blocks:
+        if restored and not restored.endswith("\n"):
+            restored += "\n"
+        restored += "".join(
+            block if block.endswith("\n") else f"{block}\n" for block in trailing_blocks
+        )
+    if restored and not restored.endswith("\n"):
+        restored += "\n"
+    return restored
+
+
+def build_unified_diff(original_text: str, updated_text: str, target_file: str) -> str:
+    diff = difflib.unified_diff(
+        original_text.splitlines(keepends=True),
+        updated_text.splitlines(keepends=True),
+        fromfile=f"a/{target_file}",
+        tofile=f"b/{target_file}",
+        n=3,
+    )
+    rendered = "".join(diff)
+    if rendered and not rendered.endswith("\n"):
+        rendered += "\n"
+    return rendered
 
 
 def _split_camel_token(token: str) -> list[str]:
@@ -156,7 +291,8 @@ def build_local_source_excerpt(
     window: int = 24,
     max_chars: int = 12000,
 ) -> str:
-    lines = file_text.splitlines()
+    prompt_view, _ = prepare_prompt_file_view(file_text)
+    lines = prompt_view.splitlines()
     if not lines:
         return ""
 
@@ -206,6 +342,12 @@ def render_retrieved_context(
     max_contexts: int = 4,
     max_chars: int = 12000,
 ) -> str:
+    if not retrieved_contexts:
+        return (
+            "No retrieved context is available for this attempt. "
+            "Use the current target file as the authoritative style, API, and registration reference."
+        )
+
     target_file = str(target_file).strip()
     source_tokens = microbenchmark_search_tokens(source_microbenchmark)
     scored: list[tuple[float, int, dict]] = []
@@ -238,6 +380,182 @@ def render_retrieved_context(
         text = str(retrieved_contexts[0].get("text", "")).strip()
         rendered.append(f"[CONTEXT 1]\n{text[:max_chars].rstrip()}")
     return "\n\n".join(rendered)
+
+
+def _detected_callback_storage_type(file_text: str) -> str:
+    prompt_view, _ = prepare_prompt_file_view(file_text)
+    if "std::function<" in prompt_view:
+        return "std::function"
+    if "folly::Function<" in prompt_view:
+        return "folly::Function"
+    return ""
+
+
+def _looks_like_generator_registration_file(file_text: str) -> bool:
+    prompt_view, _ = prepare_prompt_file_view(file_text)
+    lines = prompt_view.splitlines()
+    if not lines:
+        return False
+    return (
+        any("addBenchmark(__FILE__" in line for line in lines)
+        and any("#define " in line for line in lines)
+        and any("testOrder" in line or "tests[" in line for line in lines)
+    )
+
+
+def _defined_macro_names(file_text: str) -> set[str]:
+    return set(re.findall(r"(?m)^\s*#define\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(", file_text))
+
+
+def _generator_family_expansion_reason(original_text: str, updated_text: str) -> str | None:
+    if not _looks_like_generator_registration_file(original_text):
+        return None
+
+    original_lines = {line.strip() for line in original_text.splitlines() if line.strip()}
+    defined_macros = _defined_macro_names(original_text)
+    benign_macros = {
+        "BENCHMARK",
+        "BENCHMARK_RELATIVE",
+        "BENCHMARK_DRAW_LINE",
+        "BENCHMARK_MULTI",
+        "FBBENCHMARK",
+        "TEST",
+        "TEST_F",
+        "CHECK",
+        "DCHECK",
+        "LOG",
+    }
+
+    for line in updated_text.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped in original_lines:
+            continue
+        macro_match = re.match(r"^([A-Za-z_][A-Za-z0-9_]*)\([^)]*\)\s*;?$", stripped)
+        if macro_match:
+            macro_name = macro_match.group(1)
+            if macro_name in defined_macros and macro_name not in benign_macros:
+                return (
+                    f"response adds macro-expanded family registration `{stripped}` in a generated benchmark file; "
+                    "add one concrete `addBenchmark(...)` entry with one unique benchmark name instead"
+                )
+        if "testOrder.push_back(" in stripped or re.search(r"\btests\s*\[", stripped):
+            return (
+                "response adds table or family expansion entries in a generated benchmark file; "
+                "add one concrete `addBenchmark(...)` entry with one unique benchmark name instead"
+            )
+    return None
+
+
+def build_registration_idiom_guidance(
+    file_text: str,
+    source_microbenchmark: str = "",
+) -> str:
+    prompt_view, _ = prepare_prompt_file_view(file_text)
+    lines = prompt_view.splitlines()
+    if not lines:
+        return ""
+
+    storage_type = _detected_callback_storage_type(file_text)
+    has_add_benchmark = any("addBenchmark(" in line for line in lines)
+    generator_like = _looks_like_generator_registration_file(file_text)
+    family_name = " ".join(str(source_microbenchmark).split()).strip()
+
+    if generator_like:
+        sentences = [
+            "This file appears to register benchmarks indirectly through a table or macro pipeline and a final addBenchmark loop."
+        ]
+        if family_name:
+            sentences.append(
+                f"For `{family_name}`, preserve that registration pipeline instead of inventing a standalone registration style."
+            )
+        if storage_type:
+            sentences.append(
+                f"Preserve the existing callback storage type `{storage_type}` and the existing final `addBenchmark(...)` call shape."
+            )
+        sentences.append(
+            "Do not add a new macro-family invocation, `testOrder.push_back(...)`, or `tests[...]` table assignment that expands into many benchmarks."
+        )
+        sentences.append(
+            "When the evaluator requires exactly one new benchmark, add one concrete `addBenchmark(...)` entry with one unique benchmark name, keep the existing generated family unchanged, and do not reuse an existing `--bm_list` benchmark name."
+        )
+        if storage_type == "std::function":
+            sentences.append(
+                "Do not replace `std::function` with `folly::Function`, and do not add an extra wrapper lambda unless the original file already uses that pattern."
+            )
+        if storage_type == "folly::Function":
+            sentences.append(
+                "Do not replace `folly::Function` with `std::function` or another callable wrapper unless the original file already mixes those patterns."
+            )
+        return " ".join(sentences)
+
+    if has_add_benchmark and storage_type:
+        return (
+            f"This file uses direct `addBenchmark(...)` registrations with `{storage_type}`-style callable storage nearby. "
+            f"Preserve that local registration idiom and callback storage type while adding exactly one new benchmark."
+        )
+
+    return ""
+
+
+def build_edit_location_guidance(
+    file_text: str,
+    source_microbenchmark: str,
+) -> str:
+    prompt_view, _ = prepare_prompt_file_view(file_text)
+    lines = prompt_view.splitlines()
+    if not lines:
+        return ""
+
+    source_name = " ".join(str(source_microbenchmark).split()).strip()
+    if not source_name:
+        return ""
+
+    family_base = source_name
+    for separator in ("(", ":"):
+        if separator in family_base:
+            family_base = family_base.split(separator, 1)[0].strip()
+    source_lower = source_name.lower()
+    family_lower = family_base.lower()
+
+    def _is_codeish(line: str) -> bool:
+        stripped = line.strip()
+        return bool(stripped) and not stripped.startswith("//")
+
+    exact_hits = [line.strip() for line in lines if _is_codeish(line) and source_lower in line.lower()]
+    anchor_hits = [
+        line.strip()
+        for line in lines
+        if _is_codeish(line)
+        and family_lower
+        and family_lower in line.lower()
+        and ("BENCHMARK" in line or "addBenchmark" in line or "add" in line)
+    ]
+    generator_like = any("addBenchmark(__FILE__" in line for line in lines) and bool(anchor_hits)
+
+    if not exact_hits and anchor_hits:
+        anchor = anchor_hits[0]
+        if generator_like:
+            return (
+                f"This file appears to generate the {family_base} benchmark family programmatically rather than defining "
+                f"a standalone `{source_name}` benchmark block. Add exactly one concrete `addBenchmark(...)` registration adjacent to "
+                f"`{anchor}`, keep the existing generated family unchanged, and do not add a new macro-family invocation or table entry that expands into many benchmarks."
+            )
+        return (
+            f"The named source benchmark `{source_name}` does not appear as a standalone implementation block. "
+            f"Add exactly one new benchmark registration adjacent to `{anchor}` instead of inventing a new placement site elsewhere in the file."
+        )
+
+    if exact_hits:
+        anchor = exact_hits[0]
+        return (
+            f"Keep the edit adjacent to the existing `{source_name}` code or registration site, for example near `{anchor}`. "
+            "Do not move the change into an unrelated benchmark family."
+        )
+
+    return (
+        f"Add exactly one new benchmark registration for a variant derived from `{source_name}` close to its existing family registration, "
+        "and avoid modifying unrelated benchmark families."
+    )
 
 
 def trim_build_errors(
@@ -285,3 +603,157 @@ def trim_build_errors(
     if len(trimmed) > max_chars:
         trimmed = trimmed[-max_chars:]
     return trimmed
+
+
+def build_compile_repair_guidance(
+    errors: str,
+    file_text: str,
+    *,
+    source_microbenchmark: str = "",
+) -> str:
+    lowered = str(errors).lower()
+    storage_type = _detected_callback_storage_type(file_text)
+    guidance: list[str] = []
+
+    if "benchmark.h" in lowered and (
+        "function(const function&) = delete" in lowered
+        or "use of deleted function" in lowered
+        or "no match for call to" in lowered
+    ):
+        guidance.append(
+            "This looks like a benchmark-registration callable mismatch rather than a missing include or general syntax error."
+        )
+        registration_guidance = build_registration_idiom_guidance(
+            file_text,
+            source_microbenchmark=source_microbenchmark,
+        )
+        if registration_guidance:
+            guidance.append(registration_guidance)
+        if storage_type == "std::function":
+            guidance.append(
+                "Keep the original `std::function`-based registration shape. Avoid replacing it with `folly::Function` or wrapping stored callables in a new mutable lambda."
+            )
+        elif storage_type == "folly::Function":
+            guidance.append(
+                "Keep the original `folly::Function`-based registration shape. Avoid swapping the callable wrapper unless the original file already did so."
+            )
+        guidance.append(
+            "If the file uses a final registration loop, add or repair one family entry only and keep that loop structurally unchanged."
+        )
+
+    if "operator new" in lowered and "std_function" in lowered:
+        guidance.append(
+            "Do not paper over this with `<new>` unless the original file already needed it; in this pattern it is usually a side effect of the wrong callable wrapper or constness."
+        )
+
+    return "\n".join(f"- {line}" for line in guidance if line)
+
+
+def _looks_like_source_start(line: str) -> bool:
+    stripped = line.strip()
+    if not stripped:
+        return True
+    if stripped.startswith(("/*", "//", "#")):
+        return True
+    common_starts = (
+        "template",
+        "namespace",
+        "using ",
+        "typedef ",
+        "struct ",
+        "class ",
+        "enum ",
+        "union ",
+        "extern ",
+        "static ",
+        "inline ",
+        "constexpr ",
+        "consteval ",
+        "constinit ",
+        "const ",
+        "volatile ",
+        "auto ",
+        "void ",
+        "int ",
+        "char ",
+        "bool ",
+        "float ",
+        "double ",
+        "size_t ",
+        "typename ",
+        "BENCHMARK",
+        "FBBENCHMARK",
+        "TEST",
+        "static_assert",
+        "module ",
+        "export ",
+    )
+    if stripped.startswith(common_starts):
+        return True
+    if re.match(r"^[A-Z_][A-Z0-9_]*(\(|\s)", stripped):
+        return True
+    return False
+
+
+def validate_generated_source_output(
+    text: str,
+    *,
+    original_text: str = "",
+    forbidden_benchmark_names: set[str] | None = None,
+    require_new_benchmark_name: bool = False,
+) -> str | None:
+    lowered = text.lower()
+    prompt_markers = [
+        "local source excerpt from the current target file:",
+        "retrieved context:",
+        "current patch:",
+        "patch/apply/build errors:",
+        "return only the complete updated source file contents",
+        "return only the complete corrected source file contents",
+        "required internal reasoning protocol",
+        "what_is_wrong",
+        "why_it_is_wrong",
+        "how_to_fix_it",
+        "protected_metrics",
+        "[context ",
+        "[excerpt lines",
+        "task:",
+    ]
+    for marker in prompt_markers:
+        if marker in lowered:
+            return f"response echoed non-source prompt marker: {marker}"
+
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if not _looks_like_source_start(stripped):
+            preview = stripped[:120]
+            return f"response begins with non-source prose: {preview}"
+        break
+
+    main_count = len(re.findall(r"\bint\s+main\s*\(", text))
+    if main_count > 1:
+        return f"response contains {main_count} definitions of main()"
+
+    if original_text:
+        family_expansion_reason = _generator_family_expansion_reason(original_text, text)
+        if family_expansion_reason:
+            return family_expansion_reason
+        added_benchmark_names = _added_explicit_benchmark_names(original_text, text)
+        if require_new_benchmark_name and not added_benchmark_names:
+            return "response did not add a new explicit benchmark registration with a unique benchmark name"
+        if forbidden_benchmark_names:
+            forbidden = {
+                _normalize_benchmark_name(name)
+                for name in forbidden_benchmark_names
+                if not _ignored_benchmark_name(name)
+            }
+            duplicates = sorted(name for name in added_benchmark_names if name in forbidden)
+            if duplicates:
+                return (
+                    f"response reuses existing `--bm_list` benchmark name `{duplicates[0]}`; "
+                    "choose a unique new benchmark name"
+                )
+
+    return None

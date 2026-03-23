@@ -4,55 +4,66 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import time
 from pathlib import Path
-
-import vertexai
-from vertexai.generative_models import GenerativeModel
 
 from config.settings import (
     GENERATION_MODEL_NAME,
-    LOCATION,
-    PROJECT_ID,
     SUCCESSFUL_EDITS_DIR,
     REPAIRED_DIR,
     RETRIEVALS_DIR,
 )
+from llm_provider import create_text_model
+from local_patch_utils import (
+    build_edit_location_guidance,
+    build_registration_idiom_guidance,
+    normalize_generated_file,
+    prepare_prompt_file_view,
+    restore_prompt_file_omissions,
+    validate_generated_source_output,
+)
 
 FULLFILE_PROMPT = """You are editing an existing Folly benchmark source file in place.
 
-Rules:
-- Return only the complete updated source file contents for the target file.
-- Preserve benchmark harness structure, includes, namespace usage, and main() unless the task explicitly requires a change.
-- Use only APIs present in the retrieved context or already present in the target file.
-- Keep unrelated code unchanged where possible.
-- When adding a benchmark variant, add exactly one new benchmark registration and do not introduce any other new benchmark names.
-- Keep the source benchmark intact and place the new variant immediately after it unless the task explicitly says otherwise.
-- Do not invent new build targets or unrelated helper utilities.
+Edit target:
+{target_file}
+
+Output rules:
+- Return only the complete updated contents of {target_file}.
+- Do not return a diff.
+- Do not return explanations, headings, benchmark output, or code fences.
+- Keep the edit local and minimal.
 - Keep the result compilable in the existing Folly/DCPerf build.
+
+Hard constraints:
+- Preserve benchmark harness structure, includes, namespace usage, and main() unless the task explicitly requires a change.
+- Use only APIs already present in the current file or clearly implied by its existing headers.
+- Keep unrelated code unchanged where possible.
+- Add exactly one new benchmark registration and do not introduce any other new benchmark names.
+- In derived_from_nearest mode, keep the source benchmark intact and place the new variant adjacent to the source benchmark's existing registration or the explicit insertion site described in the task.
+- In from_scratch mode, keep the reference benchmark intact, add one new from-scratch benchmark registration at the placement site described in the task, and do not clone the reference benchmark body.
+- Do not invent new build targets or unrelated helper utilities.
+- If the current file contents contain an omitted disabled-appendix placeholder, keep that placeholder unchanged in the returned file.
+
+Generation mode:
+{iteration_mode_guidance}
+
+Internal reasoning rule:
+- Diagnose the mismatch, infer the subsystem cause, and choose one minimal fix.
+- Treat counter gaps as symptoms; do not optimize numbers directly.
+- Keep helpful mechanisms already present unless the task explicitly says otherwise.
+- Do not include this reasoning in the output.
 
 Task:
 {task}
 
-Target file:
-{target_file}
-
-Attempt:
-{attempt_index} of {max_attempts}
-
-Feature-specific edit guidance:
-{feature_guidance}
-
-Refinement feedback:
-{refinement_feedback}
-
-Prior successful examples for the same target file:
-{successful_examples}
+Control state:
+- Attempt: {attempt_index} of {max_attempts}
+- Initial generation mode: {initial_generation_mode}
+{feature_guidance_block}{refinement_feedback_block}{successful_examples_block}{retrieved_block}
 
 Current target file contents:
 {current_file}
-
-Retrieved context:
-{retrieved}
 
 Return only the complete updated source file contents for {target_file}.
 """
@@ -67,6 +78,7 @@ Rules:
 - Do not delete, rename, or weaken existing benchmarks.
 - Do not invent new build targets or unrelated helper utilities.
 - Each new benchmark name must include the exact suffix required for that child target.
+- If the current file contents contain an omitted disabled-appendix placeholder, keep that placeholder unchanged in every returned file block.
 - Return the response using exactly the marker format shown below, with no extra commentary.
 
 Required response format:
@@ -86,6 +98,12 @@ Target feature:
 
 Attempt:
 {attempt_index} of {max_child_attempts}
+
+Required internal reasoning protocol before writing code:
+- Diagnose the highest-priority mismatch for each child target before choosing an edit.
+- Treat counter gaps as symptoms; target the underlying subsystem cause with one minimal local change.
+- Preserve metrics already near target and do not rewrite from scratch.
+- Do not include this reasoning in the output; return only the required file blocks.
 
 Feature-specific edit guidance:
 {feature_guidance}
@@ -111,8 +129,39 @@ def load_text(path: Path) -> str:
     return path.read_text(encoding="utf-8", errors="ignore")
 
 
+def _trim_prompt_section(text: str, *, max_lines: int = 12, max_chars: int = 1400) -> str:
+    cleaned = text.strip()
+    if not cleaned:
+        return ""
+    lines = cleaned.splitlines()
+    if len(lines) > max_lines:
+        lines = lines[:max_lines]
+    clipped = "\n".join(lines).strip()
+    if len(clipped) > max_chars:
+        clipped = clipped[:max_chars].rstrip() + "..."
+    return clipped
+
+
+def _format_optional_block(label: str, text: str, *, max_lines: int, max_chars: int) -> str:
+    clipped = _trim_prompt_section(text, max_lines=max_lines, max_chars=max_chars)
+    if not clipped:
+        return ""
+    indented = "\n".join(f"  {line}" for line in clipped.splitlines())
+    return f"- {label}:\n{indented}\n"
+
+
+def _is_empty_retrieval_notice(text: str) -> bool:
+    cleaned = text.strip()
+    return cleaned.startswith("No retrieved context is available for this attempt.")
+
+
 def load_retrieved_context(retrieval_json: str) -> str:
     retrieved_contexts = json.loads(load_text(RETRIEVALS_DIR / retrieval_json))
+    if not retrieved_contexts:
+        return (
+            "No retrieved context is available for this attempt. "
+            "Use the current target file as the authoritative style, API, and registration reference."
+        )
     return "\n\n".join(f"[CONTEXT {i + 1}]\n{c['text']}" for i, c in enumerate(retrieved_contexts))
 
 
@@ -126,6 +175,22 @@ def _strip_code_fences(text: str) -> str:
             lines = lines[:-1]
         stripped = "\n".join(lines).strip()
     return stripped
+
+
+INVALID_GENERATION_PROMPT = """Your previous response was invalid because: {reason}
+
+Return only the complete updated source file contents for {target_file}.
+Do not include prose, headings, benchmark output, context labels, or code fences.
+
+Task:
+{task}
+
+Local registration idiom to preserve:
+{registration_guidance}
+
+Current target file contents:
+{current_file}
+"""
 
 
 def _parse_grouped_response(text: str, child_keys: list[str]) -> dict[str, str]:
@@ -143,11 +208,10 @@ def _parse_grouped_response(text: str, child_keys: list[str]) -> dict[str, str]:
     return candidates
 
 
-def _is_frontend_or_pt_feature(feature_name: str) -> bool:
+def _is_frontend_hardware_feature(feature_name: str) -> bool:
     lowered = feature_name.lower()
     return (
-        lowered.startswith("intel_pt.")
-        or "icache" in lowered
+        "icache" in lowered
         or "itlb" in lowered
         or "frontend" in lowered
     )
@@ -159,12 +223,10 @@ def _build_feature_guidance(feature_name: str, direction: str = "") -> str:
         "- Keep semantics close to the source microbenchmark and avoid unrelated scaffolding.",
         "- Preserve existing registration patterns and benchmark naming conventions except for the required deterministic suffix.",
     ]
-    if _is_frontend_or_pt_feature(feature_name):
+    if _is_frontend_hardware_feature(feature_name):
         guidance.extend(
             [
-                "- For frontend and Intel PT features, prefer noinline helper fan-out, helper call chains, branch-shaping loops, and folly::doNotOptimizeAway to keep added work visible in the trace.",
-                '- Only if simpler C++ and Folly edits are insufficient, you may use a tiny targeted inline-asm fence in a helper, such as asm volatile("" ::: "memory") or asm volatile("" : "+r"(x) :: "memory"), to prevent over-optimization.',
-                "- Keep any asm local, minimal, and tied only to frontend or Intel PT shaping. Do not use asm as a general editing primitive.",
+                "- For frontend hardware counters, prefer compact noinline helper fan-out, helper call chains, branch-shaping loops, and folly::doNotOptimizeAway to keep the added work on the hot executed path.",
             ]
         )
         lowered = feature_name.lower()
@@ -280,42 +342,139 @@ def _load_successful_examples(target_file: str, binary_name: str = "", limit: in
     return "\n\n".join(rendered)
 
 
-def generate_single(model: GenerativeModel, args: argparse.Namespace) -> None:
+def generate_single(model, args: argparse.Namespace) -> None:
     retrieved = load_retrieved_context(args.retrieval_json)
     current_file = load_text(Path(args.current_file))
+    prompt_file_view, omitted_blocks = prepare_prompt_file_view(current_file)
     retry_feedback = ""
     if args.retry_feedback_file:
         retry_path = Path(args.retry_feedback_file)
         if retry_path.exists():
             retry_feedback = load_text(retry_path).strip()
     if not retry_feedback:
-        retry_feedback = "- No previous attempt feedback. Produce the best first-pass candidate for this target."
+        retry_feedback = (
+            "- No previous attempt feedback. This is the initial directional patch: create one minimal variant close to the existing benchmark family, "
+            "use bounded deltas, and do not try to solve every counter in one shot."
+        )
     successful_examples = _load_successful_examples(str(args.target_file), str(args.binary_name))
+    corrective_iteration = bool(args.retry_feedback_file and Path(args.retry_feedback_file).exists())
+    edit_location_guidance = build_edit_location_guidance(
+        current_file,
+        args.source_microbenchmark or args.task,
+    )
+    registration_guidance = build_registration_idiom_guidance(
+        current_file,
+        args.source_microbenchmark or args.task,
+    )
+    compact_feature_guidance = (
+        "\n".join(
+            line
+            for line in [
+                args.feature_guidance.strip(),
+                f"Edit placement guidance: {edit_location_guidance}" if edit_location_guidance else "",
+                f"Registration idiom guidance: {registration_guidance}" if registration_guidance else "",
+            ]
+            if line
+        )
+        or "No additional feature guidance was provided."
+    )
+    feature_guidance_block = _format_optional_block(
+        "Feature-specific edit guidance",
+        compact_feature_guidance,
+        max_lines=12,
+        max_chars=1400,
+    )
+    refinement_feedback_block = _format_optional_block(
+        "Refinement feedback",
+        retry_feedback,
+        max_lines=10,
+        max_chars=1200,
+    )
+    successful_examples_block = _format_optional_block(
+        "Prior successful examples for the same target file",
+        successful_examples,
+        max_lines=20,
+        max_chars=2200,
+    )
+    retrieved_block = ""
+    if retrieved and not _is_empty_retrieval_notice(retrieved):
+        retrieved_block = _format_optional_block(
+            "Retrieved context",
+            retrieved,
+            max_lines=24,
+            max_chars=2400,
+        )
 
     prompt = FULLFILE_PROMPT.format(
         task=args.task.strip(),
         target_file=args.target_file,
         attempt_index=args.attempt_index,
         max_attempts=args.max_attempts,
-        feature_guidance=args.feature_guidance.strip() or "- No additional feature guidance was provided.",
-        refinement_feedback=retry_feedback,
-        successful_examples=successful_examples,
-        current_file=current_file,
-        retrieved=retrieved,
+        initial_generation_mode=args.initial_generation_mode.strip() or "derived_from_nearest",
+        iteration_mode_guidance=(
+            "This is a corrective iteration over an existing generated variant. "
+            "Do not rewrite from scratch. Make one minimal corrective patch only. "
+            "Preserve existing helpful mechanisms. Prioritize: 1. buildability 2. IPC 3. primary target counter 4. secondary counters. "
+            "Change one primary lever at a time."
+            if corrective_iteration
+            else (
+                "This is the initial directional step. Start with one compact from-scratch benchmark addition that uses the local file's style and registration patterns without cloning the reference benchmark body. "
+                "Use bounded deltas and preserve benchmark character instead of trying to solve every counter in one shot."
+                if args.initial_generation_mode.strip() == "from_scratch"
+                else "This is the initial directional step. Start with one minimal local variant close to the source benchmark family. "
+                "Use bounded deltas and preserve IPC and benchmark character instead of trying to solve every counter in one shot."
+            )
+        ),
+        feature_guidance_block=feature_guidance_block,
+        refinement_feedback_block=refinement_feedback_block,
+        successful_examples_block=successful_examples_block,
+        retrieved_block=retrieved_block,
+        current_file=prompt_file_view,
     )
-    print(f"[generate] starting single-file rewrite for {args.target_file}", flush=True)
-    resp = model.generate_content(prompt)
     out_path = REPAIRED_DIR / args.output
-    out_path.write_text(resp.text, encoding="utf-8")
+    current_prompt = prompt
+    generated_file = prompt_file_view
+    for _ in range(2):
+        print("[generate] prompt-begin", flush=True)
+        print(current_prompt, flush=True)
+        print("[generate] prompt-end", flush=True)
+        print(f"[generate] starting single-file rewrite for {args.target_file}", flush=True)
+        print(
+            f"[generate] waiting on Gemini inference for attempt {args.attempt_index}/{args.max_attempts}",
+            flush=True,
+        )
+        started_at = time.monotonic()
+        resp = model.generate_content(current_prompt)
+        elapsed_s = time.monotonic() - started_at
+        print(f"[generate] Gemini inference returned after {elapsed_s:.1f}s", flush=True)
+        generated_file = normalize_generated_file(resp.text)
+        generated_file = restore_prompt_file_omissions(generated_file, omitted_blocks)
+        reason = validate_generated_source_output(
+            generated_file,
+            original_text=prompt_file_view,
+        )
+        if reason is None:
+            break
+        print(f"[generate] rejected model response: {reason}", flush=True)
+        current_prompt = INVALID_GENERATION_PROMPT.format(
+            reason=reason,
+            target_file=args.target_file,
+            task=args.task.strip(),
+            registration_guidance=registration_guidance
+            or "Preserve the existing local registration idiom exactly.",
+            current_file=prompt_file_view,
+        )
+    out_path.write_text(generated_file, encoding="utf-8")
     print(f"[generate] wrote rewritten source to {out_path}", flush=True)
 
 
-def generate_grouped(model: GenerativeModel, args: argparse.Namespace) -> None:
+def generate_grouped(model, args: argparse.Namespace) -> None:
     grouped_task = json.loads(load_text(Path(args.grouped_task_json)))
     child_tasks = grouped_task["child_tasks"]
     child_keys = list(child_tasks.keys())
     retrieved = load_retrieved_context(args.retrieval_json)
     current_file = load_text(Path(args.current_file))
+    prompt_file_view, omitted_blocks = prepare_prompt_file_view(current_file)
     successful_examples = _load_successful_examples(
         str(grouped_task["target_file"]),
         str(grouped_task.get("binary", "")),
@@ -350,17 +509,24 @@ def generate_grouped(model: GenerativeModel, args: argparse.Namespace) -> None:
         ),
         refinement_feedback=_build_refinement_feedback(grouped_task),
         successful_examples=successful_examples,
-        current_file=current_file,
+        current_file=prompt_file_view,
         child_specs="\n\n".join(child_specs),
         retrieved=retrieved,
     )
+    print("[generate] grouped-prompt-begin", flush=True)
+    print(prompt, flush=True)
+    print("[generate] grouped-prompt-end", flush=True)
     print(
         f"[generate] grouped job {grouped_task['grouped_job_id']} attempt "
         f"{grouped_task.get('attempt_index', 1)}/{grouped_task.get('max_child_attempts', 1)} "
         f"for {len(child_keys)} child targets",
         flush=True,
     )
+    print("[generate] waiting on Gemini grouped inference", flush=True)
+    started_at = time.monotonic()
     resp = model.generate_content(prompt)
+    elapsed_s = time.monotonic() - started_at
+    print(f"[generate] Gemini grouped inference returned after {elapsed_s:.1f}s", flush=True)
 
     example_dir = REPAIRED_DIR / args.example_id
     example_dir.mkdir(parents=True, exist_ok=True)
@@ -377,6 +543,7 @@ def generate_grouped(model: GenerativeModel, args: argparse.Namespace) -> None:
     }
     for child_key, file_text in candidates.items():
         candidate_path = example_dir / f"{child_key}_candidate_full.cpp"
+        file_text = restore_prompt_file_omissions(file_text, omitted_blocks)
         candidate_path.write_text(file_text, encoding="utf-8")
         manifest["candidates"][child_key] = {
             "candidate_file": str(candidate_path),
@@ -403,13 +570,13 @@ def main() -> None:
     parser.add_argument("--max-attempts", type=int, default=1)
     parser.add_argument("--feature-guidance", default="")
     parser.add_argument("--retry-feedback-file", default="")
+    parser.add_argument("--initial-generation-mode", default="derived_from_nearest")
     parser.add_argument("--grouped-task-json", default="")
     parser.add_argument("--output-manifest", default="grouped_candidates.json")
     parser.add_argument("--example-id", default="latest_group")
     args = parser.parse_args()
 
-    vertexai.init(project=PROJECT_ID, location=LOCATION)
-    model = GenerativeModel(GENERATION_MODEL_NAME)
+    model = create_text_model(GENERATION_MODEL_NAME)
 
     if args.grouped_task_json:
         generate_grouped(model, args)

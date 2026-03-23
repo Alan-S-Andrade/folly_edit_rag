@@ -1,11 +1,20 @@
 from pathlib import Path
 import os
 
-PROJECT_ID = os.environ.get('VERTEX_PROJECT_ID', 'dcperf')
-LOCATION = os.environ.get('VERTEX_LOCATION', 'us-south1')
-MODEL_NAME = os.environ.get('VERTEX_MODEL_NAME', 'gemini-2.5-pro')
-GENERATION_MODEL_NAME = os.environ.get('VERTEX_GENERATION_MODEL_NAME', MODEL_NAME)
-REPAIR_MODEL_NAME = os.environ.get('VERTEX_REPAIR_MODEL_NAME', 'gemini-2.5-flash')
+LLM_PROVIDER = "bedrock"
+
+if LLM_PROVIDER == 'bedrock':
+    PROJECT_ID = os.environ.get('VERTEX_PROJECT_ID', '')
+    LOCATION = os.environ.get('AWS_REGION', os.environ.get('AWS_DEFAULT_REGION', 'us-east-1'))
+    MODEL_NAME = os.environ.get('BEDROCK_MODEL_NAME', 'us.anthropic.claude-sonnet-4-6')
+    GENERATION_MODEL_NAME = os.environ.get('BEDROCK_GENERATION_MODEL_NAME', MODEL_NAME)
+    REPAIR_MODEL_NAME = os.environ.get('BEDROCK_REPAIR_MODEL_NAME', MODEL_NAME)
+else:
+    PROJECT_ID = os.environ.get('VERTEX_PROJECT_ID', 'dcperf')
+    LOCATION = os.environ.get('VERTEX_LOCATION', 'us-south1')
+    MODEL_NAME = os.environ.get('VERTEX_MODEL_NAME', 'gemini-2.5-pro')
+    GENERATION_MODEL_NAME = os.environ.get('VERTEX_GENERATION_MODEL_NAME', MODEL_NAME)
+    REPAIR_MODEL_NAME = os.environ.get('VERTEX_REPAIR_MODEL_NAME', 'gemini-2.5-pro')
 EMBEDDING_MODEL = os.environ.get(
     'VERTEX_EMBEDDING_MODEL',
     'publishers/google/models/text-embedding-005',
@@ -61,7 +70,8 @@ RETRIEVAL_RERANK_MODEL = os.environ.get('RAG_RERANK_MODEL', MODEL_NAME)
 # Build defaults. Override for your setup if needed.
 CMAKE_BUILD_DIR = Path(os.environ.get('CMAKE_BUILD_DIR', str(DEFAULT_BUILD_DIR)))
 CMAKE_PARALLEL = os.environ.get('CMAKE_PARALLEL', '16')
-RUN_TIMEOUT_SEC = int(os.environ.get('RUN_TIMEOUT_SEC', '120'))
+RUN_TIMEOUT_SEC = int(os.environ.get('RUN_TIMEOUT_SEC', '1800'))
+LLM_MAX_OUTPUT_TOKENS = int(os.environ.get('LLM_MAX_OUTPUT_TOKENS', '16000'))
 
 # Safety guard: local-file upload limit documented by Vertex AI RAG Engine.
 MAX_LOCAL_UPLOAD_BYTES = 25 * 1024 * 1024

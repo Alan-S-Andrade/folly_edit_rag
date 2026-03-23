@@ -5,11 +5,9 @@ import argparse
 import json
 from pathlib import Path
 
-import vertexai
-from vertexai.preview import rag
-
 from config.settings import (
     CORPUS_INFO_FILENAME,
+    LLM_PROVIDER,
     LOCATION,
     MANIFESTS_DIR,
     PROJECT_ID,
@@ -25,6 +23,15 @@ def load_corpus_name() -> str:
 
 
 def retrieve_context(query_text: str, top_k: int = TOP_K, rerank: bool = True) -> list[dict]:
+    if str(LLM_PROVIDER).strip().lower() == 'bedrock':
+        print(
+            'Bedrock mode: Vertex RAG retrieval is disabled for this experiment; proceeding with empty retrieved context.',
+        )
+        return []
+
+    import vertexai
+    from vertexai.preview import rag
+
     vertexai.init(project=PROJECT_ID, location=LOCATION)
     corpus_name = load_corpus_name()
     if rerank:

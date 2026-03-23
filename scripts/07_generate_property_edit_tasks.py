@@ -1272,10 +1272,21 @@ def build_child_retry_feedback(
     last_attempt = attempts[-1]
     compile_record = last_attempt.get("compile_record") or {}
     if not bool(compile_record.get("success")):
+        compile_attempts = compile_record.get("compile_attempts") or []
+        patch_apply_failed = any(
+            attempt.get("patch_apply_success") is False for attempt in compile_attempts
+        )
+        reached_compile = any("compile_rc" in attempt for attempt in compile_attempts)
         error_blob = _trim_feedback_text(
             "\n".join(
                 part
                 for part in (
+                    str(compile_record.get("second_patch_apply_summary", "")),
+                    str(compile_record.get("first_patch_apply_summary", "")),
+                    str(compile_record.get("second_patch_apply_stderr", "")),
+                    str(compile_record.get("second_patch_apply_stdout", "")),
+                    str(compile_record.get("first_patch_apply_stderr", "")),
+                    str(compile_record.get("first_patch_apply_stdout", "")),
                     str(compile_record.get("second_compile_stderr", "")),
                     str(compile_record.get("second_compile_stdout", "")),
                     str(compile_record.get("first_compile_stderr", "")),
@@ -1284,6 +1295,19 @@ def build_child_retry_feedback(
                 if part.strip()
             )
         )
+        if patch_apply_failed and not reached_compile:
+            if error_blob:
+                return (
+                    f"Attempt {last_attempt['attempt_index']} produced a patch that did not apply cleanly. "
+                    f"Preserve the same child intent but fix the unified diff format and patch application issues below. "
+                    f"Return only a valid unified diff with correct ---/+++ file headers, @@ hunk headers, and context lines copied exactly from the target file. "
+                    f"Do not include prose or code fences.\n"
+                    f"{error_blob}"
+                )
+            return (
+                f"Attempt {last_attempt['attempt_index']} produced a patch that did not apply cleanly. "
+                f"Preserve the same child intent, but return only a valid unified diff with correct ---/+++ file headers, @@ hunk headers, and exact target-file context lines."
+            )
         if error_blob:
             return (
                 f"Attempt {last_attempt['attempt_index']} did not compile. Preserve the same child intent but fix the build issues below and avoid unrelated changes:\n"
