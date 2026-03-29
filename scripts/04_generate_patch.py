@@ -34,6 +34,7 @@ Edit target:
 
 Hard constraints:
 - Return only the complete updated contents of {target_file}.
+- The first non-whitespace characters of your response must already be source code from {target_file}, not an English sentence.
 - Keep the edit local, minimal, and compilable in the existing Folly/DCPerf build.
 {benchmark_mode_constraints}
 {benchmark_name_constraints}
@@ -50,7 +51,7 @@ Control state:
 - Current working benchmark anchor: {source_microbenchmark}
 - Attempt: {attempt_index} of {max_attempts}
 - Initial generation mode: {initial_generation_mode}
-{working_state_block}{feature_guidance_block}{refinement_feedback_block}{retrieved_block}
+{working_state_block}{diagnosis_block}{feature_guidance_block}{refinement_feedback_block}{retrieved_block}
 
 Current full target file contents:
 {current_file}
@@ -61,6 +62,7 @@ INVALID_GENERATION_PROMPT = """Your previous response was invalid because: {reas
 
 Return only the complete updated source file contents for {target_file}.
 Do not include prose, headings, benchmark output, context labels, or code fences.
+Start immediately with source code from {target_file}; do not preface the file with any explanation.
 Keep the edit local, minimal, and compilable.
 
 Task:
@@ -281,6 +283,7 @@ def main() -> None:
     parser.add_argument('--attempt-index', type=int, default=1)
     parser.add_argument('--max-attempts', type=int, default=1)
     parser.add_argument('--feature-guidance', default='')
+    parser.add_argument('--diagnosis-file', default='')
     parser.add_argument('--working-state-file', default='')
     parser.add_argument('--retry-feedback-file', default='')
     parser.add_argument('--initial-generation-mode', default='derived_from_nearest')
@@ -327,6 +330,11 @@ def main() -> None:
             '- No carried-forward attempt state was provided. '
             'If the current file only contains the original reference benchmark, add exactly one derived benchmark.'
         )
+    diagnosis = ''
+    if args.diagnosis_file:
+        diagnosis_path = Path(args.diagnosis_file)
+        if diagnosis_path.exists():
+            diagnosis = load_text(diagnosis_path).strip()
     carried_forward_iteration = _is_carried_forward_iteration(
         corrective_iteration=corrective_iteration,
         working_state=working_state,
@@ -359,6 +367,12 @@ def main() -> None:
         working_state,
         max_lines=6,
         max_chars=700,
+    )
+    diagnosis_block = _format_optional_block(
+        "Diagnostician playbook",
+        diagnosis,
+        max_lines=12,
+        max_chars=1400,
     )
     feature_guidance_block = _format_optional_block(
         "Feature-specific edit guidance",
@@ -413,6 +427,7 @@ def main() -> None:
             )
         ),
         working_state=working_state,
+        diagnosis_block=diagnosis_block,
         feature_guidance_block=feature_guidance_block,
         working_state_block=working_state_block,
         refinement_feedback_block=refinement_feedback_block,
@@ -440,6 +455,11 @@ def main() -> None:
     out_path = PATCHES_DIR / args.output
     out_path.write_text(patch_text, encoding='utf-8')
     print(f'[generate] wrote patch to {out_path}', flush=True)
+
+    # Persist cumulative token usage for cross-process aggregation
+    from llm_provider import save_token_usage
+    token_usage_path = PATCHES_DIR / f"{args.output}.token_usage.json"
+    save_token_usage(token_usage_path)
 
 
 if __name__ == '__main__':

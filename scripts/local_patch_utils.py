@@ -66,6 +66,147 @@ def _added_explicit_benchmark_names(original_text: str, updated_text: str) -> se
     return _extract_explicit_benchmark_names(updated_text) - _extract_explicit_benchmark_names(original_text)
 
 
+def _changed_updated_line_groups(original_text: str, updated_text: str) -> list[list[str]]:
+    original_lines = str(original_text).splitlines()
+    updated_lines = str(updated_text).splitlines()
+    matcher = difflib.SequenceMatcher(a=original_lines, b=updated_lines)
+    groups: list[list[str]] = []
+    for tag, _i1, _i2, j1, j2 in matcher.get_opcodes():
+        if tag in {"insert", "replace"} and j1 < j2:
+            groups.append(updated_lines[j1:j2])
+    return groups
+
+
+def _is_block_comment_line(line: str) -> bool:
+    stripped = line.strip()
+    if stripped.startswith(("/*", "*/")):
+        return True
+    # A line starting with '*' is a block comment continuation only if
+    # followed by whitespace, '/', or '*' (or is just '*' alone).
+    # Lines like '*ptr = value;' are pointer dereferences, not comments.
+    if stripped.startswith("*") and (len(stripped) == 1 or stripped[1] in (" ", "\t", "/", "*")):
+        return True
+    return False
+
+
+def _is_cpp_control_header(line: str) -> bool:
+    stripped = line.strip()
+    return bool(
+        stripped.endswith("{")
+        and stripped.startswith(("if ", "for ", "while ", "switch ", "else", "do ", "try", "catch "))
+    )
+
+
+def _is_registration_boilerplate_line(line: str) -> bool:
+    stripped = line.strip()
+    if not stripped:
+        return True
+    if stripped.startswith("//") or _is_block_comment_line(stripped):
+        return True
+    if stripped.startswith("#include"):
+        return True
+    if stripped in {"__FILE__,", "__FILE__"}:
+        return True
+    if stripped.startswith("std::move("):
+        return True
+    if re.fullmatch(r"[{}()[\],;]+", stripped):
+        return True
+    if stripped in {"});", "));", "}))", "}));", "};"}:
+        return True
+    if stripped.startswith(("addBenchmark(", "BENCHMARK(", "BENCHMARK_RELATIVE(", "BENCHMARK_MULTI(", "FBBENCHMARK(")):
+        return True
+    if "addBenchmark(" in stripped:
+        return True
+    if re.fullmatch(r'"[^"\n]*"\s*,?', stripped):
+        return True
+    if stripped.startswith(("std::function<", "folly::Function<")):
+        return True
+    if stripped.startswith(("template <", "namespace ")):
+        return True
+    if re.fullmatch(r"return\s+(?:iters|n|iterations|numIters|num_iters)\s*;", stripped):
+        return True
+    if not _is_cpp_control_header(stripped) and stripped.endswith("{"):
+        # Lambda closures are always registration boilerplate.
+        if "[](" in stripped:
+            return True
+        # Benchmark macro continuation lines like "iters) {" are boilerplate,
+        # but standalone function definitions like "void myHelper(int x) {"
+        # are NOT boilerplate.  Distinguish by checking whether the line begins
+        # with a C++ type or qualifier keyword.
+        if re.search(r"\)\s*(?:const\s*)?(?:noexcept\s*)?\{$", stripped) and not re.match(
+            r"(?:"
+            r"(?:void|bool|char|short|int|long|float|double|auto|inline|static"
+            r"|virtual|explicit|constexpr|unsigned|signed|size_t|uint\d+_t|int\d+_t)\b"
+            r"|std::|folly::|typename\s|template\s"
+            r")",
+            stripped,
+        ):
+            return True
+    return False
+
+
+def _normalized_group_logic(group_lines: list[str]) -> str:
+    logic_lines: list[str] = []
+    for line in group_lines:
+        stripped = re.sub(r"//.*$", "", line).strip()
+        if _is_registration_boilerplate_line(stripped):
+            continue
+        logic_lines.append(stripped)
+    return " ".join(part for part in logic_lines if part).strip()
+
+
+def _compact_code(text: str) -> str:
+    return re.sub(r"\s+", "", str(text))
+
+
+def _single_call_expression(fragment: str) -> str | None:
+    normalized = _compact_code(fragment)
+    if not normalized or normalized.count(";") != 1:
+        return None
+    if normalized.startswith("return"):
+        normalized = normalized[len("return"):]
+    if any(keyword in normalized for keyword in ("if(", "for(", "while(", "switch(", "catch(", "case", "default:")):
+        return None
+    if not re.fullmatch(r"[A-Za-z_~][A-Za-z0-9_:<>,*&\[\]\.-]*\([^;]*\);", normalized):
+        return None
+    return normalized
+
+
+def _is_exact_existing_call_expression(fragment: str, original_text: str) -> bool:
+    normalized = _single_call_expression(fragment)
+    if not normalized:
+        return False
+    return normalized in _compact_code(original_text)
+
+
+def _registration_only_alias_reason(original_text: str, updated_text: str) -> str | None:
+    if not original_text:
+        return None
+    original_names = _extract_explicit_benchmark_names(original_text)
+    updated_names = _extract_explicit_benchmark_names(updated_text)
+    added_names = updated_names - original_names
+    if not added_names and original_names == updated_names:
+        return None
+
+    changed_groups = _changed_updated_line_groups(original_text, updated_text)
+    saw_trivial_forwarder = False
+    for group in changed_groups:
+        normalized_logic = _normalized_group_logic(group)
+        if not normalized_logic:
+            continue
+        if _single_call_expression(normalized_logic):
+            saw_trivial_forwarder = True
+            continue
+        return None
+
+    if not saw_trivial_forwarder:
+        return None
+    return (
+        "response added a benchmark registration but no new timed-path logic; "
+        "this looks like a registration-only alias or bare wrapper"
+    )
+
+
 def _looks_like_benchmark_output_appendix(block: str) -> bool:
     text = str(block)
     if "#if 0" not in text or "#endif" not in text:
@@ -741,6 +882,9 @@ def validate_generated_source_output(
         if family_expansion_reason:
             return family_expansion_reason
         added_benchmark_names = _added_explicit_benchmark_names(original_text, text)
+        alias_reason = _registration_only_alias_reason(original_text, text)
+        if alias_reason:
+            return alias_reason
         if require_new_benchmark_name and not added_benchmark_names:
             return "response did not add a new explicit benchmark registration with a unique benchmark name"
         if forbidden_benchmark_names:

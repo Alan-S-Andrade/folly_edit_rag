@@ -47,11 +47,13 @@ REPAIR_PROMPT = """You are repairing a rewritten Folly benchmark source file.
 
 Rules:
 - Return only the complete corrected source file contents for the target file.
+- The first non-whitespace characters of your response must already be source code from the target file, not an English sentence.
 - Preserve the requested benchmark intent.
 - Minimize unrelated edits.
 - Use only APIs visible in the current file.
 - Keep the result compilable in the existing Folly/DCPerf build.
 - Preserve includes, benchmark harness structure, and main() unless the build errors require a specific change.
+- Do not collapse the generated benchmark into a rename-only clone, registration-only alias, or bare wrapper around identical work.
 - Do not include headings, copied prompt text, benchmark output, contexts, or diff markers.
 - If the current file contains an omitted disabled-appendix placeholder, keep that placeholder unchanged in the returned file.
 
@@ -83,6 +85,7 @@ Build errors:
 {contamination_note}
 
 Return only the complete corrected source file contents for {target_file}.
+Start immediately with source code from {target_file}; do not preface the file with any explanation.
 """
 
 

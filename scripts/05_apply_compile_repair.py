@@ -54,11 +54,13 @@ PATCH_REPAIR_PROMPT = """You are repairing a generated source-file rewrite for a
 
 Rules:
 - Return only the complete updated source file contents for the target file.
+- The first non-whitespace characters of your response must already be source code from the target file, not an English sentence.
 - Do not include markdown fences, prose, or extra text before/after the file contents.
 - Preserve the requested benchmark intent.
 - Keep the original reference benchmark unchanged.
 - If the current working benchmark anchor is still the original reference benchmark, keep exactly one added generated benchmark relative to it.
 - If the current working benchmark anchor is already a carried-forward generated benchmark, repair the patch so it refines that carried-forward benchmark in place and does not add a second generated benchmark.
+- Do not collapse the generated benchmark into a rename-only clone, registration-only alias, or bare wrapper around identical work.
 - Fix only what is required for the file rewrite to compile and correspond to a local patch.
 - Use only APIs already present in the current file.
 - Keep the patch compilable in the existing Folly/DCPerf build.
@@ -101,11 +103,13 @@ COMPILE_REPAIR_PROMPT = """You are repairing a generated C++ benchmark source fi
 
 Rules:
 - Return only the complete updated source file contents for the target file.
+- The first non-whitespace characters of your response must already be source code from the target file, not an English sentence.
 - Do not include markdown fences, prose, or extra text before/after the file contents.
 - Fix only the smallest source issue needed for this file to compile.
 - Preserve the requested benchmark intent and benchmark registration shape.
 - Keep the original reference benchmark unchanged.
 - Keep exactly one added generated benchmark relative to the current working benchmark anchor.
+- Do not collapse the generated benchmark into a rename-only clone, registration-only alias, or bare wrapper around identical work.
 - Use only APIs already present in the current file.
 - Do not include headings, copied prompt text, benchmark output, excerpts, contexts, or diff markers.
 - Do not include strings such as "Task:", "Retrieved context:", "Local source excerpt", or "Patch/apply/build errors:" in the file.
@@ -145,6 +149,7 @@ INVALID_RESPONSE_REPAIR_PROMPT = """Your previous response was invalid because: 
 
 Return only the complete updated source file contents for {target_file}.
 Do not include any headings, prompt labels, benchmark output, diff markers, or duplicated main() definitions.
+Start immediately with source code from {target_file}; do not preface the file with any explanation.
 
 Current file:
 {current_file}
@@ -410,12 +415,20 @@ def _bootstrap_fbthrift_generated_targets(
     return logs, None
 
 
-def compile_binary(binary_name: str, build_dir: Path, source_root: Path) -> tuple[int, str, str, Path]:
+def compile_binary(
+    binary_name: str,
+    build_dir: Path,
+    source_root: Path,
+    *,
+    timeout_override_sec: float | None = None,
+) -> tuple[int, str, str, Path]:
     effective_build_dir = _preferred_build_dir(build_dir, source_root)
     stdout_prefix: list[str] = []
     cmake_prefix_path = _cmake_prefix_path_for_source(source_root)
     wdl_root = source_root.resolve().parents[1]
     timeout_sec = resolve_build_timeout_sec(binary_name, RUN_TIMEOUT_SEC)
+    if timeout_override_sec is not None:
+        timeout_sec = max(1, min(timeout_sec, int(max(1.0, timeout_override_sec))))
 
     if effective_build_dir != build_dir.resolve():
         stdout_prefix.append(
@@ -595,6 +608,24 @@ def _first_nonempty_line(text: str) -> str:
     return ""
 
 
+def _deadline_from_budget_seconds(budget_seconds: float | None) -> float | None:
+    if budget_seconds is None:
+        return None
+    try:
+        value = float(budget_seconds)
+    except (TypeError, ValueError):
+        return None
+    if value <= 0.0:
+        return None
+    return time.monotonic() + value
+
+
+def _remaining_budget_seconds(deadline_monotonic: float | None) -> float | None:
+    if deadline_monotonic is None:
+        return None
+    return max(0.0, float(deadline_monotonic) - time.monotonic())
+
+
 def _path_identity(path: Path) -> str:
     try:
         st = path.stat()
@@ -698,6 +729,7 @@ def compile_candidate(
     artifact_dir: Path,
     child_key: str,
     max_compile_repair_attempts: int,
+    wall_clock_budget_s: float | None = None,
 ) -> dict:
     normalized_patch = normalize_generated_patch(patch_text)
     initial_patch_path = artifact_dir / f"{child_key}_candidate_patch_attempt_1.diff"
@@ -720,6 +752,9 @@ def compile_candidate(
         "max_compile_repair_attempts": int(max(1, max_compile_repair_attempts)),
         "source_root": str(source_root.resolve()),
     }
+    deadline_monotonic = _deadline_from_budget_seconds(wall_clock_budget_s)
+    if wall_clock_budget_s is not None:
+        record["wall_clock_budget_s"] = float(wall_clock_budget_s)
     print(
         f"[compile] {child_key}: editing from nearest/source benchmark "
         f"{source_microbenchmark or reference_microbenchmark or '(unknown)'} "
@@ -749,6 +784,13 @@ def compile_candidate(
     success = False
 
     for attempt_index in range(1, total_attempts + 1):
+        remaining_before_attempt = _remaining_budget_seconds(deadline_monotonic)
+        if remaining_before_attempt is not None and remaining_before_attempt <= 0.0:
+            record["reason"] = (
+                f"compile/repair wall-clock budget exhausted before patch attempt {attempt_index}"
+            )
+            print(f"[compile] {child_key}: {record['reason']}", flush=True)
+            break
         print(
             f"[compile] {child_key}: patch attempt {attempt_index}/{total_attempts} for {binary_name} "
             f"from {current_patch_path.name}",
@@ -793,6 +835,13 @@ def compile_candidate(
                     print(f"[compile] {child_key}: patch/apply issue: {failure_headline}", flush=True)
                 if attempt_index >= total_attempts:
                     break
+                remaining_before_repair = _remaining_budget_seconds(deadline_monotonic)
+                if remaining_before_repair is not None and remaining_before_repair <= 0.0:
+                    record["reason"] = (
+                        f"compile/repair wall-clock budget exhausted before repair attempt {attempt_index + 1}"
+                    )
+                    print(f"[compile] {child_key}: {record['reason']}", flush=True)
+                    break
                 repaired_patch_path = artifact_dir / f"{child_key}_candidate_patch_attempt_{attempt_index + 1}.diff"
                 current_patch_text = repair_patch(
                     model,
@@ -824,16 +873,26 @@ def compile_candidate(
                 shutil.copy2(live_src_file, backup)
                 try:
                     shutil.copy2(patched_copy, live_src_file)
+                    compile_timeout_override = _remaining_budget_seconds(deadline_monotonic)
+                    if compile_timeout_override is not None and compile_timeout_override <= 0.0:
+                        raise TimeoutError(
+                            "compile/repair wall-clock budget exhausted before launching the next build"
+                        )
                     compile_rc, compile_so, compile_se, effective_build_dir = compile_binary(
                         binary_name,
                         build_dir,
                         source_root,
+                        timeout_override_sec=compile_timeout_override,
                     )
                 finally:
                     if backup.exists():
                         shutil.move(str(backup), str(live_src_file))
-            except OSError as exc:
-                replace_summary = _inplace_source_edit_error(live_src_file, exc)
+            except (OSError, TimeoutError, subprocess.TimeoutExpired) as exc:
+                replace_summary = (
+                    str(exc)
+                    if isinstance(exc, (TimeoutError, subprocess.TimeoutExpired))
+                    else _inplace_source_edit_error(live_src_file, exc)
+                )
                 print(f"[compile] {child_key}: {replace_summary}", flush=True)
                 attempt_record["compile_rc"] = None
                 attempt_record["compile_stdout"] = ""
@@ -913,6 +972,13 @@ def compile_candidate(
             if attempt_index >= total_attempts:
                 break
 
+            remaining_before_repair = _remaining_budget_seconds(deadline_monotonic)
+            if remaining_before_repair is not None and remaining_before_repair <= 0.0:
+                record["reason"] = (
+                    f"compile/repair wall-clock budget exhausted before repair attempt {attempt_index + 1}"
+                )
+                print(f"[compile] {child_key}: {record['reason']}", flush=True)
+                break
             print(
                 f"[compile] {child_key}: requesting repair attempt {attempt_index + 1}/{total_attempts}",
                 flush=True,
@@ -984,6 +1050,12 @@ def main() -> None:
         default=20,
         help="Maximum total patch/apply/build attempts for one generated variant, including repair retries.",
     )
+    parser.add_argument(
+        "--wall-clock-budget-s",
+        type=float,
+        default=None,
+        help="Optional wall-clock budget for the whole compile/repair loop.",
+    )
     args = parser.parse_args()
 
     model = create_text_model(REPAIR_MODEL_NAME)
@@ -1031,6 +1103,7 @@ def main() -> None:
         artifact_dir=artifact_dir,
         child_key="single",
         max_compile_repair_attempts=args.max_compile_repair_attempts,
+        wall_clock_budget_s=args.wall_clock_budget_s,
     )
 
     if record.get("success") and not args.no_save_success_example:
@@ -1050,6 +1123,11 @@ def main() -> None:
     out_path.write_text(json.dumps(record, indent=2), encoding="utf-8")
     print(json.dumps(record, indent=2), flush=True)
     print(f"Wrote compile log to {out_path}", flush=True)
+
+    # Persist cumulative token usage for cross-process aggregation
+    from llm_provider import save_token_usage
+    token_usage_path = COMPILE_LOGS_DIR / f"{args.example_id}.token_usage.json"
+    save_token_usage(token_usage_path)
 
 
 if __name__ == "__main__":

@@ -30,6 +30,7 @@ Edit target:
 
 Output rules:
 - Return only the complete updated contents of {target_file}.
+- The first non-whitespace characters of your response must already be source code from {target_file}, not an English sentence.
 - Do not return a diff.
 - Do not return explanations, headings, benchmark output, or code fences.
 - Keep the edit local and minimal.
@@ -60,7 +61,7 @@ Task:
 Control state:
 - Attempt: {attempt_index} of {max_attempts}
 - Initial generation mode: {initial_generation_mode}
-{feature_guidance_block}{refinement_feedback_block}{successful_examples_block}{retrieved_block}
+{diagnosis_block}{feature_guidance_block}{refinement_feedback_block}{successful_examples_block}{retrieved_block}
 
 Current target file contents:
 {current_file}
@@ -181,6 +182,7 @@ INVALID_GENERATION_PROMPT = """Your previous response was invalid because: {reas
 
 Return only the complete updated source file contents for {target_file}.
 Do not include prose, headings, benchmark output, context labels, or code fences.
+Start immediately with source code from {target_file}; do not preface the file with any explanation.
 
 Task:
 {task}
@@ -356,6 +358,11 @@ def generate_single(model, args: argparse.Namespace) -> None:
             "- No previous attempt feedback. This is the initial directional patch: create one minimal variant close to the existing benchmark family, "
             "use bounded deltas, and do not try to solve every counter in one shot."
         )
+    diagnosis = ""
+    if args.diagnosis_file:
+        diagnosis_path = Path(args.diagnosis_file)
+        if diagnosis_path.exists():
+            diagnosis = load_text(diagnosis_path).strip()
     successful_examples = _load_successful_examples(str(args.target_file), str(args.binary_name))
     corrective_iteration = bool(args.retry_feedback_file and Path(args.retry_feedback_file).exists())
     edit_location_guidance = build_edit_location_guidance(
@@ -381,6 +388,12 @@ def generate_single(model, args: argparse.Namespace) -> None:
     feature_guidance_block = _format_optional_block(
         "Feature-specific edit guidance",
         compact_feature_guidance,
+        max_lines=12,
+        max_chars=1400,
+    )
+    diagnosis_block = _format_optional_block(
+        "Diagnostician playbook",
+        diagnosis,
         max_lines=12,
         max_chars=1400,
     )
@@ -411,6 +424,7 @@ def generate_single(model, args: argparse.Namespace) -> None:
         attempt_index=args.attempt_index,
         max_attempts=args.max_attempts,
         initial_generation_mode=args.initial_generation_mode.strip() or "derived_from_nearest",
+        diagnosis_block=diagnosis_block,
         iteration_mode_guidance=(
             "This is a corrective iteration over an existing generated variant. "
             "Do not rewrite from scratch. Make one minimal corrective patch only. "
@@ -569,6 +583,7 @@ def main() -> None:
     parser.add_argument("--attempt-index", type=int, default=1)
     parser.add_argument("--max-attempts", type=int, default=1)
     parser.add_argument("--feature-guidance", default="")
+    parser.add_argument("--diagnosis-file", default="")
     parser.add_argument("--retry-feedback-file", default="")
     parser.add_argument("--initial-generation-mode", default="derived_from_nearest")
     parser.add_argument("--grouped-task-json", default="")

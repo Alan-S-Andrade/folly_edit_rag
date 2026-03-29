@@ -1,7 +1,7 @@
 from pathlib import Path
 import os
 
-LLM_PROVIDER = "bedrock"
+LLM_PROVIDER = os.environ.get('LLM_PROVIDER', 'vertex').strip().lower() or 'vertex'
 
 if LLM_PROVIDER == 'bedrock':
     PROJECT_ID = os.environ.get('VERTEX_PROJECT_ID', '')
