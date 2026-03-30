@@ -45,10 +45,27 @@ def _ignored_benchmark_name(name: str) -> bool:
 def _extract_explicit_benchmark_names(text: str) -> set[str]:
     names: set[str] = set()
     for match in re.finditer(
-        r"\b(?:BENCHMARK|BENCHMARK_RELATIVE|BENCHMARK_MULTI|FBBENCHMARK)\s*\(\s*([A-Za-z_][A-Za-z0-9_:]*)",
+        r"\b(?:BENCHMARK|BENCHMARK_RELATIVE|BENCHMARK_MULTI|BENCHMARK_COUNTERS|FBBENCHMARK)\s*\(\s*([A-Za-z_][A-Za-z0-9_:]*)",
         text,
     ):
         name = _normalize_benchmark_name(match.group(1))
+        if not _ignored_benchmark_name(name):
+            names.add(name)
+    # BENCHMARK_NAMED_PARAM(func, suffix, ...) registers as "func(suffix)" in --bm_list.
+    # Also covers BENCHMARK_RELATIVE_NAMED_PARAM, BENCHMARK_NAMED_PARAM_MULTI,
+    # BENCHMARK_RELATIVE_NAMED_PARAM_MULTI, BENCHMARK_PARAM, BENCHMARK_RELATIVE_PARAM.
+    for match in re.finditer(
+        r"\b(?:BENCHMARK(?:_RELATIVE)?_NAMED_PARAM(?:_MULTI)?)\s*\(\s*([A-Za-z_]\w*)\s*,\s*(\w+)",
+        text,
+    ):
+        name = _normalize_benchmark_name(f"{match.group(1)}({match.group(2)})")
+        if not _ignored_benchmark_name(name):
+            names.add(name)
+    for match in re.finditer(
+        r"\b(?:BENCHMARK(?:_RELATIVE)?_PARAM)\s*\(\s*([A-Za-z_]\w*)\s*,\s*(\w+)",
+        text,
+    ):
+        name = _normalize_benchmark_name(f"{match.group(1)}({match.group(2)})")
         if not _ignored_benchmark_name(name):
             names.add(name)
     for match in re.finditer(
