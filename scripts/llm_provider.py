@@ -50,16 +50,39 @@ class _BedrockModelAdapter:
         self._model_name = str(model_name).strip()
         try:
             import boto3
+            from botocore.config import Config as BotoConfig
+            import botocore
         except ModuleNotFoundError as exc:
             raise RuntimeError(
                 "boto3 is required for Bedrock mode. Install it in the current Python environment."
             ) from exc
 
-        api_key = os.environ.get("AWS_BEARER_TOKEN_BEDROCK") or os.environ.get("BEDROCK_API_KEY")
-        if api_key:
-            os.environ["AWS_BEARER_TOKEN_BEDROCK"] = api_key
+        bearer_token = (
+            os.environ.get("AWS_BEARER_TOKEN_BEDROCK")
+            or os.environ.get("BEDROCK_API_KEY")
+        )
         region = os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION") or LOCATION or "us-east-1"
-        self._client = boto3.client("bedrock-runtime", region_name=region)
+
+        if bearer_token:
+            # Use bearer-token auth: skip SigV4 signing and inject the token
+            # as an Authorization header on every request.
+            self._client = boto3.client(
+                "bedrock-runtime",
+                region_name=region,
+                config=BotoConfig(signature_version=botocore.UNSIGNED),
+            )
+            _token = bearer_token  # capture for closure
+
+            def _inject_bearer(request, **kwargs):
+                request.headers["Authorization"] = f"Bearer {_token}"
+
+            self._client.meta.events.register(
+                "before-sign.bedrock-runtime.*",
+                _inject_bearer,
+            )
+        else:
+            # Fall back to standard IAM credential chain (SigV4).
+            self._client = boto3.client("bedrock-runtime", region_name=region)
 
     def generate_content(self, prompt: str) -> SimpleNamespace:
         response = self._client.converse(

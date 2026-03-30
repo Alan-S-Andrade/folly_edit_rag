@@ -45,6 +45,7 @@ from local_patch_utils import (
     normalize_generated_patch,
     prepare_prompt_file_view,
     render_retrieved_context,
+    repair_truncated_tail,
     restore_prompt_file_omissions,
     trim_build_errors,
     validate_generated_source_output,
@@ -204,6 +205,7 @@ def _generate_validated_repair_file(
         started_at = time.monotonic()
         candidate = normalize_generated_file(model.generate_content(current_prompt).text)
         candidate = restore_prompt_file_omissions(candidate, omitted_blocks)
+        candidate = repair_truncated_tail(candidate, original_file_text)
         elapsed_s = time.monotonic() - started_at
         print(f"[repair] Gemini repair inference returned after {elapsed_s:.1f}s", flush=True)
         reason = validate_generated_source_output(
@@ -220,7 +222,8 @@ def _generate_validated_repair_file(
             current_file=prompt_file_text,
             errors=_compact_repair_errors(errors),
         )
-    return last_candidate if last_candidate.strip() else current_file_text
+    print("[repair] all inference attempts rejected by validation; falling back to current file", flush=True)
+    return current_file_text
 
 
 def run(cmd: list[str], cwd: Path | None = None, timeout: int | None = None) -> tuple[int, str, str]:

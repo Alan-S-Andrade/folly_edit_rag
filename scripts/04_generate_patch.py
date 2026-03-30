@@ -20,6 +20,7 @@ from local_patch_utils import (
     normalize_generated_file,
     prepare_prompt_file_view,
     render_retrieved_context,
+    repair_truncated_tail,
     restore_prompt_file_omissions,
     validate_generated_source_output,
 )
@@ -226,6 +227,7 @@ def _generate_validated_file(
     task: str,
     target_file: str,
     prompt_file_view: str,
+    original_file_text: str,
     omitted_blocks: dict[str, str],
     registration_guidance: str,
     attempt_index: int,
@@ -251,6 +253,7 @@ def _generate_validated_file(
         print(f"[generate] Gemini inference returned after {elapsed_s:.1f}s", flush=True)
         generated_file = normalize_generated_file(resp.text)
         generated_file = restore_prompt_file_omissions(generated_file, omitted_blocks)
+        generated_file = repair_truncated_tail(generated_file, original_file_text)
         reason = validate_generated_source_output(
             generated_file,
             original_text=prompt_file_view,
@@ -268,7 +271,8 @@ def _generate_validated_file(
             or "Preserve the existing local registration idiom exactly.",
             current_file=prompt_file_view,
         )
-    return generated_file
+    print("[generate] all inference attempts rejected by validation; falling back to original file", flush=True)
+    return original_file_text
 
 
 def main() -> None:
@@ -441,6 +445,7 @@ def main() -> None:
         task=prompt_task,
         target_file=args.target_file,
         prompt_file_view=prompt_file_view,
+        original_file_text=current_file,
         omitted_blocks=omitted_blocks,
         registration_guidance=registration_guidance,
         attempt_index=args.attempt_index,

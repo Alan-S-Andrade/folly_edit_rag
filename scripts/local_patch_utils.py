@@ -285,6 +285,86 @@ def restore_prompt_file_omissions(text: str, omitted_blocks: dict[str, str]) -> 
     return restored
 
 
+def repair_truncated_tail(generated_text: str, original_text: str) -> str:
+    """If the LLM output is truncated (missing main() or significantly shorter),
+    graft the tail of the original file onto the generated output.
+
+    This handles the common case where Gemini's output token limit causes the
+    file to be cut off before main() and late benchmark registrations.
+    Returns the generated text unchanged if no grafting is needed.
+    """
+    orig_has_main = bool(re.search(r"\bint\s+main\s*\(", original_text))
+    gen_has_main = bool(re.search(r"\bint\s+main\s*\(", generated_text))
+
+    if not orig_has_main:
+        return generated_text  # nothing to graft
+
+    orig_lines = original_text.count("\n")
+    gen_lines = generated_text.count("\n")
+
+    # Heuristic: if the generated file has main() and is at least 40% of
+    # original size, it's probably not truncated.
+    if gen_has_main and gen_lines >= orig_lines * 0.4:
+        return generated_text
+
+    # Find the last substantive line in the generated output — look for a
+    # function, benchmark registration, or closing brace that we can match
+    # in the original to find where the LLM stopped.
+    gen_stripped_lines = [l.rstrip() for l in generated_text.splitlines()]
+    orig_stripped_lines = [l.rstrip() for l in original_text.splitlines()]
+
+    # Find the best anchor: search backwards from end of generated output
+    # for a non-empty line that also appears in the original.
+    graft_from_orig_line = None
+    for search_back in range(min(30, len(gen_stripped_lines))):
+        idx = len(gen_stripped_lines) - 1 - search_back
+        if idx < 0:
+            break
+        anchor = gen_stripped_lines[idx].strip()
+        if not anchor or anchor in ("{", "}"):
+            continue
+        # Find this line in the original, searching from the middle onwards
+        # (the tail is more likely to match near the end of the original).
+        search_start = max(0, len(orig_stripped_lines) // 3)
+        for oi in range(search_start, len(orig_stripped_lines)):
+            if orig_stripped_lines[oi].strip() == anchor:
+                graft_from_orig_line = oi + 1  # graft everything AFTER match
+                break
+        if graft_from_orig_line is not None:
+            break
+
+    if graft_from_orig_line is None:
+        # Fallback: find main() in the original and graft from a few lines
+        # before it to capture any preceding benchmark registrations.
+        main_match = None
+        for oi, line in enumerate(orig_stripped_lines):
+            if re.search(r"\bint\s+main\s*\(", line):
+                main_match = oi
+                break
+        if main_match is not None:
+            # Include ~20 lines before main() for context
+            graft_from_orig_line = max(0, main_match - 20)
+        else:
+            return generated_text  # give up
+
+    tail = "\n".join(original_text.splitlines()[graft_from_orig_line:])
+    if not tail.strip():
+        return generated_text
+
+    result = generated_text.rstrip() + "\n\n// ── auto-grafted tail from original file ──\n" + tail
+    if not result.endswith("\n"):
+        result += "\n"
+
+    grafted_lines = result.count("\n")
+    print(
+        f"[truncation-repair] grafted {grafted_lines - gen_lines} lines from original "
+        f"(line {graft_from_orig_line}+) to fix truncated output "
+        f"({gen_lines} -> {grafted_lines} lines)",
+        flush=True,
+    )
+    return result
+
+
 def build_unified_diff(original_text: str, updated_text: str, target_file: str) -> str:
     diff = difflib.unified_diff(
         original_text.splitlines(keepends=True),
@@ -876,6 +956,30 @@ def validate_generated_source_output(
     main_count = len(re.findall(r"\bint\s+main\s*\(", text))
     if main_count > 1:
         return f"response contains {main_count} definitions of main()"
+
+    # ── Truncation detection ────────────────────────────────────────────
+    if original_text:
+        orig_lines = original_text.count("\n")
+        gen_lines = text.count("\n")
+        # If the original has a main() but the generated file dropped it,
+        # the LLM almost certainly truncated the output.
+        orig_has_main = bool(re.search(r"\bint\s+main\s*\(", original_text))
+        if orig_has_main and main_count == 0:
+            return (
+                f"response is missing main() — the original file has main() but "
+                f"the generated output ({gen_lines} lines) dropped it. "
+                f"The original file is {orig_lines} lines. "
+                f"You MUST preserve the main() function from the original file."
+            )
+        # Reject drastically shorter files (likely LLM output truncation).
+        # Threshold: generated must be at least 40% of original length.
+        if orig_lines > 200 and gen_lines < orig_lines * 0.4:
+            return (
+                f"response appears truncated: {gen_lines} lines vs "
+                f"{orig_lines} lines in the original ({gen_lines * 100 // max(orig_lines, 1)}%). "
+                f"The complete file must be returned. If the file is too large, "
+                f"preserve ALL existing benchmark registrations and main()."
+            )
 
     if original_text:
         family_expansion_reason = _generator_family_expansion_reason(original_text, text)
