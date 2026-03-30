@@ -577,6 +577,15 @@ def repair_patch(
     rendered_patch = build_unified_diff(base_file_text, repaired_file_text, target_file)
     if not rendered_patch.strip():
         raise RuntimeError("Repair model returned no effective file changes; refusing to emit an empty patch.")
+    # If the repair fell back to current_file_text (all inferences rejected),
+    # the diff is identical to the patch that just failed compile.  Signal the
+    # caller to stop retrying by raising instead of re-submitting the same
+    # broken code for another compile cycle.
+    if repaired_file_text == current_file_text:
+        raise RuntimeError(
+            "Repair model could not produce a valid alternative; "
+            "stopping repair loop to avoid re-submitting the same broken code."
+        )
     return rendered_patch
 
 
@@ -846,20 +855,25 @@ def compile_candidate(
                     print(f"[compile] {child_key}: {record['reason']}", flush=True)
                     break
                 repaired_patch_path = artifact_dir / f"{child_key}_candidate_patch_attempt_{attempt_index + 1}.diff"
-                current_patch_text = repair_patch(
-                    model,
-                    task=task,
-                    reference_microbenchmark=reference_microbenchmark,
-                    source_microbenchmark=source_microbenchmark,
-                    target_file=target_file,
-                    base_file_text=original_text,
-                    current_file_text=original_text,
-                    local_excerpt=local_excerpt,
-                    retrieved_contexts=[],
-                    bad_patch=current_patch_text,
-                    errors=apply_summary or "Patch failed to apply.",
-                    repair_mode="apply",
-                )
+                try:
+                    current_patch_text = repair_patch(
+                        model,
+                        task=task,
+                        reference_microbenchmark=reference_microbenchmark,
+                        source_microbenchmark=source_microbenchmark,
+                        target_file=target_file,
+                        base_file_text=original_text,
+                        current_file_text=original_text,
+                        local_excerpt=local_excerpt,
+                        retrieved_contexts=[],
+                        bad_patch=current_patch_text,
+                        errors=apply_summary or "Patch failed to apply.",
+                        repair_mode="apply",
+                    )
+                except RuntimeError as exc:
+                    record["reason"] = f"repair model gave up: {exc}"
+                    print(f"[compile] {child_key}: {record['reason']}", flush=True)
+                    break
                 repaired_patch_path.write_text(current_patch_text, encoding="utf-8")
                 current_patch_path = repaired_patch_path
                 repaired = True
@@ -987,20 +1001,25 @@ def compile_candidate(
                 flush=True,
             )
             repaired_patch_path = artifact_dir / f"{child_key}_candidate_patch_attempt_{attempt_index + 1}.diff"
-            current_patch_text = repair_patch(
-                model,
-                task=task,
-                reference_microbenchmark=reference_microbenchmark,
-                source_microbenchmark=source_microbenchmark,
-                target_file=target_file,
-                base_file_text=original_text,
-                current_file_text=patched_text,
-                local_excerpt="",
-                retrieved_contexts=[],
-                bad_patch="",
-                errors=compile_summary or "Build failed after patch applied.",
-                repair_mode="compile",
-            )
+            try:
+                current_patch_text = repair_patch(
+                    model,
+                    task=task,
+                    reference_microbenchmark=reference_microbenchmark,
+                    source_microbenchmark=source_microbenchmark,
+                    target_file=target_file,
+                    base_file_text=original_text,
+                    current_file_text=patched_text,
+                    local_excerpt="",
+                    retrieved_contexts=[],
+                    bad_patch="",
+                    errors=compile_summary or "Build failed after patch applied.",
+                    repair_mode="compile",
+                )
+            except RuntimeError as exc:
+                record["reason"] = f"repair model gave up: {exc}"
+                print(f"[compile] {child_key}: {record['reason']}", flush=True)
+                break
             repaired_patch_path.write_text(current_patch_text, encoding="utf-8")
             current_patch_path = repaired_patch_path
             repaired = True

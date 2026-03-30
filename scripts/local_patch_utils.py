@@ -130,7 +130,7 @@ def _is_registration_boilerplate_line(line: str) -> bool:
         return True
     if stripped in {"});", "));", "}))", "}));", "};"}:
         return True
-    if stripped.startswith(("addBenchmark(", "BENCHMARK(", "BENCHMARK_RELATIVE(", "BENCHMARK_MULTI(", "FBBENCHMARK(")):
+    if stripped.startswith(("addBenchmark(", "BENCHMARK(", "BENCHMARK_RELATIVE(", "BENCHMARK_MULTI(", "BENCHMARK_NAMED_PARAM(", "BENCHMARK_RELATIVE_NAMED_PARAM(", "BENCHMARK_PARAM(", "BENCHMARK_RELATIVE_PARAM(", "BENCHMARK_COUNTERS(", "BENCHMARK_DRAW_LINE(", "FBBENCHMARK(")):
         return True
     if "addBenchmark(" in stripped:
         return True
