@@ -1,0 +1,62 @@
+--- a/folly/io/test/IOBufBenchmark.cpp
++++ b/folly/io/test/IOBufBenchmark.cpp
+@@ -145,6 +145,34 @@
+   }
+   return 0; // Unreachable
+ }
++
++// Helper functions for createAndDestroyMulti_LargeAlloc to increase I-cache footprint.
++// Each function has a 256-case switch with 12 ALU ops per case.
++// The `__attribute__((noinline))` ensures they are not optimized away or merged.
++// Unique literal constants are used in each case to prevent compiler deduplication.
++__attribute__((noinline)) static int switch_case_1(const std::vector<uint64_t>& vec, uint64_t& current, uint64_t offset) {
++  int result = 0;
++  for (int i = 0; i < 12; ++i) {
++    result = (result * 17) ^ vec[(current + offset + i) & 0xFF];
++  }
++  return result & 0xFF;
++}
++
++__attribute__((noinline)) static int switch_case_2(const std::vector<uint64_t>& vec, uint64_t& current, uint64_t offset) {
++  int result = 0;
++  for (int i = 0; i < 12; ++i) {
++    result = (result + 23) ^ vec[(current - offset - i) & 0xFF];
++  }
++  return result & 0xFF;
++}
++
++__attribute__((noinline)) static int switch_case_3(const std::vector<uint64_t>& vec, uint64_t& current, uint64_t offset) {
++  int result = 0;
++  for (int i = 0; i < 12; ++i) {
++    result = (result ^ 29) + vec[(current + offset * 2 + i) & 0xFF];
++  }
++  return result & 0xFF;
++}
+ } // namespace
+ 
+ static void createAndDestroyMulti(size_t iters, size_t size) {
+@@ -200,10 +228,25 @@
+   std::array<std::unique_ptr<IOBuf>, kSize> buffers;
+   size_t size = 1024 * 1024; // 1MB allocation
+ 
++  std::vector<uint64_t> indirect_data(256);
++  for (size_t i = 0; i < indirect_data.size(); ++i) {
++    indirect_data[i] = i * 7; // Arbitrary calculation
++  }
++
++  uint64_t current = 0; // Payload
++
+   while (iters--) {
+     for (auto i = 0; i < kSize; ++i) {
+       buffers[i] = IOBuf::create(size);
+     }
++    // Introduce indirection and ALU ops to increase I-cache footprint.
++    for (int j = 0; j < 512; ++j) { // Reduced loop count for better focus on I-cache
++      current ^= indirect_data[(current + j) & 0xFF];
++      current ^= indirect_data[switch_case_1(indirect_data, current, j)];
++      current ^= indirect_data[switch_case_2(indirect_data, current, j)];
++      current ^= indirect_data[switch_case_3(indirect_data, current, j)];
++    }
++    folly::doNotOptimizeAway(current);
+   }
+ }

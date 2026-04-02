@@ -1,0 +1,2 @@
+# Exclude files over 100MB (GitHub limit)
+scripts/outputs/compile_logs/mediawiki_feature_extraction_20260401_205315_segment_02_protocolbench_objectcompactpr_7fd5a37f69__attempt_7__vertex.json

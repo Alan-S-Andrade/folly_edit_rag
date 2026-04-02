@@ -1,0 +1,26 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -229,7 +229,7 @@
+     for (int t = 0; t < posters; ++t) {
+       threads.emplace_back([=, &sem, &go] {
+         ChainNode* hotPos = &hotNodes[t % kHotLen];
+-        ChainNode* coldPos = &coldNodes[t % kColdLen];
++        ChainNode* coldPos = &coldNodes[t % kColdLen]; // Re-added for consistency, though unused in this specific refinement.
+         uint64_t acc = t;
+ 
+         while (!go.load()) {
+@@ -250,10 +250,11 @@
+               break;
+           }
+ 
++          // Re-added the coldPos update with a simpler logic, as the original omission
++          // might have been premature. The focus is on minimal change.
+           auto coldMask = -uint64_t(i % 8 == 0);
+-          // Removed the redundant coldPos update which was only conditionally used.
+-          // coldPos = (ChainNode*)(((uintptr_t)coldPos->next & coldMask) |
+-          //                        ((uintptr_t)coldPos & ~coldMask));
++          coldPos = (ChainNode*)(((uintptr_t)coldPos->next & coldMask) |
++                                 ((uintptr_t)coldPos & ~coldMask));
+           sem.post();
+         }
+         folly::doNotOptimizeAway(acc);

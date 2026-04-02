@@ -1,0 +1,92 @@
+--- a/folly/io/test/IOBufBenchmark.cpp
++++ b/folly/io/test/IOBufBenchmark.cpp
+@@ -145,6 +145,53 @@
+   }
+   return 0; // Unreachable
+ }
++
++// Functions for createAndDestroyMulti_LargeAlloc to increase instruction footprint
++__attribute__((noinline)) static int dummy_op1(uint64_t& acc, uint64_t val) {
++  int ops = 10; // 10 ALU ops per case
++  acc = (acc * 3) ^ val;
++  acc = (acc + 1) ^ val;
++  acc = (acc - 1) ^ val;
++  acc = (acc * 5) ^ val;
++  acc = (acc + 7) ^ val;
++  acc = (acc - 7) ^ val;
++  acc = (acc * 11) ^ val;
++  acc = (acc + 13) ^ val;
++  acc = (acc - 13) ^ val;
++  acc = (acc * 17) ^ val;
++  return static_cast<int>(acc & 0xFF);
++}
++
++__attribute__((noinline)) static int dummy_op2(uint64_t& acc, uint64_t val) {
++  int ops = 10; // 10 ALU ops per case
++  acc = (acc ^ 2) + val;
++  acc = (acc - 2) + val;
++  acc = (acc * 4) + val;
++  acc = (acc + 6) + val;
++  acc = (acc - 6) + val;
++  acc = (acc * 8) + val;
++  acc = (acc + 10) + val;
++  acc = (acc - 10) + val;
++  acc = (acc * 12) + val;
++  acc = (acc + 14) + val;
++  return static_cast<int>(acc & 0xFF);
++}
++
++__attribute__((noinline)) static int dummy_op3(uint64_t& acc, uint64_t val) {
++  int ops = 10; // 10 ALU ops per case
++  acc = (acc + 15) ^ val;
++  acc = (acc - 15) ^ val;
++  acc = (acc * 16) ^ val;
++  acc = (acc + 18) ^ val;
++  acc = (acc - 18) ^ val;
++  acc = (acc * 20) ^ val;
++  acc = (acc + 22) ^ val;
++  acc = (acc - 22) ^ val;
++  acc = (acc * 24) ^ val;
++  acc = (acc + 26) ^ val;
++  return static_cast<int>(acc & 0xFF);
++}
++
+ } // namespace
+ 
+ static void createAndDestroyMulti(size_t iters, size_t size) {
+@@ -199,11 +246,36 @@
+   static constexpr auto kSize = 1024;
+   std::array<std::unique_ptr<IOBuf>, kSize> buffers;
+   size_t size = 1024 * 1024; // 1MB allocation
++  uint64_t payload = 0; // Payload for dummy operations
++
++  // Pre-populate indirect data with unique constants for each switch case.
++  // This prevents compiler from optimizing away the operations.
++  std::vector<uint64_t> indirect_data(256);
++  for (size_t i = 0; i < indirect_data.size(); ++i) {
++    indirect_data[i] = (i * 19) + 5; // Use unique constants
++  }
+ 
+   while (iters--) {
+     for (auto i = 0; i < kSize; ++i) {
+       buffers[i] = IOBuf::create(size);
+     }
++    // Perform operations that will exercise the instruction cache and
++    // increase L1i MPKI.
++    for (int j = 0; j < 4096; ++j) { // Increased loop iterations
++      int switch_idx = j & 0xFF; // Index for the switch statement
++      switch (j % 3) {
++        case 0:
++          payload ^= dummy_op1(payload, indirect_data[switch_idx]);
++          break;
++        case 1:
++          payload ^= dummy_op2(payload, indirect_data[switch_idx]);
++          break;
++        case 2:
++          payload ^= dummy_op3(payload, indirect_data[switch_idx]);
++          break;
++      }
++    }
++    folly::doNotOptimizeAway(payload);
+   }
+ }

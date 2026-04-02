@@ -1,0 +1,86 @@
+--- a/folly/io/test/IOBufBenchmark.cpp
++++ b/folly/io/test/IOBufBenchmark.cpp
+@@ -147,30 +147,54 @@
+ }
+ 
+ // Helper functions for createAndDestroyMulti_LargeAlloc to increase I-cache footprint.
+-// Each function has a 256-case switch with 12 ALU ops per case.
++// Each function has a 256-case switch with N ALU ops per case.
+ // The `__attribute__((noinline))` ensures they are not optimized away or merged.
+ // Unique literal constants are used in each case to prevent compiler deduplication.
+-__attribute__((noinline)) static int switch_case_1(const std::vector<uint64_t>& vec, uint64_t& current, uint64_t offset) {
++__attribute__((noinline)) static int switch_case_1(const std::vector<uint64_t>& vec, uint64_t& current, uint64_t offset, int loop_idx) {
+   int result = 0;
+-  for (int i = 0; i < 12; ++i) {
+-    result = (result * 17) ^ vec[(current + offset + i) & 0xFF];
+-  }
++  // N ALU ops per case. Current is 8, target is 10. Let's use 10.
++  result = (result * 17) ^ vec[(current + offset + loop_idx) & 0xFF];
++  result = (result + 23) ^ vec[(current - offset - loop_idx) & 0xFF];
++  result = (result ^ 29) + vec[(current + offset * 2 + loop_idx) & 0xFF];
++  result = (result * 31) ^ vec[(current + offset + loop_idx + 1) & 0xFF];
++  result = (result - 37) ^ vec[(current - offset - loop_idx - 1) & 0xFF];
++  result = (result ^ 41) + vec[(current + offset * 2 + loop_idx + 1) & 0xFF];
++  result = (result * 43) ^ vec[(current + offset + loop_idx + 2) & 0xFF];
++  result = (result + 47) ^ vec[(current - offset - loop_idx - 2) & 0xFF];
++  result = (result ^ 53) + vec[(current + offset * 2 + loop_idx + 2) & 0xFF];
++  result = (result * 59) ^ vec[(current + offset + loop_idx + 3) & 0xFF];
+   return result & 0xFF;
+ }
+ 
+-__attribute__((noinline)) static int switch_case_2(const std::vector<uint64_t>& vec, uint64_t& current, uint64_t offset) {
++__attribute__((noinline)) static int switch_case_2(const std::vector<uint64_t>& vec, uint64_t& current, uint64_t offset, int loop_idx) {
+   int result = 0;
+-  for (int i = 0; i < 12; ++i) {
+-    result = (result + 23) ^ vec[(current - offset - i) & 0xFF];
+-  }
++  // N ALU ops per case. Current is 8, target is 10. Let's use 10.
++  result = (result + 19) ^ vec[(current + offset + loop_idx) & 0xFF];
++  result = (result * 23) ^ vec[(current - offset - loop_idx) & 0xFF];
++  result = (result ^ 31) + vec[(current + offset * 2 + loop_idx) & 0xFF];
++  result = (result + 37) ^ vec[(current + offset + loop_idx + 1) & 0xFF];
++  result = (result * 41) ^ vec[(current - offset - loop_idx - 1) & 0xFF];
++  result = (result ^ 43) + vec[(current + offset * 2 + loop_idx + 1) & 0xFF];
++  result = (result + 47) ^ vec[(current + offset + loop_idx + 2) & 0xFF];
++  result = (result * 53) ^ vec[(current - offset - loop_idx - 2) & 0xFF];
++  result = (result ^ 59) + vec[(current + offset * 2 + loop_idx + 2) & 0xFF];
++  result = (result + 61) ^ vec[(current + offset + loop_idx + 3) & 0xFF];
+   return result & 0xFF;
+ }
+ 
+-__attribute__((noinline)) static int switch_case_3(const std::vector<uint64_t>& vec, uint64_t& current, uint64_t offset) {
++__attribute__((noinline)) static int switch_case_3(const std::vector<uint64_t>& vec, uint64_t& current, uint64_t offset, int loop_idx) {
+   int result = 0;
+-  for (int i = 0; i < 12; ++i) {
+-    result = (result ^ 29) + vec[(current + offset * 2 + i) & 0xFF];
+-  }
++  // N ALU ops per case. Current is 8, target is 10. Let's use 10.
++  result = (result ^ 17) + vec[(current + offset + loop_idx) & 0xFF];
++  result = (result * 19) ^ vec[(current - offset - loop_idx) & 0xFF];
++  result = (result + 23) + vec[(current + offset * 2 + loop_idx) & 0xFF];
++  result = (result ^ 29) + vec[(current + offset + loop_idx + 1) & 0xFF];
++  result = (result * 31) ^ vec[(current - offset - loop_idx - 1) & 0xFF];
++  result = (result + 37) + vec[(current + offset * 2 + loop_idx + 1) & 0xFF];
++  result = (result ^ 41) + vec[(current + offset + loop_idx + 2) & 0xFF];
++  result = (result * 43) ^ vec[(current - offset - loop_idx - 2) & 0xFF];
++  result = (result + 47) + vec[(current + offset * 2 + loop_idx + 2) & 0xFF];
++  result = (result ^ 53) + vec[(current + offset + loop_idx + 3) & 0xFF];
+   return result & 0xFF;
+ }
+ } // namespace
+@@ -240,11 +264,12 @@
+       buffers[i] = IOBuf::create(size);
+     }
+     // Introduce indirection and ALU ops to increase I-cache footprint.
++    // The switch functions now have 10 ALU operations each.
+     for (int j = 0; j < 512; ++j) { // Reduced loop count for better focus on I-cache
+       current ^= indirect_data[(current + j) & 0xFF];
+-      current ^= indirect_data[switch_case_1(indirect_data, current, j)];
+-      current ^= indirect_data[switch_case_2(indirect_data, current, j)];
+-      current ^= indirect_data[switch_case_3(indirect_data, current, j)];
++      current ^= indirect_data[switch_case_1(indirect_data, current, j, j)];
++      current ^= indirect_data[switch_case_2(indirect_data, current, j, j)];
++      current ^= indirect_data[switch_case_3(indirect_data, current, j, j)];
+     }
+     folly::doNotOptimizeAway(current);
+   }

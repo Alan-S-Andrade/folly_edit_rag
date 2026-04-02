@@ -1,0 +1,14 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -248,8 +248,10 @@
+         ChainNode* coldPos = &coldNodes[t % kColdLen];
+         uint64_t acc = t;
+ 
++        // Replace std::this_thread::yield() with a busy-wait for potentially
++        // higher IPC by avoiding context switch overhead during the initial spin.
+         while (!go.load()) {
+-          std::this_thread::yield();
++          // std::this_thread::yield();
+         }
+         for (uint32_t i = t; i < n; i += posters) {
+           hotPos = hotPos->next;

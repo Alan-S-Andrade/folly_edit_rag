@@ -1,0 +1,124 @@
+--- a/thrift/lib/cpp2/test/ProtocolBench.cpp
++++ b/thrift/lib/cpp2/test/ProtocolBench.cpp
+@@ -26,6 +26,8 @@
+ #include <folly/init/Init.h>
+ #include <folly/portability/GFlags.h>
+ 
++#include <memory>
++
+ using namespace apache::thrift;
+ using namespace thrift::benchmark;
+ 
+@@ -132,6 +134,112 @@
+       ? SerializerMethod::Object
+       : throw std::invalid_argument(std::string(prefix) + " is invalid");
+ }
++
++namespace {
++
++template <int I, int F>
++inline int64_t alu_heavy_op(int64_t acc) {
++  // 28 ops with unique constants based on I (case) and F (function)
++  constexpr int64_t base_offset = F * 256 * 56;
++  constexpr int64_t case_offset = I * 56;
++  acc += (base_offset + case_offset + 1);
++  acc ^= (base_offset + case_offset + 2);
++  acc += (base_offset + case_offset + 3);
++  acc ^= (base_offset + case_offset + 4);
++  acc += (base_offset + case_offset + 5);
++  acc ^= (base_offset + case_offset + 6);
++  acc += (base_offset + case_offset + 7);
++  acc ^= (base_offset + case_offset + 8);
++  acc += (base_offset + case_offset + 9);
++  acc ^= (base_offset + case_offset + 10);
++  acc += (base_offset + case_offset + 11);
++  acc ^= (base_offset + case_offset + 12);
++  acc += (base_offset + case_offset + 13);
++  acc ^= (base_offset + case_offset + 14);
++  acc += (base_offset + case_offset + 15);
++  acc ^= (base_offset + case_offset + 16);
++  acc += (base_offset + case_offset + 17);
++  acc ^= (base_offset + case_offset + 18);
++  acc += (base_offset + case_offset + 19);
++  acc ^= (base_offset + case_offset + 20);
++  acc += (base_offset + case_offset + 21);
++  acc ^= (base_offset + case_offset + 22);
++  acc += (base_offset + case_offset + 23);
++  acc ^= (base_offset + case_offset + 24);
++  acc += (base_offset + case_offset + 25);
++  acc ^= (base_offset + case_offset + 26);
++  acc += (base_offset + case_offset + 27);
++  acc ^= (base_offset + case_offset + 28);
++  return acc;
++}
++
++#define CASE(i) \
++  case i:     \
++    return alu_heavy_op<i, F>(acc)
++#define C8(i) \
++  CASE(i);    \
++  CASE(i + 1);CASE(i + 2);CASE(i + 3);CASE(i + 4);CASE(i + 5);CASE(i + 6);CASE(i + 7)
++#define C64(i) \
++  C8(i);       \
++  C8(i + 8);   \
++  C8(i + 16);  \
++  C8(i + 24);  \
++  C8(i + 32);  \
++  C8(i + 40);  \
++  C8(i + 48);  \
++  C8(i + 56)
++#define C256() \
++  C64(0);      \
++  C64(64);     \
++  C64(128);    \
++  C64(192)
++
++template <int F>
++__attribute__((noinline)) int64_t generated_func(int64_t acc, int selector) {
++  switch (selector) {
++    C256();
++    default:
++      return acc;
++  }
++}
++
++BENCHMARK(ObjectCompactProtocol_read_LargeSetInt_v5, iters) {
++  folly::BenchmarkSuspender susp;
++  constexpr size_t kPointerChaseSize = 4096;
++  auto chase_buffer = std::make_unique<uintptr_t[]>(kPointerChaseSize);
++  for (size_t i = 0; i < kPointerChaseSize; ++i) {
++    chase_buffer[i] =
++        reinterpret_cast<uintptr_t>(&chase_buffer[(i + 13) % kPointerChaseSize]);
++  }
++  uintptr_t p = reinterpret_cast<uintptr_t>(&chase_buffer[0]);
++  int64_t acc = 0;
++
++  susp.dismiss();
++
++  for (uint64_t i = 0; i < iters; ++i) {
++    p = *reinterpret_cast<uintptr_t*>(p);
++    int selector = p & 0xff;
++    switch (i % 3) {
++      case 0:
++        acc = generated_func<0>(acc, selector);
++        break;
++      case 1:
++        acc = generated_func<1>(acc, selector);
++        break;
++      case 2:
++        acc = generated_func<2>(acc, selector);
++        break;
++    }
++  }
++  folly::doNotOptimizeAway(acc);
++  folly::doNotOptimizeAway(p);
++}
++
++#undef C256
++#undef C64
++#undef C8
++#undef CASE
++} // namespace
+ 
+ #define X1(Prefix, proto, rdwr, bench, benchprefix)            \
+   BENCHMARK(Prefix##proto##Protocol_##rdwr##_##bench, iters) { \

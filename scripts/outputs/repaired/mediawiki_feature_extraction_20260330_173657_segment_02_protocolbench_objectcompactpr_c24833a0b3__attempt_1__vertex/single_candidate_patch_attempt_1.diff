@@ -1,0 +1,948 @@
+--- a/thrift/lib/cpp2/test/ProtocolBench.cpp
++++ b/thrift/lib/cpp2/test/ProtocolBench.cpp
+@@ -200,6 +200,945 @@
+ OpEncodeX(OpEncode, Binary)
+ OpEncodeX(OpEncode, Compact)
+ 
++#include <vector>
++
++namespace {
++__attribute__((noinline)) int64_t pbench_icache_1(int64_t acc, int val) {
++  switch (val) {
++#define GEN_CASE(i, salt)                                       \
++  case i:                                                       \
++    acc += (i * 3 + salt * 7) % 32768;                          \
++    acc ^= (i * 5 + salt * 11) % 32768;                         \
++    acc *= (1 + (i * 7 + salt * 13) % 63);                      \
++    acc += (i * 11 + salt * 17) % 32768;                        \
++    acc ^= (i * 13 + salt * 19) % 32768;                        \
++    acc *= (1 + (i * 17 + salt * 23) % 63);                     \
++    acc += (i * 19 + salt * 29) % 32768;                        \
++    acc ^= (i * 23 + salt * 31) % 32768;                        \
++    acc *= (1 + (i * 29 + salt * 37) % 63);                     \
++    acc += (i * 31 + salt * 41) % 32768;                        \
++    acc ^= (i * 37 + salt * 43) % 32768;                        \
++    acc *= (1 + (i * 41 + salt * 47) % 63);                     \
++    acc += (i * 43 + salt * 53) % 32768;                        \
++    acc ^= (i * 47 + salt * 59) % 32768;                        \
++    acc *= (1 + (i * 53 + salt * 61) % 63);                     \
++    acc += (i * 59 + salt * 67) % 32768;                        \
++    acc ^= (i * 61 + salt * 71) % 32768;                        \
++    acc *= (1 + (i * 67 + salt * 73) % 63);                     \
++    acc += (i * 71 + salt * 79) % 32768;                        \
++    acc ^= (i * 73 + salt * 83) % 32768;                        \
++    acc *= (1 + (i * 79 + salt * 89) % 63);                     \
++    acc += (i * 83 + salt * 97) % 32768;                        \
++    acc ^= (i * 89 + salt * 101) % 32768;                       \
++    break;
++#define GEN_256_CASES(salt) \
++  GEN_CASE(0, salt)         \
++  GEN_CASE(1, salt)         \
++  GEN_CASE(2, salt)         \
++  GEN_CASE(3, salt)         \
++  GEN_CASE(4, salt)         \
++  GEN_CASE(5, salt)         \
++  GEN_CASE(6, salt)         \
++  GEN_CASE(7, salt)         \
++  GEN_CASE(8, salt)         \
++  GEN_CASE(9, salt)         \
++  GEN_CASE(10, salt)        \
++  GEN_CASE(11, salt)        \
++  GEN_CASE(12, salt)        \
++  GEN_CASE(13, salt)        \
++  GEN_CASE(14, salt)        \
++  GEN_CASE(15, salt)        \
++  GEN_CASE(16, salt)        \
++  GEN_CASE(17, salt)        \
++  GEN_CASE(18, salt)        \
++  GEN_CASE(19, salt)        \
++  GEN_CASE(20, salt)        \
++  GEN_CASE(21, salt)        \
++  GEN_CASE(22, salt)        \
++  GEN_CASE(23, salt)        \
++  GEN_CASE(24, salt)        \
++  GEN_CASE(25, salt)        \
++  GEN_CASE(26, salt)        \
++  GEN_CASE(27, salt)        \
++  GEN_CASE(28, salt)        \
++  GEN_CASE(29, salt)        \
++  GEN_CASE(30, salt)        \
++  GEN_CASE(31, salt)        \
++  GEN_CASE(32, salt)        \
++  GEN_CASE(33, salt)        \
++  GEN_CASE(34, salt)        \
++  GEN_CASE(35, salt)        \
++  GEN_CASE(36, salt)        \
++  GEN_CASE(37, salt)        \
++  GEN_CASE(38, salt)        \
++  GEN_CASE(39, salt)        \
++  GEN_CASE(40, salt)        \
++  GEN_CASE(41, salt)        \
++  GEN_CASE(42, salt)        \
++  GEN_CASE(43, salt)        \
++  GEN_CASE(44, salt)        \
++  GEN_CASE(45, salt)        \
++  GEN_CASE(46, salt)        \
++  GEN_CASE(47, salt)        \
++  GEN_CASE(48, salt)        \
++  GEN_CASE(49, salt)        \
++  GEN_CASE(50, salt)        \
++  GEN_CASE(51, salt)        \
++  GEN_CASE(52, salt)        \
++  GEN_CASE(53, salt)        \
++  GEN_CASE(54, salt)        \
++  GEN_CASE(55, salt)        \
++  GEN_CASE(56, salt)        \
++  GEN_CASE(57, salt)        \
++  GEN_CASE(58, salt)        \
++  GEN_CASE(59, salt)        \
++  GEN_CASE(60, salt)        \
++  GEN_CASE(61, salt)        \
++  GEN_CASE(62, salt)        \
++  GEN_CASE(63, salt)        \
++  GEN_CASE(64, salt)        \
++  GEN_CASE(65, salt)        \
++  GEN_CASE(66, salt)        \
++  GEN_CASE(67, salt)        \
++  GEN_CASE(68, salt)        \
++  GEN_CASE(69, salt)        \
++  GEN_CASE(70, salt)        \
++  GEN_CASE(71, salt)        \
++  GEN_CASE(72, salt)        \
++  GEN_CASE(73, salt)        \
++  GEN_CASE(74, salt)        \
++  GEN_CASE(75, salt)        \
++  GEN_CASE(76, salt)        \
++  GEN_CASE(77, salt)        \
++  GEN_CASE(78, salt)        \
++  GEN_CASE(79, salt)        \
++  GEN_CASE(80, salt)        \
++  GEN_CASE(81, salt)        \
++  GEN_CASE(82, salt)        \
++  GEN_CASE(83, salt)        \
++  GEN_CASE(84, salt)        \
++  GEN_CASE(85, salt)        \
++  GEN_CASE(86, salt)        \
++  GEN_CASE(87, salt)        \
++  GEN_CASE(88, salt)        \
++  GEN_CASE(89, salt)        \
++  GEN_CASE(90, salt)        \
++  GEN_CASE(91, salt)        \
++  GEN_CASE(92, salt)        \
++  GEN_CASE(93, salt)        \
++  GEN_CASE(94, salt)        \
++  GEN_CASE(95, salt)        \
++  GEN_CASE(96, salt)        \
++  GEN_CASE(97, salt)        \
++  GEN_CASE(98, salt)        \
++  GEN_CASE(99, salt)        \
++  GEN_CASE(100, salt)       \
++  GEN_CASE(101, salt)       \
++  GEN_CASE(102, salt)       \
++  GEN_CASE(103, salt)       \
++  GEN_CASE(104, salt)       \
++  GEN_CASE(105, salt)       \
++  GEN_CASE(106, salt)       \
++  GEN_CASE(107, salt)       \
++  GEN_CASE(108, salt)       \
++  GEN_CASE(109, salt)       \
++  GEN_CASE(110, salt)       \
++  GEN_CASE(111, salt)       \
++  GEN_CASE(112, salt)       \
++  GEN_CASE(113, salt)       \
++  GEN_CASE(114, salt)       \
++  GEN_CASE(115, salt)       \
++  GEN_CASE(116, salt)       \
++  GEN_CASE(117, salt)       \
++  GEN_CASE(118, salt)       \
++  GEN_CASE(119, salt)       \
++  GEN_CASE(120, salt)       \
++  GEN_CASE(121, salt)       \
++  GEN_CASE(122, salt)       \
++  GEN_CASE(123, salt)       \
++  GEN_CASE(124, salt)       \
++  GEN_CASE(125, salt)       \
++  GEN_CASE(126, salt)       \
++  GEN_CASE(127, salt)       \
++  GEN_CASE(128, salt)       \
++  GEN_CASE(129, salt)       \
++  GEN_CASE(130, salt)       \
++  GEN_CASE(131, salt)       \
++  GEN_CASE(132, salt)       \
++  GEN_CASE(133, salt)       \
++  GEN_CASE(134, salt)       \
++  GEN_CASE(135, salt)       \
++  GEN_CASE(136, salt)       \
++  GEN_CASE(137, salt)       \
++  GEN_CASE(138, salt)       \
++  GEN_CASE(139, salt)       \
++  GEN_CASE(140, salt)       \
++  GEN_CASE(141, salt)       \
++  GEN_CASE(142, salt)       \
++  GEN_CASE(143, salt)       \
++  GEN_CASE(144, salt)       \
++  GEN_CASE(145, salt)       \
++  GEN_CASE(146, salt)       \
++  GEN_CASE(147, salt)       \
++  GEN_CASE(148, salt)       \
++  GEN_CASE(149, salt)       \
++  GEN_CASE(150, salt)       \
++  GEN_CASE(151, salt)       \
++  GEN_CASE(152, salt)       \
++  GEN_CASE(153, salt)       \
++  GEN_CASE(154, salt)       \
++  GEN_CASE(155, salt)       \
++  GEN_CASE(156, salt)       \
++  GEN_CASE(157, salt)       \
++  GEN_CASE(158, salt)       \
++  GEN_CASE(159, salt)       \
++  GEN_CASE(160, salt)       \
++  GEN_CASE(161, salt)       \
++  GEN_CASE(162, salt)       \
++  GEN_CASE(163, salt)       \
++  GEN_CASE(164, salt)       \
++  GEN_CASE(165, salt)       \
++  GEN_CASE(166, salt)       \
++  GEN_CASE(167, salt)       \
++  GEN_CASE(168, salt)       \
++  GEN_CASE(169, salt)       \
++  GEN_CASE(170, salt)       \
++  GEN_CASE(171, salt)       \
++  GEN_CASE(172, salt)       \
++  GEN_CASE(173, salt)       \
++  GEN_CASE(174, salt)       \
++  GEN_CASE(175, salt)       \
++  GEN_CASE(176, salt)       \
++  GEN_CASE(177, salt)       \
++  GEN_CASE(178, salt)       \
++  GEN_CASE(179, salt)       \
++  GEN_CASE(180, salt)       \
++  GEN_CASE(181, salt)       \
++  GEN_CASE(182, salt)       \
++  GEN_CASE(183, salt)       \
++  GEN_CASE(184, salt)       \
++  GEN_CASE(185, salt)       \
++  GEN_CASE(186, salt)       \
++  GEN_CASE(187, salt)       \
++  GEN_CASE(188, salt)       \
++  GEN_CASE(189, salt)       \
++  GEN_CASE(190, salt)       \
++  GEN_CASE(191, salt)       \
++  GEN_CASE(192, salt)       \
++  GEN_CASE(193, salt)       \
++  GEN_CASE(194, salt)       \
++  GEN_CASE(195, salt)       \
++  GEN_CASE(196, salt)       \
++  GEN_CASE(197, salt)       \
++  GEN_CASE(198, salt)       \
++  GEN_CASE(199, salt)       \
++  GEN_CASE(200, salt)       \
++  GEN_CASE(201, salt)       \
++  GEN_CASE(202, salt)       \
++  GEN_CASE(203, salt)       \
++  GEN_CASE(204, salt)       \
++  GEN_CASE(205, salt)       \
++  GEN_CASE(206, salt)       \
++  GEN_CASE(207, salt)       \
++  GEN_CASE(208, salt)       \
++  GEN_CASE(209, salt)       \
++  GEN_CASE(210, salt)       \
++  GEN_CASE(211, salt)       \
++  GEN_CASE(212, salt)       \
++  GEN_CASE(213, salt)       \
++  GEN_CASE(214, salt)       \
++  GEN_CASE(215, salt)       \
++  GEN_CASE(216, salt)       \
++  GEN_CASE(217, salt)       \
++  GEN_CASE(218, salt)       \
++  GEN_CASE(219, salt)       \
++  GEN_CASE(220, salt)       \
++  GEN_CASE(221, salt)       \
++  GEN_CASE(222, salt)       \
++  GEN_CASE(223, salt)       \
++  GEN_CASE(224, salt)       \
++  GEN_CASE(225, salt)       \
++  GEN_CASE(226, salt)       \
++  GEN_CASE(227, salt)       \
++  GEN_CASE(228, salt)       \
++  GEN_CASE(229, salt)       \
++  GEN_CASE(230, salt)       \
++  GEN_CASE(231, salt)       \
++  GEN_CASE(232, salt)       \
++  GEN_CASE(233, salt)       \
++  GEN_CASE(234, salt)       \
++  GEN_CASE(235, salt)       \
++  GEN_CASE(236, salt)       \
++  GEN_CASE(237, salt)       \
++  GEN_CASE(238, salt)       \
++  GEN_CASE(239, salt)       \
++  GEN_CASE(240, salt)       \
++  GEN_CASE(241, salt)       \
++  GEN_CASE(242, salt)       \
++  GEN_CASE(243, salt)       \
++  GEN_CASE(244, salt)       \
++  GEN_CASE(245, salt)       \
++  GEN_CASE(246, salt)       \
++  GEN_CASE(247, salt)       \
++  GEN_CASE(248, salt)       \
++  GEN_CASE(249, salt)       \
++  GEN_CASE(250, salt)       \
++  GEN_CASE(251, salt)       \
++  GEN_CASE(252, salt)       \
++  GEN_CASE(253, salt)       \
++  GEN_CASE(254, salt)       \
++  GEN_CASE(255, salt)
++
++    GEN_256_CASES(1)
++#undef GEN_CASE
++#undef GEN_256_CASES
++    default:
++      acc++;
++      break;
++  }
++  return acc;
++}
++__attribute__((noinline)) int64_t pbench_icache_2(int64_t acc, int val) {
++  switch (val) {
++#define GEN_CASE(i, salt)                                       \
++  case i:                                                       \
++    acc += (i * 3 + salt * 7) % 32768;                          \
++    acc ^= (i * 5 + salt * 11) % 32768;                         \
++    acc *= (1 + (i * 7 + salt * 13) % 63);                      \
++    acc += (i * 11 + salt * 17) % 32768;                        \
++    acc ^= (i * 13 + salt * 19) % 32768;                        \
++    acc *= (1 + (i * 17 + salt * 23) % 63);                     \
++    acc += (i * 19 + salt * 29) % 32768;                        \
++    acc ^= (i * 23 + salt * 31) % 32768;                        \
++    acc *= (1 + (i * 29 + salt * 37) % 63);                     \
++    acc += (i * 31 + salt * 41) % 32768;                        \
++    acc ^= (i * 37 + salt * 43) % 32768;                        \
++    acc *= (1 + (i * 41 + salt * 47) % 63);                     \
++    acc += (i * 43 + salt * 53) % 32768;                        \
++    acc ^= (i * 47 + salt * 59) % 32768;                        \
++    acc *= (1 + (i * 53 + salt * 61) % 63);                     \
++    acc += (i * 59 + salt * 67) % 32768;                        \
++    acc ^= (i * 61 + salt * 71) % 32768;                        \
++    acc *= (1 + (i * 67 + salt * 73) % 63);                     \
++    acc += (i * 71 + salt * 79) % 32768;                        \
++    acc ^= (i * 73 + salt * 83) % 32768;                        \
++    acc *= (1 + (i * 79 + salt * 89) % 63);                     \
++    acc += (i * 83 + salt * 97) % 32768;                        \
++    acc ^= (i * 89 + salt * 101) % 32768;                       \
++    break;
++#define GEN_256_CASES(salt) \
++  GEN_CASE(0, salt)         \
++  GEN_CASE(1, salt)         \
++  GEN_CASE(2, salt)         \
++  GEN_CASE(3, salt)         \
++  GEN_CASE(4, salt)         \
++  GEN_CASE(5, salt)         \
++  GEN_CASE(6, salt)         \
++  GEN_CASE(7, salt)         \
++  GEN_CASE(8, salt)         \
++  GEN_CASE(9, salt)         \
++  GEN_CASE(10, salt)        \
++  GEN_CASE(11, salt)        \
++  GEN_CASE(12, salt)        \
++  GEN_CASE(13, salt)        \
++  GEN_CASE(14, salt)        \
++  GEN_CASE(15, salt)        \
++  GEN_CASE(16, salt)        \
++  GEN_CASE(17, salt)        \
++  GEN_CASE(18, salt)        \
++  GEN_CASE(19, salt)        \
++  GEN_CASE(20, salt)        \
++  GEN_CASE(21, salt)        \
++  GEN_CASE(22, salt)        \
++  GEN_CASE(23, salt)        \
++  GEN_CASE(24, salt)        \
++  GEN_CASE(25, salt)        \
++  GEN_CASE(26, salt)        \
++  GEN_CASE(27, salt)        \
++  GEN_CASE(28, salt)        \
++  GEN_CASE(29, salt)        \
++  GEN_CASE(30, salt)        \
++  GEN_CASE(31, salt)        \
++  GEN_CASE(32, salt)        \
++  GEN_CASE(33, salt)        \
++  GEN_CASE(34, salt)        \
++  GEN_CASE(35, salt)        \
++  GEN_CASE(36, salt)        \
++  GEN_CASE(37, salt)        \
++  GEN_CASE(38, salt)        \
++  GEN_CASE(39, salt)        \
++  GEN_CASE(40, salt)        \
++  GEN_CASE(41, salt)        \
++  GEN_CASE(42, salt)        \
++  GEN_CASE(43, salt)        \
++  GEN_CASE(44, salt)        \
++  GEN_CASE(45, salt)        \
++  GEN_CASE(46, salt)        \
++  GEN_CASE(47, salt)        \
++  GEN_CASE(48, salt)        \
++  GEN_CASE(49, salt)        \
++  GEN_CASE(50, salt)        \
++  GEN_CASE(51, salt)        \
++  GEN_CASE(52, salt)        \
++  GEN_CASE(53, salt)        \
++  GEN_CASE(54, salt)        \
++  GEN_CASE(55, salt)        \
++  GEN_CASE(56, salt)        \
++  GEN_CASE(57, salt)        \
++  GEN_CASE(58, salt)        \
++  GEN_CASE(59, salt)        \
++  GEN_CASE(60, salt)        \
++  GEN_CASE(61, salt)        \
++  GEN_CASE(62, salt)        \
++  GEN_CASE(63, salt)        \
++  GEN_CASE(64, salt)        \
++  GEN_CASE(65, salt)        \
++  GEN_CASE(66, salt)        \
++  GEN_CASE(67, salt)        \
++  GEN_CASE(68, salt)        \
++  GEN_CASE(69, salt)        \
++  GEN_CASE(70, salt)        \
++  GEN_CASE(71, salt)        \
++  GEN_CASE(72, salt)        \
++  GEN_CASE(73, salt)        \
++  GEN_CASE(74, salt)        \
++  GEN_CASE(75, salt)        \
++  GEN_CASE(76, salt)        \
++  GEN_CASE(77, salt)        \
++  GEN_CASE(78, salt)        \
++  GEN_CASE(79, salt)        \
++  GEN_CASE(80, salt)        \
++  GEN_CASE(81, salt)        \
++  GEN_CASE(82, salt)        \
++  GEN_CASE(83, salt)        \
++  GEN_CASE(84, salt)        \
++  GEN_CASE(85, salt)        \
++  GEN_CASE(86, salt)        \
++  GEN_CASE(87, salt)        \
++  GEN_CASE(88, salt)        \
++  GEN_CASE(89, salt)        \
++  GEN_CASE(90, salt)        \
++  GEN_CASE(91, salt)        \
++  GEN_CASE(92, salt)        \
++  GEN_CASE(93, salt)        \
++  GEN_CASE(94, salt)        \
++  GEN_CASE(95, salt)        \
++  GEN_CASE(96, salt)        \
++  GEN_CASE(97, salt)        \
++  GEN_CASE(98, salt)        \
++  GEN_CASE(99, salt)        \
++  GEN_CASE(100, salt)       \
++  GEN_CASE(101, salt)       \
++  GEN_CASE(102, salt)       \
++  GEN_CASE(103, salt)       \
++  GEN_CASE(104, salt)       \
++  GEN_CASE(105, salt)       \
++  GEN_CASE(106, salt)       \
++  GEN_CASE(107, salt)       \
++  GEN_CASE(108, salt)       \
++  GEN_CASE(109, salt)       \
++  GEN_CASE(110, salt)       \
++  GEN_CASE(111, salt)       \
++  GEN_CASE(112, salt)       \
++  GEN_CASE(113, salt)       \
++  GEN_CASE(114, salt)       \
++  GEN_CASE(115, salt)       \
++  GEN_CASE(116, salt)       \
++  GEN_CASE(117, salt)       \
++  GEN_CASE(118, salt)       \
++  GEN_CASE(119, salt)       \
++  GEN_CASE(120, salt)       \
++  GEN_CASE(121, salt)       \
++  GEN_CASE(122, salt)       \
++  GEN_CASE(123, salt)       \
++  GEN_CASE(124, salt)       \
++  GEN_CASE(125, salt)       \
++  GEN_CASE(126, salt)       \
++  GEN_CASE(127, salt)       \
++  GEN_CASE(128, salt)       \
++  GEN_CASE(129, salt)       \
++  GEN_CASE(130, salt)       \
++  GEN_CASE(131, salt)       \
++  GEN_CASE(132, salt)       \
++  GEN_CASE(133, salt)       \
++  GEN_CASE(134, salt)       \
++  GEN_CASE(135, salt)       \
++  GEN_CASE(136, salt)       \
++  GEN_CASE(137, salt)       \
++  GEN_CASE(138, salt)       \
++  GEN_CASE(139, salt)       \
++  GEN_CASE(140, salt)       \
++  GEN_CASE(141, salt)       \
++  GEN_CASE(142, salt)       \
++  GEN_CASE(143, salt)       \
++  GEN_CASE(144, salt)       \
++  GEN_CASE(145, salt)       \
++  GEN_CASE(146, salt)       \
++  GEN_CASE(147, salt)       \
++  GEN_CASE(148, salt)       \
++  GEN_CASE(149, salt)       \
++  GEN_CASE(150, salt)       \
++  GEN_CASE(151, salt)       \
++  GEN_CASE(152, salt)       \
++  GEN_CASE(153, salt)       \
++  GEN_CASE(154, salt)       \
++  GEN_CASE(155, salt)       \
++  GEN_CASE(156, salt)       \
++  GEN_CASE(157, salt)       \
++  GEN_CASE(158, salt)       \
++  GEN_CASE(159, salt)       \
++  GEN_CASE(160, salt)       \
++  GEN_CASE(161, salt)       \
++  GEN_CASE(162, salt)       \
++  GEN_CASE(163, salt)       \
++  GEN_CASE(164, salt)       \
++  GEN_CASE(165, salt)       \
++  GEN_CASE(166, salt)       \
++  GEN_CASE(167, salt)       \
++  GEN_CASE(168, salt)       \
++  GEN_CASE(169, salt)       \
++  GEN_CASE(170, salt)       \
++  GEN_CASE(171, salt)       \
++  GEN_CASE(172, salt)       \
++  GEN_CASE(173, salt)       \
++  GEN_CASE(174, salt)       \
++  GEN_CASE(175, salt)       \
++  GEN_CASE(176, salt)       \
++  GEN_CASE(177, salt)       \
++  GEN_CASE(178, salt)       \
++  GEN_CASE(179, salt)       \
++  GEN_CASE(180, salt)       \
++  GEN_CASE(181, salt)       \
++  GEN_CASE(182, salt)       \
++  GEN_CASE(183, salt)       \
++  GEN_CASE(184, salt)       \
++  GEN_CASE(185, salt)       \
++  GEN_CASE(186, salt)       \
++  GEN_CASE(187, salt)       \
++  GEN_CASE(188, salt)       \
++  GEN_CASE(189, salt)       \
++  GEN_CASE(190, salt)       \
++  GEN_CASE(191, salt)       \
++  GEN_CASE(192, salt)       \
++  GEN_CASE(193, salt)       \
++  GEN_CASE(194, salt)       \
++  GEN_CASE(195, salt)       \
++  GEN_CASE(196, salt)       \
++  GEN_CASE(197, salt)       \
++  GEN_CASE(198, salt)       \
++  GEN_CASE(199, salt)       \
++  GEN_CASE(200, salt)       \
++  GEN_CASE(201, salt)       \
++  GEN_CASE(202, salt)       \
++  GEN_CASE(203, salt)       \
++  GEN_CASE(204, salt)       \
++  GEN_CASE(205, salt)       \
++  GEN_CASE(206, salt)       \
++  GEN_CASE(207, salt)       \
++  GEN_CASE(208, salt)       \
++  GEN_CASE(209, salt)       \
++  GEN_CASE(210, salt)       \
++  GEN_CASE(211, salt)       \
++  GEN_CASE(212, salt)       \
++  GEN_CASE(213, salt)       \
++  GEN_CASE(214, salt)       \
++  GEN_CASE(215, salt)       \
++  GEN_CASE(216, salt)       \
++  GEN_CASE(217, salt)       \
++  GEN_CASE(218, salt)       \
++  GEN_CASE(219, salt)       \
++  GEN_CASE(220, salt)       \
++  GEN_CASE(221, salt)       \
++  GEN_CASE(222, salt)       \
++  GEN_CASE(223, salt)       \
++  GEN_CASE(224, salt)       \
++  GEN_CASE(225, salt)       \
++  GEN_CASE(226, salt)       \
++  GEN_CASE(227, salt)       \
++  GEN_CASE(228, salt)       \
++  GEN_CASE(229, salt)       \
++  GEN_CASE(230, salt)       \
++  GEN_CASE(231, salt)       \
++  GEN_CASE(232, salt)       \
++  GEN_CASE(233, salt)       \
++  GEN_CASE(234, salt)       \
++  GEN_CASE(235, salt)       \
++  GEN_CASE(236, salt)       \
++  GEN_CASE(237, salt)       \
++  GEN_CASE(238, salt)       \
++  GEN_CASE(239, salt)       \
++  GEN_CASE(240, salt)       \
++  GEN_CASE(241, salt)       \
++  GEN_CASE(242, salt)       \
++  GEN_CASE(243, salt)       \
++  GEN_CASE(244, salt)       \
++  GEN_CASE(245, salt)       \
++  GEN_CASE(246, salt)       \
++  GEN_CASE(247, salt)       \
++  GEN_CASE(248, salt)       \
++  GEN_CASE(249, salt)       \
++  GEN_CASE(250, salt)       \
++  GEN_CASE(251, salt)       \
++  GEN_CASE(252, salt)       \
++  GEN_CASE(253, salt)       \
++  GEN_CASE(254, salt)       \
++  GEN_CASE(255, salt)
++
++    GEN_256_CASES(2)
++#undef GEN_CASE
++#undef GEN_256_CASES
++    default:
++      acc++;
++      break;
++  }
++  return acc;
++}
++__attribute__((noinline)) int64_t pbench_icache_3(int64_t acc, int val) {
++  switch (val) {
++#define GEN_CASE(i, salt)                                       \
++  case i:                                                       \
++    acc += (i * 3 + salt * 7) % 32768;                          \
++    acc ^= (i * 5 + salt * 11) % 32768;                         \
++    acc *= (1 + (i * 7 + salt * 13) % 63);                      \
++    acc += (i * 11 + salt * 17) % 32768;                        \
++    acc ^= (i * 13 + salt * 19) % 32768;                        \
++    acc *= (1 + (i * 17 + salt * 23) % 63);                     \
++    acc += (i * 19 + salt * 29) % 32768;                        \
++    acc ^= (i * 23 + salt * 31) % 32768;                        \
++    acc *= (1 + (i * 29 + salt * 37) % 63);                     \
++    acc += (i * 31 + salt * 41) % 32768;                        \
++    acc ^= (i * 37 + salt * 43) % 32768;                        \
++    acc *= (1 + (i * 41 + salt * 47) % 63);                     \
++    acc += (i * 43 + salt * 53) % 32768;                        \
++    acc ^= (i * 47 + salt * 59) % 32768;                        \
++    acc *= (1 + (i * 53 + salt * 61) % 63);                     \
++    acc += (i * 59 + salt * 67) % 32768;                        \
++    acc ^= (i * 61 + salt * 71) % 32768;                        \
++    acc *= (1 + (i * 67 + salt * 73) % 63);                     \
++    acc += (i * 71 + salt * 79) % 32768;                        \
++    acc ^= (i * 73 + salt * 83) % 32768;                        \
++    acc *= (1 + (i * 79 + salt * 89) % 63);                     \
++    acc += (i * 83 + salt * 97) % 32768;                        \
++    acc ^= (i * 89 + salt * 101) % 32768;                       \
++    break;
++#define GEN_256_CASES(salt) \
++  GEN_CASE(0, salt)         \
++  GEN_CASE(1, salt)         \
++  GEN_CASE(2, salt)         \
++  GEN_CASE(3, salt)         \
++  GEN_CASE(4, salt)         \
++  GEN_CASE(5, salt)         \
++  GEN_CASE(6, salt)         \
++  GEN_CASE(7, salt)         \
++  GEN_CASE(8, salt)         \
++  GEN_CASE(9, salt)         \
++  GEN_CASE(10, salt)        \
++  GEN_CASE(11, salt)        \
++  GEN_CASE(12, salt)        \
++  GEN_CASE(13, salt)        \
++  GEN_CASE(14, salt)        \
++  GEN_CASE(15, salt)        \
++  GEN_CASE(16, salt)        \
++  GEN_CASE(17, salt)        \
++  GEN_CASE(18, salt)        \
++  GEN_CASE(19, salt)        \
++  GEN_CASE(20, salt)        \
++  GEN_CASE(21, salt)        \
++  GEN_CASE(22, salt)        \
++  GEN_CASE(23, salt)        \
++  GEN_CASE(24, salt)        \
++  GEN_CASE(25, salt)        \
++  GEN_CASE(26, salt)        \
++  GEN_CASE(27, salt)        \
++  GEN_CASE(28, salt)        \
++  GEN_CASE(29, salt)        \
++  GEN_CASE(30, salt)        \
++  GEN_CASE(31, salt)        \
++  GEN_CASE(32, salt)        \
++  GEN_CASE(33, salt)        \
++  GEN_CASE(34, salt)        \
++  GEN_CASE(35, salt)        \
++  GEN_CASE(36, salt)        \
++  GEN_CASE(37, salt)        \
++  GEN_CASE(38, salt)        \
++  GEN_CASE(39, salt)        \
++  GEN_CASE(40, salt)        \
++  GEN_CASE(41, salt)        \
++  GEN_CASE(42, salt)        \
++  GEN_CASE(43, salt)        \
++  GEN_CASE(44, salt)        \
++  GEN_CASE(45, salt)        \
++  GEN_CASE(46, salt)        \
++  GEN_CASE(47, salt)        \
++  GEN_CASE(48, salt)        \
++  GEN_CASE(49, salt)        \
++  GEN_CASE(50, salt)        \
++  GEN_CASE(51, salt)        \
++  GEN_CASE(52, salt)        \
++  GEN_CASE(53, salt)        \
++  GEN_CASE(54, salt)        \
++  GEN_CASE(55, salt)        \
++  GEN_CASE(56, salt)        \
++  GEN_CASE(57, salt)        \
++  GEN_CASE(58, salt)        \
++  GEN_CASE(59, salt)        \
++  GEN_CASE(60, salt)        \
++  GEN_CASE(61, salt)        \
++  GEN_CASE(62, salt)        \
++  GEN_CASE(63, salt)        \
++  GEN_CASE(64, salt)        \
++  GEN_CASE(65, salt)        \
++  GEN_CASE(66, salt)        \
++  GEN_CASE(67, salt)        \
++  GEN_CASE(68, salt)        \
++  GEN_CASE(69, salt)        \
++  GEN_CASE(70, salt)        \
++  GEN_CASE(71, salt)        \
++  GEN_CASE(72, salt)        \
++  GEN_CASE(73, salt)        \
++  GEN_CASE(74, salt)        \
++  GEN_CASE(75, salt)        \
++  GEN_CASE(76, salt)        \
++  GEN_CASE(77, salt)        \
++  GEN_CASE(78, salt)        \
++  GEN_CASE(79, salt)        \
++  GEN_CASE(80, salt)        \
++  GEN_CASE(81, salt)        \
++  GEN_CASE(82, salt)        \
++  GEN_CASE(83, salt)        \
++  GEN_CASE(84, salt)        \
++  GEN_CASE(85, salt)        \
++  GEN_CASE(86, salt)        \
++  GEN_CASE(87, salt)        \
++  GEN_CASE(88, salt)        \
++  GEN_CASE(89, salt)        \
++  GEN_CASE(90, salt)        \
++  GEN_CASE(91, salt)        \
++  GEN_CASE(92, salt)        \
++  GEN_CASE(93, salt)        \
++  GEN_CASE(94, salt)        \
++  GEN_CASE(95, salt)        \
++  GEN_CASE(96, salt)        \
++  GEN_CASE(97, salt)        \
++  GEN_CASE(98, salt)        \
++  GEN_CASE(99, salt)        \
++  GEN_CASE(100, salt)       \
++  GEN_CASE(101, salt)       \
++  GEN_CASE(102, salt)       \
++  GEN_CASE(103, salt)       \
++  GEN_CASE(104, salt)       \
++  GEN_CASE(105, salt)       \
++  GEN_CASE(106, salt)       \
++  GEN_CASE(107, salt)       \
++  GEN_CASE(108, salt)       \
++  GEN_CASE(109, salt)       \
++  GEN_CASE(110, salt)       \
++  GEN_CASE(111, salt)       \
++  GEN_CASE(112, salt)       \
++  GEN_CASE(113, salt)       \
++  GEN_CASE(114, salt)       \
++  GEN_CASE(115, salt)       \
++  GEN_CASE(116, salt)       \
++  GEN_CASE(117, salt)       \
++  GEN_CASE(118, salt)       \
++  GEN_CASE(119, salt)       \
++  GEN_CASE(120, salt)       \
++  GEN_CASE(121, salt)       \
++  GEN_CASE(122, salt)       \
++  GEN_CASE(123, salt)       \
++  GEN_CASE(124, salt)       \
++  GEN_CASE(125, salt)       \
++  GEN_CASE(126, salt)       \
++  GEN_CASE(127, salt)       \
++  GEN_CASE(128, salt)       \
++  GEN_CASE(129, salt)       \
++  GEN_CASE(130, salt)       \
++  GEN_CASE(131, salt)       \
++  GEN_CASE(132, salt)       \
++  GEN_CASE(133, salt)       \
++  GEN_CASE(134, salt)       \
++  GEN_CASE(135, salt)       \
++  GEN_CASE(136, salt)       \
++  GEN_CASE(137, salt)       \
++  GEN_CASE(138, salt)       \
++  GEN_CASE(139, salt)       \
++  GEN_CASE(140, salt)       \
++  GEN_CASE(141, salt)       \
++  GEN_CASE(142, salt)       \
++  GEN_CASE(143, salt)       \
++  GEN_CASE(144, salt)       \
++  GEN_CASE(145, salt)       \
++  GEN_CASE(146, salt)       \
++  GEN_CASE(147, salt)       \
++  GEN_CASE(148, salt)       \
++  GEN_CASE(149, salt)       \
++  GEN_CASE(150, salt)       \
++  GEN_CASE(151, salt)       \
++  GEN_CASE(152, salt)       \
++  GEN_CASE(153, salt)       \
++  GEN_CASE(154, salt)       \
++  GEN_CASE(155, salt)       \
++  GEN_CASE(156, salt)       \
++  GEN_CASE(157, salt)       \
++  GEN_CASE(158, salt)       \
++  GEN_CASE(159, salt)       \
++  GEN_CASE(160, salt)       \
++  GEN_CASE(161, salt)       \
++  GEN_CASE(162, salt)       \
++  GEN_CASE(163, salt)       \
++  GEN_CASE(164, salt)       \
++  GEN_CASE(165, salt)       \
++  GEN_CASE(166, salt)       \
++  GEN_CASE(167, salt)       \
++  GEN_CASE(168, salt)       \
++  GEN_CASE(169, salt)       \
++  GEN_CASE(170, salt)       \
++  GEN_CASE(171, salt)       \
++  GEN_CASE(172, salt)       \
++  GEN_CASE(173, salt)       \
++  GEN_CASE(174, salt)       \
++  GEN_CASE(175, salt)       \
++  GEN_CASE(176, salt)       \
++  GEN_CASE(177, salt)       \
++  GEN_CASE(178, salt)       \
++  GEN_CASE(179, salt)       \
++  GEN_CASE(180, salt)       \
++  GEN_CASE(181, salt)       \
++  GEN_CASE(182, salt)       \
++  GEN_CASE(183, salt)       \
++  GEN_CASE(184, salt)       \
++  GEN_CASE(185, salt)       \
++  GEN_CASE(186, salt)       \
++  GEN_CASE(187, salt)       \
++  GEN_CASE(188, salt)       \
++  GEN_CASE(189, salt)       \
++  GEN_CASE(190, salt)       \
++  GEN_CASE(191, salt)       \
++  GEN_CASE(192, salt)       \
++  GEN_CASE(193, salt)       \
++  GEN_CASE(194, salt)       \
++  GEN_CASE(195, salt)       \
++  GEN_CASE(196, salt)       \
++  GEN_CASE(197, salt)       \
++  GEN_CASE(198, salt)       \
++  GEN_CASE(199, salt)       \
++  GEN_CASE(200, salt)       \
++  GEN_CASE(201, salt)       \
++  GEN_CASE(202, salt)       \
++  GEN_CASE(203, salt)       \
++  GEN_CASE(204, salt)       \
++  GEN_CASE(205, salt)       \
++  GEN_CASE(206, salt)       \
++  GEN_CASE(207, salt)       \
++  GEN_CASE(208, salt)       \
++  GEN_CASE(209, salt)       \
++  GEN_CASE(210, salt)       \
++  GEN_CASE(211, salt)       \
++  GEN_CASE(212, salt)       \
++  GEN_CASE(213, salt)       \
++  GEN_CASE(214, salt)       \
++  GEN_CASE(215, salt)       \
++  GEN_CASE(216, salt)       \
++  GEN_CASE(217, salt)       \
++  GEN_CASE(218, salt)       \
++  GEN_CASE(219, salt)       \
++  GEN_CASE(220, salt)       \
++  GEN_CASE(221, salt)       \
++  GEN_CASE(222, salt)       \
++  GEN_CASE(223, salt)       \
++  GEN_CASE(224, salt)       \
++  GEN_CASE(225, salt)       \
++  GEN_CASE(226, salt)       \
++  GEN_CASE(227, salt)       \
++  GEN_CASE(228, salt)       \
++  GEN_CASE(229, salt)       \
++  GEN_CASE(230, salt)       \
++  GEN_CASE(231, salt)       \
++  GEN_CASE(232, salt)       \
++  GEN_CASE(233, salt)       \
++  GEN_CASE(234, salt)       \
++  GEN_CASE(235, salt)       \
++  GEN_CASE(236, salt)       \
++  GEN_CASE(237, salt)       \
++  GEN_CASE(238, salt)       \
++  GEN_CASE(239, salt)       \
++  GEN_CASE(240, salt)       \
++  GEN_CASE(241, salt)       \
++  GEN_CASE(242, salt)       \
++  GEN_CASE(243, salt)       \
++  GEN_CASE(244, salt)       \
++  GEN_CASE(245, salt)       \
++  GEN_CASE(246, salt)       \
++  GEN_CASE(247, salt)       \
++  GEN_CASE(248, salt)       \
++  GEN_CASE(249, salt)       \
++  GEN_CASE(250, salt)       \
++  GEN_CASE(251, salt)       \
++  GEN_CASE(252, salt)       \
++  GEN_CASE(253, salt)       \
++  GEN_CASE(254, salt)       \
++  GEN_CASE(255, salt)
++
++    GEN_256_CASES(3)
++#undef GEN_CASE
++#undef GEN_256_CASES
++    default:
++      acc++;
++      break;
++  }
++  return acc;
++}
++} // namespace
++
++BENCHMARK(ObjectCompactProtocol_read_LargeSetInt_IcachePressure, iters) {
++  folly::BenchmarkSuspender susp;
++  using Serializer = CompactSerializer;
++  using Struct = LargeSetInt;
++
++  auto strct = create<Struct>();
++  folly::IOBufQueue q;
++  Serializer::serialize(strct, &q);
++  auto buf = q.move();
++  buf->coalesce();
++
++  constexpr size_t kChaseSize = 256;
++  std::vector<uint8_t> chase(kChaseSize);
++  for (size_t i = 0; i < kChaseSize; ++i) {
++    chase[i] = i;
++  }
++  // Fisher-Yates shuffle
++  for (size_t i = kChaseSize - 1; i > 0; --i) {
++    using std::swap;
++    swap(chase[i], chase[folly::Random::rand32(i + 1)]);
++  }
++
++  uint8_t chase_idx = 0;
++  int64_t junk = 0;
++
++  susp.dismiss();
++
++  for (size_t i = 0; i < iters; ++i) {
++    auto obj = protocol::parseObject<GetReader<Serializer>>(*buf);
++    folly::doNotOptimizeAway(obj);
++
++    chase_idx = chase[chase_idx];
++
++    switch (i % 3) {
++      case 0:
++        junk = pbench_icache_1(junk, chase_idx);
++        break;
++      case 1:
++        junk = pbench_icache_2(junk, chase_idx);
++        break;
++      case 2:
++        junk = pbench_icache_3(junk, chase_idx);
++        break;
++    }
++  }
++  folly::doNotOptimizeAway(junk);
++  susp.rehire();
++}
++
+ int main(int argc, char** argv) {
+   folly::Init init(&argc, &argv);
+   folly::runBenchmarks();

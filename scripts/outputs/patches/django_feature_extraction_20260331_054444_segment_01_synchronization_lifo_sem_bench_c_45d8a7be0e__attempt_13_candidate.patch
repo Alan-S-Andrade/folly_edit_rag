@@ -1,0 +1,23 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -337,7 +337,10 @@
+         for (uint32_t i = t; i < n; i += posters) {
+           hotPos = hotPos->next;
+           uint64_t payload = (uint64_t)(uintptr_t)hotPos;
+-          switch (i % 4) { // Slightly different dispatch for uniqueness
++          // The original benchmark used `i % 3` for dispatch.
++          // To increase instruction cache pressure and diversify hot code,
++          // we now use `i % 4` and include the new `switchD` function.
++          switch (i % 4) {
+             case 0:
+               acc = switchA(acc, payload & 0xFF);
+               break;
+@@ -347,7 +350,7 @@
+             case 2:
+               acc = switchC(acc, payload & 0xFF);
+               break;
+-            case 3: // New switch call
++            case 3: // New switch call to increase instruction footprint
+               acc = switchD(acc, payload & 0xFF);
+               break;
+           }

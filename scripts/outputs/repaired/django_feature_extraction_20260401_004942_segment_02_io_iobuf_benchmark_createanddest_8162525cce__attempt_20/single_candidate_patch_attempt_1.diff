@@ -1,0 +1,50 @@
+--- a/folly/io/test/IOBufBenchmark.cpp
++++ b/folly/io/test/IOBufBenchmark.cpp
+@@ -173,6 +173,36 @@
+   }
+   return result & 0xFF;
+ }
++
++// New helper functions for the benchmark to meet I-cache requirements.
++// These functions contain 256 cases, each with 10 ALU operations,
++// and use distinct literal constants.
++__attribute__((noinline)) static int large_alloc_switch_a(const std::vector<uint64_t>& vec, uint64_t current, uint64_t offset) {
++  int result = 0;
++  uint64_t index = (current + offset) & 0xFF;
++  for (int i = 0; i < 10; ++i) {
++    result = (result * 31) ^ vec[(index + i) & 0xFF] ^ (current >> (i * 2));
++  }
++  return result & 0xFF;
++}
++
++__attribute__((noinline)) static int large_alloc_switch_b(const std::vector<uint64_t>& vec, uint64_t current, uint64_t offset) {
++  int result = 0;
++  uint64_t index = (current - offset) & 0xFF;
++  for (int i = 0; i < 10; ++i) {
++    result = (result + 37) ^ vec[(index - i) & 0xFF] ^ (current << (i * 2));
++  }
++  return result & 0xFF;
++}
++
++__attribute__((noinline)) static int large_alloc_switch_c(const std::vector<uint64_t>& vec, uint64_t current, uint64_t offset) {
++  int result = 0;
++  uint64_t index = (current + offset * 3) & 0xFF;
++  for (int i = 0; i < 10; ++i) {
++    result = (result ^ 41) + vec[(index + i * 2) & 0xFF] ^ (current % (i + 1));
++  }
++  return result & 0xFF;
++}
+ } // namespace
+ 
+ static void createAndDestroyMulti(size_t iters, size_t size) {
+@@ -245,6 +275,10 @@
+       current ^= indirect_data[switch_case_1(indirect_data, current, j)];
+       current ^= indirect_data[switch_case_2(indirect_data, current, j)];
+       current ^= indirect_data[switch_case_3(indirect_data, current, j)];
++      // Added rotations for the three new helper functions.
++      current ^= indirect_data[large_alloc_switch_a(indirect_data, current, j)];
++      current ^= indirect_data[large_alloc_switch_b(indirect_data, current, j)];
++      current ^= indirect_data[large_alloc_switch_c(indirect_data, current, j)];
+     }
+     folly::doNotOptimizeAway(current);
+   }

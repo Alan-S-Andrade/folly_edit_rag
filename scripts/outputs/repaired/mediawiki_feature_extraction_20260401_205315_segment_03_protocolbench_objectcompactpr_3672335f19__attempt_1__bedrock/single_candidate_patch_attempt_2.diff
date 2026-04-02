@@ -1,0 +1,37 @@
+--- a/thrift/lib/cpp2/test/ProtocolBench.cpp
++++ b/thrift/lib/cpp2/test/ProtocolBench.cpp
+@@ -200,6 +200,34 @@
+ OpEncodeX(OpEncode, Binary)
+ OpEncodeX(OpEncode, Compact)
+ 
++// Variant of ObjectCompactProtocol_read_LargeSetInt that reads two
++// independently-serialized LargeSetInt buffers per iteration and combines
++// their parsed objects, materially changing the hot path vs the original
++// single-buffer read.
++BENCHMARK(ObjectCompactProtocol_read_LargeSetInt_TwoPass, iters) {
++  folly::BenchmarkSuspender susp;
++  auto strct = create<LargeSetInt>();
++  folly::IOBufQueue q1, q2;
++  CompactSerializer::serialize(strct, &q1);
++  CompactSerializer::serialize(strct, &q2);
++  auto buf1 = q1.move();
++  auto buf2 = q2.move();
++  buf1->coalesce();
++  buf2->coalesce();
++  susp.dismiss();
++
++  while (iters--) {
++    auto obj1 = protocol::parseObject<CompactProtocolReader>(*buf1);
++    auto obj2 = protocol::parseObject<CompactProtocolReader>(*buf2);
++    // Merge the two parsed objects so neither parse can be elided.
++    for (auto& [k, v] : obj2) {
++      obj1[k] = std::move(v);
++    }
++    folly::doNotOptimizeAway(obj1);
++  }
++  susp.rehire();
++}
++
+ int main(int argc, char** argv) {
+   folly::Init init(&argc, &argv);
+   folly::runBenchmarks();

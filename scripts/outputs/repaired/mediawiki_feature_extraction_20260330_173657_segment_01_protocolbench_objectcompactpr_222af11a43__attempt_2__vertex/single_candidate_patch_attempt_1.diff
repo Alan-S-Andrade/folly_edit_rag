@@ -1,0 +1,212 @@
+--- a/thrift/lib/cpp2/test/ProtocolBench.cpp
++++ b/thrift/lib/cpp2/test/ProtocolBench.cpp
+@@ -26,8 +26,127 @@
+ #include <folly/init/Init.h>
+ #include <folly/portability/GFlags.h>
+ 
++#include <cmath>
++#include <numeric>
++#include <vector>
++
+ using namespace apache::thrift;
+ using namespace thrift::benchmark;
++
++namespace {
++
++#define ALU_OPS_S(i, salt)                                                   \
++  val = (val + ((0x1718191a + salt) ^ (i * 0x1010101))) *                     \
++      ((0x1b1c1d1e + salt) ^ (i * 0x1010101));                                \
++  val = (val ^ ((0x1f202122 + salt) ^ (i * 0x1010101))) +                     \
++      ((0x23242526 + salt) ^ (i * 0x1010101));                                \
++  val = (val + ((0x2728292a + salt) ^ (i * 0x1010101))) *                     \
++      ((0x2b2c2d2e + salt) ^ (i * 0x1010101));                                \
++  val = (val ^ ((0x2f303132 + salt) ^ (i * 0x1010101))) +                     \
++      ((0x33343536 + salt) ^ (i * 0x1010101));                                \
++  val = (val + ((0x3738393a + salt) ^ (i * 0x1010101))) *                     \
++      ((0x3b3c3d3e + salt) ^ (i * 0x1010101));                                \
++  val = (val ^ ((0x3f404142 + salt) ^ (i * 0x1010101))) +                     \
++      ((0x43444546 + salt) ^ (i * 0x1010101));                                \
++  val = (val + ((0x4748494a + salt) ^ (i * 0x1010101))) *                     \
++      ((0x4b4c4d4e + salt) ^ (i * 0x1010101));                                \
++  val = (val ^ ((0x4f505152 + salt) ^ (i * 0x1010101))) +                     \
++      ((0x53545556 + salt) ^ (i * 0x1010101));                                \
++  val = (val + ((0x5758595a + salt) ^ (i * 0x1010101))) *                     \
++      ((0x5b5c5d5e + salt) ^ (i * 0x1010101));                                \
++  val = (val ^ ((0x5f606162 + salt) ^ (i * 0x1010101))) +                     \
++      ((0x63646566 + salt) ^ (i * 0x1010101));                                \
++  val = (val + ((0x6768696a + salt) ^ (i * 0x1010101))) *                     \
++      ((0x6b6c6d6e + salt) ^ (i * 0x1010101));                                \
++  val = (val ^ ((0x6f707172 + salt) ^ (i * 0x1010101))) +                     \
++      ((0x73747576 + salt) ^ (i * 0x1010101));                                \
++  val = (val + ((0x7778797a + salt) ^ (i * 0x1010101))) *                     \
++      ((0x7b7c7d7e + salt) ^ (i * 0x1010101));                                \
++  val = (val ^ ((0x7f808182 + salt) ^ (i * 0x1010101))) +                     \
++      ((0x83848586 + salt) ^ (i * 0x1010101));
++
++#define GEN_CASES_16_S(base, salt)         \
++  case base + 0:                         \
++    ALU_OPS_S(base + 0, salt);             \
++    break;                                 \
++  case base + 1:                         \
++    ALU_OPS_S(base + 1, salt);             \
++    break;                                 \
++  case base + 2:                         \
++    ALU_OPS_S(base + 2, salt);             \
++    break;                                 \
++  case base + 3:                         \
++    ALU_OPS_S(base + 3, salt);             \
++    break;                                 \
++  case base + 4:                         \
++    ALU_OPS_S(base + 4, salt);             \
++    break;                                 \
++  case base + 5:                         \
++    ALU_OPS_S(base + 5, salt);             \
++    break;                                 \
++  case base + 6:                         \
++    ALU_OPS_S(base + 6, salt);             \
++    break;                                 \
++  case base + 7:                         \
++    ALU_OPS_S(base + 7, salt);             \
++    break;                                 \
++  case base + 8:                         \
++    ALU_OPS_S(base + 8, salt);             \
++    break;                                 \
++  case base + 9:                         \
++    ALU_OPS_S(base + 9, salt);             \
++    break;                                 \
++  case base + 10:                        \
++    ALU_OPS_S(base + 10, salt);            \
++    break;                                 \
++  case base + 11:                        \
++    ALU_OPS_S(base + 11, salt);            \
++    break;                                 \
++  case base + 12:                        \
++    ALU_OPS_S(base + 12, salt);            \
++    break;                                 \
++  case base + 13:                        \
++    ALU_OPS_S(base + 13, salt);            \
++    break;                                 \
++  case base + 14:                        \
++    ALU_OPS_S(base + 14, salt);            \
++    break;                                 \
++  case base + 15:                        \
++    ALU_OPS_S(base + 15, salt);            \
++    break;
++
++#define GEN_CASES_256_S(salt) \
++  GEN_CASES_16_S(0, salt)     \
++  GEN_CASES_16_S(16, salt)    \
++  GEN_CASES_16_S(32, salt)    \
++  GEN_CASES_16_S(48, salt)    \
++  GEN_CASES_16_S(64, salt)    \
++  GEN_CASES_16_S(80, salt)    \
++  GEN_CASES_16_S(96, salt)    \
++  GEN_CASES_16_S(112, salt)   \
++  GEN_CASES_16_S(128, salt)   \
++  GEN_CASES_16_S(144, salt)   \
++  GEN_CASES_16_S(160, salt)   \
++  GEN_CASES_16_S(176, salt)   \
++  GEN_CASES_16_S(192, salt)   \
++  GEN_CASES_16_S(208, salt)   \
++  GEN_CASES_16_S(224, salt)   \
++  GEN_CASES_16_S(240, salt)
++
++#define SWITCH_FUNC_S(name, salt) \
++  __attribute__((noinline)) int name(int x, int y) { \
++    int val = x;                  \
++    switch (y & 0xFF) {           \
++      GEN_CASES_256_S(salt)       \
++    }                             \
++    return val;                   \
++  }
++
++SWITCH_FUNC_S(alu_work_func_0, 0)
++SWITCH_FUNC_S(alu_work_kindof_1, 256)
++SWITCH_FUNC_S(alu_work_other_2, 512)
++
++} // namespace
+ 
+ template <class>
+ struct SerializerTraits;
+@@ -123,6 +242,67 @@
+       folly::doNotOptimizeAway(data);
+     }
+   }
++  susp.rehire();
++}
++
++template <
++    SerializerMethod kSerializerMethod,
++    typename Serializer,
++    typename Struct>
++void readBench_v1(size_t iters) {
++  folly::BenchmarkSuspender susp;
++  auto strct = create<Struct>();
++  folly::IOBufQueue q;
++  Serializer::serialize(strct, &q);
++  auto buf = q.move();
++  buf->coalesce();
++
++  std::vector<int> values;
++  if constexpr (std::is_same_v<Struct, LargeSetInt>) {
++    if (auto r = strct.field_1_ref()) {
++      values.assign(r->begin(), r->end());
++    }
++  }
++  if (values.empty()) {
++    values.resize(1024);
++    std::iota(values.begin(), values.end(), 0);
++  }
++
++  std::vector<size_t> chase(values.size());
++  for (size_t i = 0; i < values.size(); ++i) {
++    chase[i] = (size_t)std::abs(values[i]) % values.size();
++  }
++
++  susp.dismiss();
++
++  size_t idx = 0;
++  int acc = 0;
++  while (iters--) {
++    if constexpr (kSerializerMethod == SerializerMethod::Object) {
++      auto obj = protocol::parseObject<GetReader<Serializer>>(*buf);
++      folly::doNotOptimizeAway(obj);
++
++      idx = chase[idx];
++      int val = values[idx];
++
++      switch ((iters) % 3) {
++        case 0:
++          acc = alu_work_func_0(acc, val);
++          break;
++        case 1:
++          acc = alu_work_kindof_1(acc, val);
++          break;
++        case 2:
++          acc = alu_work_other_2(acc, val);
++          break;
++      }
++    } else {
++      Struct data;
++      Serializer::deserialize(buf.get(), data);
++      folly::doNotOptimizeAway(data);
++    }
++  }
++  folly::doNotOptimizeAway(acc);
+   susp.rehire();
+ }
+ 
+@@ -200,6 +380,13 @@
+ OpEncodeX(OpEncode, Binary)
+ OpEncodeX(OpEncode, Compact)
+ 
++BENCHMARK(ObjectCompactProtocol_read_LargeSetInt_v1, iters) {
++  readBench_v1<
++      getSerializerMethod("Object"),
++      CompactSerializer,
++      LargeSetInt>(iters);
++}
++
+ int main(int argc, char** argv) {
+   folly::Init init(&argc, &argv);
+   folly::runBenchmarks();

@@ -1,0 +1,11 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -291,7 +291,7 @@
+         // Replace std::this_thread::yield() with a busy-wait for potentially
+         // higher IPC by avoiding context switch overhead during the initial spin.
+         while (!go.load()) {
+-          // std::this_thread::yield();
++          asm_volatile_pause();
+         }
+         for (uint32_t i = t; i < n; i += posters) {
+           hotPos = hotPos->next;

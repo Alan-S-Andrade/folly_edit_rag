@@ -1,0 +1,84 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -267,9 +267,9 @@
+     thr.join();
+   }
+ }
+-} // namespace
+-
+-static void contendedUse(uint32_t n, int posters, int waiters) {
++
++// New benchmark variant to potentially boost IPC by adding independent compute work
++static void contendedUse_ipc_variant(uint32_t n, int posters, int waiters) {
+   LifoSemImpl<std::atomic> sem;
+ 
+   std::vector<std::thread> threads;
+@@ -285,12 +285,24 @@
+     }
+     for (int t = 0; t < posters; ++t) {
+       threads.emplace_back([=, &sem, &go] {
++        // Local accumulator for compute work
++        uint64_t acc = t; 
++
+         while (!go.load()) {
+           std::this_thread::yield();
+         }
+         for (uint32_t i = t; i < n; i += posters) {
++          // Add simple arithmetic work to fill pipeline bubbles and increase IPC.
++          // This work is local to the thread, has loop-carried dependencies for acc,
++          // but no new memory accesses or expensive control flow.
++          acc = (acc * 3 + 7) ^ (i * 5); 
++          acc += (acc >> 17) | (i << 3);
++          acc *= 1234567891; 
++          folly::doNotOptimizeAway(acc); // Ensure the computation is not optimized away
++
+           sem.post();
+         }
++        folly::doNotOptimizeAway(acc); // Ensure final 'acc' value is not optimized away
+       });
+     }
+   }
+@@ -301,8 +313,43 @@
+   }
+ }
+ 
++} // namespace
++
++static void contendedUse(uint32_t n, int posters, int waiters) {
++  LifoSemImpl<std::atomic> sem;
++
++  std::vector<std::thread> threads;
++  std::atomic<bool> go(false);
++
++  BENCHMARK_SUSPEND {
++    for (int t = 0; t < waiters; ++t) {
++      threads.emplace_back([=, &sem] {
++        for (uint32_t i = t; i < n; i += waiters) {
++          sem.wait();
++        }
++      });
++    }
++    for (int t = 0; t < posters; ++t) {
++      threads.emplace_back([=, &sem, &go] {
++        while (!go.load()) {
++          std::this_thread::yield();
++        }
++        for (uint32_t i = t; i < n; i += posters) {
++          sem.post();
++        }
++      });
++    }
++  }
++
++  go.store(true);
++  for (auto& thr : threads) {
++    thr.join();
++  }
++}
++
+ BENCHMARK_DRAW_LINE();
+ BENCHMARK_NAMED_PARAM(contendedUse, 1_to_1, 1, 1)
++BENCHMARK_NAMED_PARAM(contendedUse_ipc_variant, 32_to_1000_IPCBoost, 32, 1000) // NEW REGISTRATION
+ BENCHMARK_NAMED_PARAM(contendedUse, 1_to_4, 1, 4)
+ BENCHMARK_NAMED_PARAM(contendedUse, 1_to_32, 1, 32)
+ BENCHMARK_NAMED_PARAM(contendedUse, 4_to_1, 4, 1)

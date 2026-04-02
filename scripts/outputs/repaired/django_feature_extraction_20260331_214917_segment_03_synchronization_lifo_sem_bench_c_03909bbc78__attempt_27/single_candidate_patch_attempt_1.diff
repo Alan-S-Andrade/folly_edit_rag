@@ -1,0 +1,11 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -250,8 +250,6 @@
+               acc = switchC(acc, payload & 0xFF);
+               break;
+           }
+-
+-          // The conditional coldPos update is removed as coldPos is always advanced above.
+           sem.post();
+         }
+         folly::doNotOptimizeAway(acc);

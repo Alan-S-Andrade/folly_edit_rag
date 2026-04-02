@@ -1,0 +1,13 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -250,8 +250,8 @@
+               break;
+           }
+ 
+-          // Removed the conditional update of coldPos to reduce overhead
+-          // and promote consistent memory access patterns.
++          // Moved the update of coldPos before sem.post() to increase
++          // the likelihood of L3 cache hits on coldPos for the next iteration.
+           coldPos = coldPos->next;
+           sem.post();
+         }

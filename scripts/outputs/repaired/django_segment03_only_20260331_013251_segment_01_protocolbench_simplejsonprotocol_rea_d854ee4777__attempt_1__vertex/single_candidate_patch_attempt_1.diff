@@ -1,0 +1,104 @@
+--- a/thrift/lib/cpp2/test/ProtocolBench.cpp
++++ b/thrift/lib/cpp2/test/ProtocolBench.cpp
+@@ -120,6 +120,74 @@
+     } else {
+       Struct data;
+       Serializer::deserialize(buf.get(), data);
++      folly::doNotOptimizeAway(data);
++    }
++  }
++  susp.rehire();
++}
++
++namespace {
++FOLLY_NOINLINE int func1_v1(int x) {
++  int y = x * x + (x << 2);
++  if (y & 1) {
++    return y | (y >> 1);
++  }
++  return y & (y - 1);
++}
++FOLLY_NOINLINE int func2_v1(int x) {
++  int y = x + 7;
++  for (int i = 0; i < 2; ++i) {
++    y = y * y - x;
++  }
++  return y;
++}
++FOLLY_NOINLINE int func3_v1(int x) {
++  int y = x;
++  for (int i = 0; i < 3; ++i) {
++    y = (y << 1) ^ (i + y);
++  }
++  return y;
++}
++} // namespace
++
++template <
++    SerializerMethod kSerializerMethod,
++    typename Serializer,
++    typename Struct>
++void readBenchWithBranchyWork(size_t iters) {
++  folly::BenchmarkSuspender susp;
++  auto strct = create<Struct>();
++  folly::IOBufQueue q;
++  Serializer::serialize(strct, &q);
++  auto buf = q.move();
++  // coalesce the IOBuf chain to test fast path
++  buf->coalesce();
++
++  volatile unsigned int counter = 0;
++  susp.dismiss();
++
++  while (iters--) {
++    if constexpr (kSerializerMethod == SerializerMethod::Object) {
++      auto obj = protocol::parseObject<GetReader<Serializer>>(*buf);
++      folly::doNotOptimizeAway(obj);
++    } else {
++      Struct data;
++      Serializer::deserialize(buf.get(), data);
++
++      int local_val = 0;
++      switch ((counter++) % 3) {
++        case 0:
++          local_val = func1_v1(iters);
++          break;
++        case 1:
++          local_val = func2_v1(iters);
++          break;
++        case 2:
++          local_val = func3_v1(iters);
++          break;
++      }
++      folly::doNotOptimizeAway(local_val);
++
+       folly::doNotOptimizeAway(data);
+     }
+   }
+@@ -186,9 +254,9 @@
+   M(Prefix, proto, ComplexStruct)      \
+   M(Prefix, proto, ComplexUnion)
+ 
+-#define X(Prefix, proto) APPLY(X2, Prefix, proto)              
+-
+-#define OpEncodeX(Prefix, proto) APPLY(OpEncodeX2, Prefix, proto)              
++#define X(Prefix, proto) APPLY(X2, Prefix, proto)
++
++#define OpEncodeX(Prefix, proto) APPLY(OpEncodeX2, Prefix, proto)
+ 
+ X(, Binary)
+ X(, Compact)
+@@ -200,6 +268,13 @@
+ OpEncodeX(OpEncode, Binary)
+ OpEncodeX(OpEncode, Compact)
+ 
++BENCHMARK(SimpleJSONProtocol_read_UnorderedSetInt_v1, iters) {
++  readBenchWithBranchyWork<
++      getSerializerMethod(""),
++      SimpleJSONSerializer,
++      UnorderedSetInt>(iters);
++}
++
+ int main(int argc, char** argv) {
+   folly::Init init(&argc, &argv);
+   folly::runBenchmarks();

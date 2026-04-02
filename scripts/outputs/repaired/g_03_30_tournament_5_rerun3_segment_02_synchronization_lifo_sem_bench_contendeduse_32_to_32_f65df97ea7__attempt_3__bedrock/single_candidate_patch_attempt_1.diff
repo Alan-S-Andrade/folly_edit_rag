@@ -1,0 +1,70 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -145,39 +145,53 @@
+ 
+   std::vector<std::thread> threads;
+   std::atomic<bool> go(false);
+-  // Shared unpredictable counter to drive branch mispredictions
+-  std::atomic<uint64_t> shared_counter(0);
++  // Per-thread local counters seeded differently to drive branch mispredictions
++  // without false sharing on a single shared atomic.
++  std::vector<uint64_t> seeds(posters + waiters);
++  for (int i = 0; i < posters + waiters; ++i) {
++    seeds[i] = static_cast<uint64_t>(i) * 6364136223846793005ULL + 1;
++  }
+ 
+   BENCHMARK_SUSPEND {
+     for (int t = 0; t < waiters; ++t) {
+-      threads.emplace_back([=, &sem, &shared_counter] {
++      threads.emplace_back([=, &sem] {
++        // xorshift64 PRNG — all state is thread-local, no sharing
++        uint64_t x = seeds[t] ^ 0xdeadbeefcafe0000ULL;
+         for (uint32_t i = t; i < n; i += waiters) {
+           sem.wait();
+-          // Unpredictable branch based on shared atomic state
+-          uint64_t v = shared_counter.fetch_add(1, std::memory_order_relaxed);
+-          if (v & 1) {
+-            shared_counter.fetch_add(3, std::memory_order_relaxed);
++          // Unpredictable branch: next bit of a local PRNG
++          x ^= x << 13;
++          x ^= x >> 7;
++          x ^= x << 17;
++          if (x & 1) {
++            x += 3;
+           } else {
+-            shared_counter.fetch_add(7, std::memory_order_relaxed);
++            x += 7;
+           }
+         }
++        // Prevent the compiler from optimising away x entirely
++        folly::doNotOptimizeAway(x);
+       });
+     }
+     for (int t = 0; t < posters; ++t) {
+-      threads.emplace_back([=, &sem, &go, &shared_counter] {
++      threads.emplace_back([=, &sem, &go] {
++        uint64_t x = seeds[waiters + t] ^ 0xfeedface12345678ULL;
+         while (!go.load()) {
+           std::this_thread::yield();
+         }
+         for (uint32_t i = t; i < n; i += posters) {
+           sem.post();
+-          // Unpredictable branch based on shared atomic state
+-          uint64_t v = shared_counter.fetch_add(1, std::memory_order_relaxed);
+-          if (v & 1) {
+-            shared_counter.fetch_add(5, std::memory_order_relaxed);
++          // Unpredictable branch: next bit of a local PRNG
++          x ^= x << 13;
++          x ^= x >> 7;
++          x ^= x << 17;
++          if (x & 1) {
++            x += 5;
+           } else {
+-            shared_counter.fetch_add(11, std::memory_order_relaxed);
++            x += 11;
+           }
+         }
++        folly::doNotOptimizeAway(x);
+       });
+     }
+   }

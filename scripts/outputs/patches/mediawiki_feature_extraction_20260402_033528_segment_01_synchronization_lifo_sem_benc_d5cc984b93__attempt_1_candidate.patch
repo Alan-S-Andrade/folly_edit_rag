@@ -1,0 +1,82 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -267,9 +267,8 @@
+     thr.join();
+   }
+ }
+-} // namespace
+-
+-static void contendedUse(uint32_t n, int posters, int waiters) {
++
++static void contendedUse_ipc_v1(uint32_t n, int posters, int waiters) {
+   LifoSemImpl<std::atomic> sem;
+ 
+   std::vector<std::thread> threads;
+@@ -285,12 +284,23 @@
+     }
+     for (int t = 0; t < posters; ++t) {
+       threads.emplace_back([=, &sem, &go] {
++        constexpr size_t buf_size = 256;
++        uint64_t* work_buffer = new uint64_t[buf_size];
++
+         while (!go.load()) {
+           std::this_thread::yield();
+         }
+         for (uint32_t i = t; i < n; i += posters) {
++          work_buffer[((i - t) / posters) % buf_size] = i;
+           sem.post();
+         }
++
++        uint64_t sum = 0;
++        for (size_t j = 0; j < buf_size; ++j) {
++          sum += work_buffer[j];
++        }
++        folly::doNotOptimizeAway(sum);
++        delete[] work_buffer;
+       });
+     }
+   }
+@@ -300,9 +310,43 @@
+     thr.join();
+   }
+ }
++} // namespace
++
++static void contendedUse(uint32_t n, int posters, int waiters) {
++  LifoSemImpl<std::atomic> sem;
++
++  std::vector<std::thread> threads;
++  std::atomic<bool> go(false);
++
++  BENCHMARK_SUSPEND {
++    for (int t = 0; t < waiters; ++t) {
++      threads.emplace_back([=, &sem] {
++        for (uint32_t i = t; i < n; i += waiters) {
++          sem.wait();
++        }
++      });
++    }
++    for (int t = 0; t < posters; ++t) {
++      threads.emplace_back([=, &sem, &go] {
++        while (!go.load()) {
++          std::this_thread::yield();
++        }
++        for (uint32_t i = t; i < n; i += posters) {
++          sem.post();
++        }
++      });
++    }
++  }
++
++  go.store(true);
++  for (auto& thr : threads) {
++    thr.join();
++  }
++}
+ 
+ BENCHMARK_DRAW_LINE();
+ BENCHMARK_NAMED_PARAM(contendedUse, 1_to_1, 1, 1)
++BENCHMARK_NAMED_PARAM(contendedUse_ipc_v1, 32_to_1000_ipc_v1, 32, 1000)
+ BENCHMARK_NAMED_PARAM(contendedUse, 1_to_4, 1, 4)
+ BENCHMARK_NAMED_PARAM(contendedUse, 1_to_32, 1, 32)
+ BENCHMARK_NAMED_PARAM(contendedUse, 4_to_1, 4, 1)

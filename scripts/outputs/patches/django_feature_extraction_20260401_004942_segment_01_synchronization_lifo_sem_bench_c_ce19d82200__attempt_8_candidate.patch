@@ -1,0 +1,11 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -306,7 +306,7 @@
+ BENCHMARK_NAMED_PARAM(contendedUse, 1_to_4, 1, 4)
+ BENCHMARK_NAMED_PARAM(contendedUse, 1_to_32, 1, 32)
+ BENCHMARK_NAMED_PARAM(contendedUse, 4_to_1, 4, 1)
+-BENCHMARK_NAMED_PARAM(contendedUse, 4_to_24, 4, 24)
++BENCHCHMARK_NAMED_PARAM(contendedUse, 4_to_24, 4, 24)
+ BENCHMARK_NAMED_PARAM(contendedUse, 8_to_100, 8, 100)
+ BENCHMARK_NAMED_PARAM(contendedUse, 32_to_1, 31, 1)
+ BENCHMARK_NAMED_PARAM(contendedUse, 16_to_16, 16, 16)

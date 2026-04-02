@@ -1,0 +1,140 @@
+--- a/thrift/lib/cpp2/test/ProtocolBench.cpp
++++ b/thrift/lib/cpp2/test/ProtocolBench.cpp
+@@ -19,6 +19,10 @@
+ #include <thrift/lib/cpp2/protocol/Serializer.h>
+ #include <thrift/lib/cpp2/test/Structs.h>
+ 
++#include <algorithm>
++#include <numeric>
++#include <random>
++
+ #include <glog/logging.h>
+ #include <folly/Benchmark.h>
+ #include <folly/BenchmarkUtil.h>
+@@ -28,6 +32,126 @@
+ 
+ using namespace apache::thrift;
+ using namespace thrift::benchmark;
++
++#define ALU_OPS_28(acc, C1, C2, C3, C4, C5, C6, C7, C8, C9, C10, C11, C12, C13, C14) \
++  acc += C1; acc ^= C2; acc *= C3; acc += C4; acc ^= C5; acc *= C6; acc += C7; \
++  acc ^= C8; acc *= C9; acc += C10; acc ^= C11; acc *= C12; acc += C13; acc ^= C14; \
++  acc += C14; acc ^= C13; acc *= C12; acc += C11; acc ^= C10; acc *= C9; acc += C8; \
++  acc ^= C7; acc *= C6; acc += C5; acc ^= C4; acc *= C3; acc += C2; acc ^= C1;
++
++#define SWITCH_CASE_IMPL(i, acc, offset) \
++  case i: \
++    ALU_OPS_28(acc, (i + offset) * 14 + 1, (i + offset) * 14 + 2, (i + offset) * 14 + 3, (i + offset) * 14 + 4, (i + offset) * 14 + 5, (i + offset) * 14 + 6, (i + offset) * 14 + 7, (i + offset) * 14 + 8, (i + offset) * 14 + 9, (i + offset) * 14 + 10, (i + offset) * 14 + 11, (i + offset) * 14 + 12, (i + offset) * 14 + 13, (i + offset) * 14 + 14); \
++    break;
++
++#define SWITCH_CHUNK_4(i, acc, offset) \
++    SWITCH_CASE_IMPL(i, acc, offset) \
++    SWITCH_CASE_IMPL(i+1, acc, offset) \
++    SWITCH_CASE_IMPL(i+2, acc, offset) \
++    SWITCH_CASE_IMPL(i+3, acc, offset)
++
++#define SWITCH_CHUNK_16(i, acc, offset) \
++    SWITCH_CHUNK_4(i, acc, offset) \
++    SWITCH_CHUNK_4(i+4, acc, offset) \
++    SWITCH_CHUNK_4(i+8, acc, offset) \
++    SWITCH_CHUNK_4(i+12, acc, offset)
++
++#define SWITCH_CHUNK_64(i, acc, offset) \
++    SWITCH_CHUNK_16(i, acc, offset) \
++    SWITCH_CHUNK_16(i+16, acc, offset) \
++    SWITCH_CHUNK_16(i+32, acc, offset) \
++    SWITCH_CHUNK_16(i+48, acc, offset)
++
++#define SWITCH_CHUNK_256(i, acc, offset) \
++    SWITCH_CHUNK_64(i, acc, offset) \
++    SWITCH_CHUNK_64(i+64, acc, offset) \
++    SWITCH_CHUNK_64(i+128, acc, offset) \
++    SWITCH_CHUNK_64(i+192, acc, offset)
++
++__attribute__((noinline))
++uint64_t large_switch_func_0(uint64_t acc, uint8_t selector) {
++  switch (selector) {
++    SWITCH_CHUNK_256(0, acc, 0)
++  }
++  return acc;
++}
++
++__attribute__((noinline))
++uint64_t large_switch_func_1(uint64_t acc, uint8_t selector) {
++  switch (selector) {
++    SWITCH_CHUNK_256(0, acc, 256)
++  }
++  return acc;
++}
++
++__attribute__((noinline))
++uint64_t large_switch_func_2(uint64_t acc, uint8_t selector) {
++  switch (selector) {
++    SWITCH_CHUNK_256(0, acc, 512)
++  }
++  return acc;
++}
++
++#undef ALU_OPS_28
++#undef SWITCH_CASE_IMPL
++#undef SWITCH_CHUNK_4
++#undef SWITCH_CHUNK_16
++#undef SWITCH_CHUNK_64
++#undef SWITCH_CHUNK_256
++
++struct Node {
++  Node* next;
++  uint64_t payload;
++};
++
++const size_t kNodeCount_icache_v8 = 1 << 16;
++static std::vector<Node> chase_nodes_icache_v8;
++static Node* chase_head_icache_v8 = nullptr;
++
++void setup_chase_array_icache_v8() {
++  if (chase_head_icache_v8) return;
++
++  chase_nodes_icache_v8.resize(kNodeCount_icache_v8);
++  std::vector<size_t> indices(kNodeCount_icache_v8);
++  std::iota(indices.begin(), indices.end(), 0);
++  std::mt19937 g(folly::randomNumberSeed());
++  std::shuffle(indices.begin(), indices.end(), g);
++
++  for (size_t i = 0; i < kNodeCount_icache_v8; ++i) {
++    chase_nodes_icache_v8[indices[i]].next = &chase_nodes_icache_v8[indices[(i + 1) % kNodeCount_icache_v8]];
++    chase_nodes_icache_v8[indices[i]].payload = folly::Random::rand64(g);
++  }
++  chase_head_icache_v8 = &chase_nodes_icache_v8[0];
++}
++
++
++BENCHMARK(ObjectCompactProtocol_read_LargeSetInt_icache_v8, iters) {
++  folly::BenchmarkSuspender susp;
++  setup_chase_array_icache_v8();
++  auto* p = chase_head_icache_v8;
++  uint64_t acc = 0;
++  susp.dismiss();
++
++  for (size_t i = 0; i < iters; ++i) {
++    p = p->next;
++    uint8_t selector = p->payload & 0xFF;
++    switch (i % 3) {
++      case 0:
++        acc = large_switch_func_0(acc, selector);
++        break;
++      case 1:
++        acc = large_switch_func_1(acc, selector);
++        break;
++      case 2:
++        acc = large_switch_func_2(acc, selector);
++        break;
++    }
++  }
++
++  folly::doNotOptimizeAway(acc);
++  folly::doNotOptimizeAway(p);
++}
++
+ 
+ template <class>
+ struct SerializerTraits;

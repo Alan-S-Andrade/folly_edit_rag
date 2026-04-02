@@ -1,0 +1,56 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -136,30 +136,45 @@
+   }
+ }
+ 
++#define EXPANDED_ALU_OPS_BODY(v_acc, c_val, base_val, case_id)                 \
++  v_acc = ((v_acc * 3) ^ ((uint64_t)c_val + base_val + case_id + 0));         \
++  v_acc = ((v_acc + 5) & ((uint64_t)c_val - base_val + case_id + 1));         \
++  v_acc = ((v_acc * 7) + ((uint64_t)c_val | (base_val + case_id + 2)));       \
++  v_acc = ((v_acc ^ 11) * ((uint64_t)c_val + base_val + case_id + 3));        \
++  v_acc = ((v_acc - 13) >> (((uint64_t)c_val % 31) + 1)); /* avoid zero shift */ \
++  v_acc = ((v_acc + 17) ^ ((uint64_t)c_val * base_val + case_id + 4));        \
++  v_acc = ((v_acc * 19) + ((uint64_t)c_val & (base_val + case_id + 5)));      \
++  v_acc = ((v_acc ^ 23) - ((uint64_t)c_val + base_val + case_id + 6));        \
++  v_acc = ((v_acc + 29) * ((uint64_t)c_val | (base_val + case_id + 7)));      \
++  v_acc = ((v_acc - 31) & ((uint64_t)c_val + base_val + case_id + 8));        \
++  v_acc = ((v_acc * 37) ^ ((uint64_t)c_val - base_val + case_id + 9));        \
++  v_acc = ((v_acc + 41) >> (((uint64_t)c_val % 31) + 1));                     \
++  v_acc = ((v_acc * 43) + ((uint64_t)c_val ^ (base_val + case_id + 10)));
++
+ #define CASES_8(v, c, base)                                                    \
+   case base + 0:                                                               \
+-    v = (v * 3) + (uint64_t)c + base + 0;                                      \
++    EXPANDED_ALU_OPS_BODY(v, c, base, 0);                                      \
+     break;                                                                     \
+   case base + 1:                                                               \
+-    v = (v * 5) + (uint64_t)c + base + 1;                                      \
++    EXPANDED_ALU_OPS_BODY(v, c, base, 1);                                      \
+     break;                                                                     \
+   case base + 2:                                                               \
+-    v = (v * 7) + (uint64_t)c + base + 2;                                      \
++    EXPANDED_ALU_OPS_BODY(v, c, base, 2);                                      \
+     break;                                                                     \
+   case base + 3:                                                               \
+-    v = (v * 11) + (uint64_t)c + base + 3;                                     \
++    EXPANDED_ALU_OPS_BODY(v, c, base, 3);                                      \
+     break;                                                                     \
+   case base + 4:                                                               \
+-    v = (v * 13) + (uint64_t)c + base + 4;                                     \
++    EXPANDED_ALU_OPS_BODY(v, c, base, 4);                                      \
+     break;                                                                     \
+   case base + 5:                                                               \
+-    v = (v * 17) + (uint64_t)c + base + 5;                                     \
++    EXPANDED_ALU_OPS_BODY(v, c, base, 5);                                      \
+     break;                                                                     \
+   case base + 6:                                                               \
+-    v = (v * 19) + (uint64_t)c + base + 6;                                     \
++    EXPANDED_ALU_OPS_BODY(v, c, base, 6);                                      \
+     break;                                                                     \
+   case base + 7:                                                               \
+-    v = (v * 23) + (uint64_t)c + base + 7;                                     \
++    EXPANDED_ALU_OPS_BODY(v, c, base, 7);                                      \
+     break;
+ 
+ #define CASES_256(v, c)                                                        \

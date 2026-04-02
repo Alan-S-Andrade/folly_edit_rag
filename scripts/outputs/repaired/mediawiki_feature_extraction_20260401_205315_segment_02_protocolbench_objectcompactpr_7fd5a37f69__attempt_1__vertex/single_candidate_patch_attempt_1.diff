@@ -1,0 +1,128 @@
+--- a/thrift/lib/cpp2/test/ProtocolBench.cpp
++++ b/thrift/lib/cpp2/test/ProtocolBench.cpp
+@@ -60,6 +60,65 @@
+   Object,
+ };
+ 
++namespace {
++struct PtrChaseNode {
++  PtrChaseNode* next;
++  uint64_t payload;
++};
++
++constexpr size_t kPtrChaseSize = 64;
++std::vector<PtrChaseNode> ptr_chase_nodes(kPtrChaseSize);
++
++void setup_ptr_chase_data() {
++  static bool initialized = false;
++  if (initialized) {
++    return;
++  }
++  for (size_t i = 0; i < kPtrChaseSize; ++i) {
++    ptr_chase_nodes[i].next = &ptr_chase_nodes[(i + 1) % kPtrChaseSize];
++    ptr_chase_nodes[i].payload =
++        (i * 0x9ddfea08eb382d69ULL) ^ 0x2203199374238761ULL;
++  }
++  initialized = true;
++}
++} // namespace
++
++template <int N>
++__attribute__((noinline)) uint64_t big_switch_func(uint64_t val) {
++  uint64_t v = val;
++  switch (val & 0xff) {
++#define V(op, i, j) (v op((i << 8) + j + N))
++#define OP_PAIRS(i)                                                  \
++  v = V(+, i, 1);  v = V(^, i, 2);  v = V(*, i, 3);  v = V(+, i, 4);  \
++  v = V(^, i, 5);  v = V(*, i, 6);  v = V(+, i, 7);  v = V(^, i, 8);  \
++  v = V(*, i, 9);  v = V(+, i, 10); v = V(^, i, 11); v = V(*, i, 12); \
++  v = V(+, i, 13); v = V(^, i, 14); v = V(*, i, 15); v = V(+, i, 16); \
++  v = V(^, i, 17); v = V(*, i, 18); v = V(+, i, 19); v = V(^, i, 20); \
++  v = V(*, i, 21); v = V(+, i, 22); v = V(^, i, 23); v = V(*, i, 24); \
++  v = V(+, i, 25); v = V(^, i, 26);
++
++#define R1(I)      \
++  case I:          \
++    OP_PAIRS(I); \
++    break;
++#define R4(I) R1(I) R1(I + 1) R1(I + 2) R1(I + 3)
++#define R16(I) R4(I) R4(I + 4) R4(I + 8) R4(I + 12)
++#define R64(I) R16(I) R16(I + 16) R16(I + 32) R16(I + 48)
++#define R256(I) R64(I) R64(I + 64) R64(I + 128) R64(I + 192)
++    R256(0)
++    default:
++      break;
++#undef V
++#undef OP_PAIRS
++#undef R1
++#undef R4
++#undef R16
++#undef R64
++#undef R256
++  }
++  return v;
++}
++
+ // The benckmark is to measure single struct use case, the iteration here is
+ // more like a benchmark artifact, so avoid doing optimizationon iteration
+ // usecase in this benchmark (e.g. move string definition out of while loop)
+@@ -123,6 +182,48 @@
+       folly::doNotOptimizeAway(data);
+     }
+   }
++  susp.rehire();
++}
++
++template <typename Serializer, typename Struct>
++void readBench_LargeSetInt_v1(size_t iters) {
++  folly::BenchmarkSuspender susp;
++  auto strct = create<Struct>();
++  folly::IOBufQueue q;
++  Serializer::serialize(strct, &q);
++  auto buf = q.move();
++  // coalesce the IOBuf chain to test fast path
++  buf->coalesce();
++
++  setup_ptr_chase_data();
++  PtrChaseNode* current_node = &ptr_chase_nodes[0];
++  uint64_t accum = 0;
++  int j = 0;
++
++  susp.dismiss();
++
++  while (iters--) {
++    auto obj = protocol::parseObject<GetReader<Serializer>>(*buf);
++    folly::doNotOptimizeAway(obj);
++
++    for (int k = 0; k < 1000; ++k) {
++      current_node = current_node->next;
++      uint64_t payload = current_node->payload;
++      switch (j % 3) {
++        case 0:
++          accum = big_switch_func<1>(payload + accum);
++          break;
++        case 1:
++          accum = big_switch_func<2>(payload + accum);
++          break;
++        case 2:
++          accum = big_switch_func<3>(payload + accum);
++          break;
++      }
++      j++;
++    }
++  }
++  folly::doNotOptimizeAway(accum);
+   susp.rehire();
+ }
+ 
+@@ -200,6 +301,10 @@
+ OpEncodeX(OpEncode, Binary)
+ OpEncodeX(OpEncode, Compact)
+ 
++BENCHMARK(ObjectCompactProtocol_read_LargeSetInt_v1, iters) {
++  readBench_LargeSetInt_v1<CompactSerializer, LargeSetInt>(iters);
++}
++
+ int main(int argc, char** argv) {
+   folly::Init init(&argc, &argv);
+   folly::runBenchmarks();

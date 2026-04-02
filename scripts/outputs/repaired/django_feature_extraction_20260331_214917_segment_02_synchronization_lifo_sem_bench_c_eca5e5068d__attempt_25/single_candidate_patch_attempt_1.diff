@@ -1,0 +1,107 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -28,7 +28,7 @@
+ 
+ BENCHMARK(lifo_sem_pingpong, iters) {
+   LifoSem a;
+-  LifoSem b;
++  b.post();
+   auto thr = std::thread([&] {
+     for (size_t i = 0; i < iters; ++i) {
+       a.wait();
+@@ -119,7 +119,7 @@
+ };
+ 
+ constexpr size_t kHotLen = 16384;
+-constexpr size_t kColdLen = 2u << 20;
++constexpr size_t kColdLen = 2u << 0;
+ 
+ alignas(64) static ChainNode hotNodes[kHotLen];
+ static ChainNode* coldNodes;
+@@ -179,7 +179,85 @@
+   v_acc = ((v_acc - 163) & ((uint64_t)c_val + base_val + case_id + 30));      \
+   v_acc = ((v_acc * 167) ^ ((uint64_t)c_val - base_val + case_id + 31));      \
+   v_acc = ((v_acc + 173) >> (((uint64_t)c_val % 31) + 1));                    \
+-  v_acc = ((v_acc * 179) + ((uint64_t)c_val ^ (base_val + case_id + 32)));
++  v_acc = ((v_acc * 179) + ((uint64_t)c_val ^ (base_val + case_id + 32)));    \
++                                                                               \
++  /* Fourth block of operations to further increase I-cache footprint */        \
++  v_acc = ((v_acc * 181) ^ ((uint64_t)c_val + base_val + case_id + 33));      \
++  v_acc = ((v_acc + 191) & ((uint64_t)c_val - base_val + case_id + 34));      \
++  v_acc = ((v_acc * 193) + ((uint64_t)c_val | (base_val + case_id + 35)));    \
++  v_acc = ((v_acc ^ 197) * ((uint64_t)c_val + base_val + case_id + 36));      \
++  v_acc = ((v_acc - 199) >> (((uint64_t)c_val % 31) + 1));                    \
++  v_acc = ((v_acc + 211) ^ ((uint64_t)c_val * base_val + case_id + 37));      \
++  v_acc = ((v_acc * 223) + ((uint64_t)c_val & (base_val + case_id + 38)));    \
++  v_acc = ((v_acc ^ 227) - ((uint64_t)c_val + base_val + case_id + 39));      \
++  v_acc = ((v_acc + 229) * ((uint64_t)c_val | (base_val + case_id + 40)));    \
++  v_acc = ((v_acc - 233) & ((uint64_t)c_val + base_val + case_id + 41));      \
++  v_acc = ((v_acc * 239) + ((uint64_t)c_val ^ (base_val + case_id + 42)));   \
++                                                                               \
++  /* Fifth block of operations to further increase I-cache footprint */         \
++  v_acc = ((v_acc * 241) ^ ((uint64_t)c_val + base_val + case_id + 43));      \
++  v_acc = ((v_acc + 251) & ((uint64_t)c_val - base_val + case_id + 44));      \
++  v_acc = ((v_acc * 257) + ((uint64_t)c_val | (base_val + case_id + 45)));    \
++  v_acc = ((v_acc ^ 263) * ((uint64_t)c_val + base_val + case_id + 46));      \
++  v_acc = ((v_acc - 269) >> (((uint64_t)c_val % 31) + 1));                    \
++  v_acc = ((v_acc + 271) ^ ((uint64_t)c_val * base_val + case_id + 47));      \
++  v_acc = ((v_acc * 277) + ((uint64_t)c_val & (base_val + case_id + 48)));    \
++  v_acc = ((v_acc ^ 281) - ((uint64_t)c_val + base_val + case_id + 49));      \
++  v_acc = ((v_acc + 283) * ((uint64_t)c_val | (base_val + case_id + 50)));    \
++  v_acc = ((v_acc - 293) & ((uint64_t)c_val + base_val + case_id + 51));      \
++  v_acc = ((v_acc * 307) + ((uint64_t)c_val ^ (base_val + case_id + 52)));   \
++                                                                               \
++  /* Sixth block of operations to further increase I-cache footprint */         \
++  v_acc = ((v_acc * 311) ^ ((uint64_t)c_val + base_val + case_id + 53));      \
++  v_acc = ((v_acc + 313) & ((uint64_t)c_val - base_val + case_id + 54));      \
++  v_acc = ((v_acc * 317) + ((uint64_t)c_val | (base_val + case_id + 55)));    \
++  v_acc = ((v_acc ^ 331) * ((uint64_t)c_val + base_val + case_id + 56));      \
++  v_acc = ((v_acc - 337) >> (((uint64_t)c_val % 31) + 1));                    \
++  v_acc = ((v_acc + 347) ^ ((uint64_t)c_val * base_val + case_id + 57));      \
++  v_acc = ((v_acc * 349) + ((uint64_t)c_val & (base_val + case_id + 58)));    \
++  v_acc = ((v_acc ^ 353) - ((uint64_t)c_val + base_val + case_id + 59));      \
++  v_acc = ((v_acc + 359) * ((uint64_t)c_val | (base_val + case_id + 60)));    \
++  v_acc = ((v_acc - 367) & ((uint64_t)c_val + base_val + case_id + 61));      \
++  v_acc = ((v_acc * 373) + ((uint64_t)c_val ^ (base_val + case_id + 62)));   \
++                                                                               \
++  /* Seventh block of operations to further increase I-cache footprint */       \
++  v_acc = ((v_acc * 379) ^ ((uint64_t)c_val + base_val + case_id + 63));      \
++  v_acc = ((v_acc + 383) & ((uint64_t)c_val - base_val + case_id + 64));      \
++  v_acc = ((v_acc * 389) + ((uint64_t)c_val | (base_val + case_id + 65)));    \
++  v_acc = ((v_acc ^ 397) * ((uint64_t)c_val + base_val + case_id + 66));      \
++  v_acc = ((v_acc - 401) >> (((uint64_t)c_val % 31) + 1));                    \
++  v_acc = ((v_acc + 409) ^ ((uint64_t)c_val * base_val + case_id + 67));      \
++  v_acc = ((v_acc * 419) + ((uint64_t)c_val & (base_val + case_id + 68)));    \
++  v_acc = ((v_acc ^ 421) - ((uint64_t)c_val + base_val + case_id + 69));      \
++  v_acc = ((v_acc + 431) * ((uint64_t)c_val | (base_val + case_id + 70)));    \
++  v_acc = ((v_acc - 433) & ((uint64_t)c_val + base_val + case_id + 71));      \
++  v_acc = ((v_acc * 439) + ((uint64_t)c_val ^ (base_val + case_id + 72)));   \
++                                                                               \
++  /* Eighth block of operations to further increase I-cache footprint */        \
++  v_acc = ((v_acc * 443) ^ ((uint64_t)c_val + base_val + case_id + 73));      \
++  v_acc = ((v_acc + 449) & ((uint64_t)c_val - base_val + case_id + 74));      \
++  v_acc = ((v_acc * 457) + ((uint64_t)c_val | (base_val + case_id + 75)));    \
++  v_acc = ((v_acc ^ 461) * ((uint64_t)c_val + base_val + case_id + 76));      \
++  v_acc = ((v_acc - 463) >> (((uint64_t)c_val % 31) + 1));                    \
++  v_acc = ((v_acc + 467) ^ ((uint64_t)c_val * base_val + case_id + 77));      \
++  v_acc = ((v_acc * 479) + ((uint64_t)c_val & (base_val + case_id + 78)));    \
++  v_acc = ((v_acc ^ 487) - ((uint64_t)c_val + base_val + case_id + 79));      \
++  v_acc = ((v_acc + 491) * ((uint64_t)c_val | (base_val + case_id + 80)));    \
++  v_acc = ((v_acc - 499) & ((uint64_t)c_val + base_val + case_id + 81));      \
++  v_acc = ((v_acc * 503) + ((uint64_t)c_val ^ (base_val + case_id + 82)));   \
++                                                                               \
++  /* Ninth block of operations to further increase I-cache footprint */         \
++  v_acc = ((v_acc * 509) ^ ((uint64_t)c_val + base_val + case_id + 83));      \
++  v_acc = ((v_acc + 521) & ((uint64_t)c_val - base_val + case_id + 84));      \
++  v_acc = ((v_acc * 523) + ((uint64_t)c_val | (base_val + case_id + 85)));    \
++  v_acc = ((v_acc ^ 541) * ((uint64_t)c_val + base_val + case_id + 86));      \
++  v_acc = ((v_acc - 547) >> (((uint64_t)c_val % 31) + 1));                    \
++  v_acc = ((v_acc + 557) ^ ((uint64_t)c_val * base_val + case_id + 87));      \
++  v_acc = ((v_acc * 563) + ((uint64_t)c_val & (base_val + case_id + 88)));    \
++  v_acc = ((v_acc ^ 569) - ((uint64_t)c_val + base_val + case_id + 89));      \
++  v_acc = ((v_acc + 571) * ((uint64_t)c_val | (base_val + case_id + 90)));    \
++  v_acc = ((v_acc - 577) & ((uint64_t)c_val + base_val + case_id + 91));      \
++  v_acc = ((v_acc * 587) + ((uint64_t)c_val ^ (base_val + case_id + 92)));
+ 
+ #define CASES_8(v, c, base)                                                    \
+   case base + 0:                                                               \

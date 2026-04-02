@@ -1,0 +1,178 @@
+--- a/thrift/lib/cpp2/test/ProtocolBench.cpp
++++ b/thrift/lib/cpp2/test/ProtocolBench.cpp
+@@ -26,8 +26,175 @@
+ #include <folly/init/Init.h>
+ #include <folly/portability/GFlags.h>
+ 
++#include <algorithm>
++#include <numeric>
++#include <random>
++
+ using namespace apache::thrift;
+ using namespace thrift::benchmark;
++
++namespace {
++
++// To target L1i MPKI of ~28, we need a large code footprint.
++// This is achieved by creating 3 large, no-inlined functions with 256-case
++// switch statements. The benchmark rotates through these functions.
++// Each case has a number of ALU operations with unique constants to prevent
++// compiler optimizations and increase code size.
++// 7 chunks * 4 ops/chunk = 28 ops per case.
++
++__attribute__((noinline)) void worker_func_0(int val, volatile int& acc) {
++#define ALU_CHUNK(v)                             \
++  acc = (acc * (v + 13)) + (v + 29);             \
++  acc = (acc * (v + 31)) ^ (v + 47);
++#define ALU_CHUNK_7(v)                           \
++  ALU_CHUNK(v + 0) ALU_CHUNK(v + 64) ALU_CHUNK(v + 128)   \
++  ALU_CHUNK(v + 192) ALU_CHUNK(v + 256) ALU_CHUNK(v + 320) \
++  ALU_CHUNK(v + 384)
++#define MAKE_CASE(i, base)                       \
++  case i:                                        \
++    ALU_CHUNK_7((base) + (i)*512);               \
++    break;
++
++  switch (val & 0xFF) {
++#define CASES_16(i, base)                                                      \
++    MAKE_CASE(i + 0, base) MAKE_CASE(i + 1, base) MAKE_CASE(i + 2, base)        \
++    MAKE_CASE(i + 3, base) MAKE_CASE(i + 4, base) MAKE_CASE(i + 5, base)        \
++    MAKE_CASE(i + 6, base) MAKE_CASE(i + 7, base) MAKE_CASE(i + 8, base)        \
++    MAKE_CASE(i + 9, base) MAKE_CASE(i + 10, base) MAKE_CASE(i + 11, base)      \
++    MAKE_CASE(i + 12, base) MAKE_CASE(i + 13, base) MAKE_CASE(i + 14, base)     \
++    MAKE_CASE(i + 15, base)
++
++    CASES_16(0, 10000) CASES_16(16, 10000) CASES_16(32, 10000)
++    CASES_16(48, 10000) CASES_16(64, 10000) CASES_16(80, 10000)
++    CASES_16(96, 10000) CASES_16(112, 10000) CASES_16(128, 10000)
++    CASES_16(144, 10000) CASES_16(160, 10000) CASES_16(176, 10000)
++    CASES_16(192, 10000) CASES_16(208, 10000) CASES_16(224, 10000)
++    CASES_16(240, 10000)
++#undef CASES_16
++  }
++#undef MAKE_CASE
++#undef ALU_CHUNK_7
++#undef ALU_CHUNK
++}
++
++__attribute__((noinline)) void worker_func_1(int val, volatile int& acc) {
++#define ALU_CHUNK(v)                             \
++  acc = (acc * (v + 13)) + (v + 29);             \
++  acc = (acc * (v + 31)) ^ (v + 47);
++#define ALU_CHUNK_7(v)                           \
++  ALU_CHUNK(v + 0) ALU_CHUNK(v + 64) ALU_CHUNK(v + 128)   \
++  ALU_CHUNK(v + 192) ALU_CHUNK(v + 256) ALU_CHUNK(v + 320) \
++  ALU_CHUNK(v + 384)
++#define MAKE_CASE(i, base)                       \
++  case i:                                        \
++    ALU_CHUNK_7((base) + (i)*512);               \
++    break;
++
++  switch (val & 0xFF) {
++#define CASES_16(i, base)                                                      \
++    MAKE_CASE(i + 0, base) MAKE_CASE(i + 1, base) MAKE_CASE(i + 2, base)        \
++    MAKE_CASE(i + 3, base) MAKE_CASE(i + 4, base) MAKE_CASE(i + 5, base)        \
++    MAKE_CASE(i + 6, base) MAKE_CASE(i + 7, base) MAKE_CASE(i + 8, base)        \
++    MAKE_CASE(i + 9, base) MAKE_CASE(i + 10, base) MAKE_CASE(i + 11, base)      \
++    MAKE_CASE(i + 12, base) MAKE_CASE(i + 13, base) MAKE_CASE(i + 14, base)     \
++    MAKE_CASE(i + 15, base)
++
++    CASES_16(0, 2000000) CASES_16(16, 2000000) CASES_16(32, 2000000)
++    CASES_16(48, 2000000) CASES_16(64, 2000000) CASES_16(80, 2000000)
++    CASES_16(96, 2000000) CASES_16(112, 2000000) CASES_16(128, 2000000)
++    CASES_16(144, 2000000) CASES_16(160, 2000000) CASES_16(176, 2000000)
++    CASES_16(192, 2000000) CASES_16(208, 2000000) CASES_16(224, 2000000)
++    CASES_16(240, 2000000)
++#undef CASES_16
++  }
++#undef MAKE_CASE
++#undef ALU_CHUNK_7
++#undef ALU_CHUNK
++}
++
++__attribute__((noinline)) void worker_func_2(int val, volatile int& acc) {
++#define ALU_CHUNK(v)                             \
++  acc = (acc * (v + 13)) + (v + 29);             \
++  acc = (acc * (v + 31)) ^ (v + 47);
++#define ALU_CHUNK_7(v)                           \
++  ALU_CHUNK(v + 0) ALU_CHUNK(v + 64) ALU_CHUNK(v + 128)   \
++  ALU_CHUNK(v + 192) ALU_CHUNK(v + 256) ALU_CHUNK(v + 320) \
++  ALU_CHUNK(v + 384)
++#define MAKE_CASE(i, base)                       \
++  case i:                                        \
++    ALU_CHUNK_7((base) + (i)*512);               \
++    break;
++
++  switch (val & 0xFF) {
++#define CASES_16(i, base)                                                      \
++    MAKE_CASE(i + 0, base) MAKE_CASE(i + 1, base) MAKE_CASE(i + 2, base)        \
++    MAKE_CASE(i + 3, base) MAKE_CASE(i + 4, base) MAKE_CASE(i + 5, base)        \
++    MAKE_CASE(i + 6, base) MAKE_CASE(i + 7, base) MAKE_CASE(i + 8, base)        \
++    MAKE_CASE(i + 9, base) MAKE_CASE(i + 10, base) MAKE_CASE(i + 11, base)      \
++    MAKE_CASE(i + 12, base) MAKE_CASE(i + 13, base) MAKE_CASE(i + 14, base)     \
++    MAKE_CASE(i + 15, base)
++
++    CASES_16(0, 4000000) CASES_16(16, 4000000) CASES_16(32, 4000000)
++    CASES_16(48, 4000000) CASES_16(64, 4000000) CASES_16(80, 4000000)
++    CASES_16(96, 4000000) CASES_16(112, 4000000) CASES_16(128, 4000000)
++    CASES_16(144, 4000000) CASES_16(160, 4000000) CASES_16(176, 4000000)
++    CASES_16(192, 4000000) CASES_16(208, 4000000) CASES_16(224, 4000000)
++    CASES_16(240, 4000000)
++#undef CASES_16
++  }
++#undef MAKE_CASE
++#undef ALU_CHUNK_7
++#undef ALU_CHUNK
++}
++
++} // namespace
++
++BENCHMARK(ObjectCompactProtocol_read_LargeSetInt_icache_v1, iters) {
++  folly::BenchmarkSuspender susp;
++
++  constexpr size_t kChaseSize = 4096;
++  struct ChaseNode {
++    int next_idx;
++    int payload;
++  };
++  std::vector<ChaseNode> chase_buffer(kChaseSize);
++  std::vector<int> indices(kChaseSize);
++  std::iota(indices.begin(), indices.end(), 0);
++
++  std::random_device rd;
++  std::mt19937 g(rd());
++  std::shuffle(indices.begin(), indices.end(), g);
++
++  for (size_t i = 0; i < kChaseSize; ++i) {
++    chase_buffer[indices[i]].next_idx = indices[(i + 1) % kChaseSize];
++    chase_buffer[indices[i]].payload = g();
++  }
++
++  volatile int acc = 1;
++  size_t chase_idx = 0;
++
++  susp.dismiss();
++
++  for (size_t i = 0; i < iters; ++i) {
++    chase_idx = chase_buffer[chase_idx].next_idx;
++    int payload = chase_buffer[chase_idx].payload;
++
++    switch (i % 3) {
++      case 0:
++        worker_func_0(payload, acc);
++        break;
++      case 1:
++        worker_func_1(payload, acc);
++        break;
++      case 2:
++        worker_func_2(payload, acc);
++        break;
++    }
++  }
++
++  folly::doNotOptimizeAway(acc);
++  susp.rehire();
++}
+ 
+ template <class>
+ struct SerializerTraits;

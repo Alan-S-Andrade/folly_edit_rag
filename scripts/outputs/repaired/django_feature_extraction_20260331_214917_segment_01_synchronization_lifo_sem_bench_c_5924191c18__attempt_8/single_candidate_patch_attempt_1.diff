@@ -1,0 +1,27 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -180,21 +180,21 @@
+                                                       CASES_8(v, c, 240)       \
+                                                           CASES_8(v, c, 248)
+ 
+-__attribute__((noinline)) uint64_t switchA(uint64_t v, int c) {
++uint64_t switchA(uint64_t v, int c) {
+   switch (c) {
+     CASES_256(v, c);
+     default:;
+   }
+   return v;
+ }
+-__attribute__((noinline)) uint64_t switchB(uint64_t v, int c) {
++uint64_t switchB(uint64_t v, int c) {
+   switch (c) {
+     CASES_256(v, c * 3);
+     default:;
+   }
+   return v;
+ }
+-__attribute__((noinline)) uint64_t switchC(uint64_t v, int c) {
++uint64_t switchC(uint64_t v, int c) {
+   switch (c) {
+     CASES_256(v, c * 5);
+     default:;

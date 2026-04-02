@@ -1,0 +1,13 @@
+--- a/thrift/lib/cpp2/test/ProtocolBench.cpp
++++ b/thrift/lib/cpp2/test/ProtocolBench.cpp
+@@ -138,7 +138,9 @@
+   folly::BenchmarkSuspender susp;
+   // Create the struct and then simplify its complex fields *before* serialization.
+   auto strct = create<Struct>();
+-  if constexpr (std::is_same_v<Struct, ComplexStruct>) {
++  // Corrected: Check if Struct is ComplexStruct or inherits from it,
++  // to properly apply simplification to OpComplexStruct.
++  if constexpr (std::is_base_of_v<ComplexStruct, Struct> || std::is_same_v<Struct, ComplexStruct>) {
+       // Clear dynamic containers to reduce write traffic during deserialization
+       strct.m()->clear(); // Empty map
+       strct.s()->clear(); // Empty set

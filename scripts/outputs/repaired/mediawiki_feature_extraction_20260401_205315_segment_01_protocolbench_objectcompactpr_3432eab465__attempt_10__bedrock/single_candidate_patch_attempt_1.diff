@@ -1,0 +1,36 @@
+--- a/thrift/lib/cpp2/test/ProtocolBench.cpp
++++ b/thrift/lib/cpp2/test/ProtocolBench.cpp
+@@ -200,6 +200,33 @@
+ OpEncodeX(OpEncode, Binary)
+ OpEncodeX(OpEncode, Compact)
+ 
++BENCHMARK(ObjectCompactProtocol_read_LargeSetInt_lowIPC, iters) {
++  folly::BenchmarkSuspender susp;
++  auto strct = create<LargeSetInt>();
++  folly::IOBufQueue q;
++  CompactSerializer::serialize(strct, &q);
++  auto buf = q.move();
++  buf->coalesce();
++  // Build a vector of many copies to thrash the instruction cache
++  constexpr size_t kNumBufs = 64;
++  std::vector<std::unique_ptr<folly::IOBuf>> bufs;
++  bufs.reserve(kNumBufs);
++  for (size_t i = 0; i < kNumBufs; ++i) {
++    bufs.push_back(buf->clone());
++  }
++  susp.dismiss();
++
++  size_t idx = 0;
++  while (iters--) {
++    auto obj = protocol::parseObject<CompactProtocolReader>(*bufs[idx % kNumBufs]);
++    folly::doNotOptimizeAway(obj);
++    // Insert memory barrier to prevent speculative execution and reduce IPC
++    asm volatile("" ::: "memory");
++    ++idx;
++  }
++  susp.rehire();
++}
++
+ int main(int argc, char** argv) {
+   folly::Init init(&argc, &argv);
+   folly::runBenchmarks();

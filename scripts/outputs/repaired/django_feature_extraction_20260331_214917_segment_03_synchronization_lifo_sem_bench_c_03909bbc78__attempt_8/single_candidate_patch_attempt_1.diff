@@ -1,0 +1,11 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -213,8 +213,7 @@
+ static DepWorkInitializer initializer;
+ 
+ static void contendedUse_v2(uint32_t n, int posters, int waiters) {
+-  LifoSemImpl<std::atomic> sem;
+-
++  folly::LifoSem sem; // Corrective patch: Switched from LifoSemImpl<std::atomic> to folly::LifoSem
+   std::vector<std::thread> threads;
+   std::atomic<bool> go(false);

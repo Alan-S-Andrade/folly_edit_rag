@@ -1,0 +1,62 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -139,27 +139,59 @@
+ #define CASES_8(v, c, base)                                                    \
+   case base + 0:                                                               \
+     v = (v * 3) + (uint64_t)c + base + 0;                                      \
++    v ^= v >> 13;                                                              \
++    v += 0xba5eba11;                                                           \
++    v *= 31;                                                                   \
++    v ^= v << 7;                                                               \
+     break;                                                                     \
+   case base + 1:                                                               \
+     v = (v * 5) + (uint64_t)c + base + 1;                                      \
++    v ^= v >> 11;                                                              \
++    v += 0xdeadbeef;                                                           \
++    v *= 37;                                                                   \
++    v ^= v << 9;                                                               \
+     break;                                                                     \
+   case base + 2:                                                               \
+     v = (v * 7) + (uint64_t)c + base + 2;                                      \
++    v ^= v >> 17;                                                              \
++    v += 0xfacefeed;                                                           \
++    v *= 41;                                                                   \
++    v ^= v << 6;                                                               \
+     break;                                                                     \
+   case base + 3:                                                               \
+     v = (v * 11) + (uint64_t)c + base + 3;                                     \
++    v ^= v >> 19;                                                              \
++    v += 0xc0ffee;                                                             \
++    v *= 43;                                                                   \
++    v ^= v << 8;                                                               \
+     break;                                                                     \
+   case base + 4:                                                               \
+     v = (v * 13) + (uint64_t)c + base + 4;                                     \
++    v ^= v >> 23;                                                              \
++    v += 0xf00dcafe;                                                           \
++    v *= 47;                                                                   \
++    v ^= v << 10;                                                              \
+     break;                                                                     \
+   case base + 5:                                                               \
+     v = (v * 17) + (uint64_t)c + base + 5;                                     \
++    v ^= v >> 29;                                                              \
++    v += 0xbaaaaaad;                                                           \
++    v *= 53;                                                                   \
++    v ^= v << 12;                                                              \
+     break;                                                                     \
+   case base + 6:                                                               \
+     v = (v * 19) + (uint64_t)c + base + 6;                                     \
++    v ^= v >> 31;                                                              \
++    v += 0xfeedface;                                                           \
++    v *= 59;                                                                   \
++    v ^= v << 14;                                                              \
+     break;                                                                     \
+   case base + 7:                                                               \
+     v = (v * 23) + (uint64_t)c + base + 7;                                     \
++    v ^= v >> 5;                                                               \
++    v += 0xdefec8ed;                                                           \
++    v *= 61;                                                                   \
++    v ^= v << 15;                                                              \
+     break;
+ 
+ #define CASES_256(v, c)                                                        \

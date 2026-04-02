@@ -1,0 +1,93 @@
+--- a/folly/io/test/IOBufBenchmark.cpp
++++ b/folly/io/test/IOBufBenchmark.cpp
+@@ -195,15 +195,88 @@
+ }
+ BENCHMARK_NAMED_PARAM(createAndDestroyMulti_IndirectBranch, 1024)
+ 
++// Helper functions for the 'createAndDestroyMulti_LargeAlloc' benchmark
++// to increase instruction footprint and L1-icache misses.
++namespace {
++[[maybe_unused]] void large_alloc_case_0(uint64_t& acc) {
++  acc ^= 0x1234567890ABCDEF;
++  acc ^= 0xFEDCBA0987654321;
++  acc ^= 0x1122334455667788;
++  acc ^= 0x8877665544332211;
++  acc ^= 0xAABBCCDDEEFF0011;
++  acc ^= 0x1100FFEECCDDBBAA;
++  acc ^= 0xCAFEBABEDEADBEEF;
++  acc ^= 0xFEEBDAEDEBABEFAC;
++}
++
++[[maybe_unused]] void large_alloc_case_1(uint64_t& acc) {
++  acc ^= 0x0011223344556677;
++  acc ^= 0x7766554433221100;
++  acc ^= 0x9988776655443322;
++  acc ^= 0x2233445566778899;
++  acc ^= 0x1100332255447766;
++  acc ^= 0x6677445522330011;
++  acc ^= 0xBADCF00DDCCBEEFF;
++  acc ^= 0xFFEEBDCCDD00CFADB;
++}
++
++[[maybe_unused]] void large_alloc_case_2(uint64_t& acc) {
++  acc ^= 0xFFEEDDCCBBAA9988;
++  acc ^= 0x8899AABBCCDDEEFF;
++  acc ^= 0x1234123456785678;
++  acc ^= 0x8765876543214321;
++  acc ^= 0xABCDEF0123456789;
++  acc ^= 0x987654321FEDCBA0;
++  acc ^= 0xDEADBEEFCAFEBABE;
++  acc ^= 0xEFABFEBDAEBCDEAD;
++}
++
++static void invoke_large_alloc_case(uint64_t& acc, int case_idx) {
++  switch (case_idx) {
++    case 0:
++      large_alloc_case_0(acc);
++      break;
++    case 1:
++      large_alloc_case_1(acc);
++      break;
++    case 2:
++      large_alloc_case_2(acc);
++      break;
++  }
++}
++} // namespace
++
+ BENCHMARK(createAndDestroyMulti_LargeAlloc, iters) {
+   static constexpr auto kSize = 1024;
+   std::array<std::unique_ptr<IOBuf>, kSize> buffers;
+-  size_t size = 1024 * 1024; // 1MB allocation
++  size_t alloc_size = 1024 * 1024; // 1MB allocation
++
++  // Define data for pointer chasing
++  std::vector<uint64_t> indirect_data(256);
++  for (size_t i = 0; i < indirect_data.size(); ++i) {
++    indirect_data[i] = i * 3 + 1; // Ensure non-zero values
++  }
++  uint64_t current_payload = 0; // Payload for pointer chasing and switch index
+ 
+   while (iters--) {
+     for (auto i = 0; i < kSize; ++i) {
+-      buffers[i] = IOBuf::create(size);
+-    }
++      buffers[i] = IOBuf::create(alloc_size);
++    }
++    // Introduce additional computation to increase instruction count
++    // and stress L1-icache.
++    for (int j = 0; j < 1024; ++j) {
++      // Use payload to index into indirect_data, creating pointer chasing.
++      // The result of the lookup is then XORed back into the payload,
++      // ensuring that the next lookup depends on the previous one.
++      current_payload ^= indirect_data[current_payload & 0xFF];
++
++      // Use payload to select one of three __attribute__((noinline)) functions.
++      // Each function has a 256-case switch with ALU ops, creating a large
++      // instruction footprint. The specific constants in each case are unique
++      // to prevent compiler deduplication.
++      invoke_large_alloc_case(current_payload, (current_payload >> 8) % 3);
++    }
++    folly::doNotOptimizeAway(current_payload);
+   }
+ }

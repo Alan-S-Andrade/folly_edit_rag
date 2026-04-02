@@ -1,0 +1,65 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -140,6 +140,54 @@
+   }
+ }
+ 
++static void contendedUseHighBranchMiss(uint32_t n, int posters, int waiters) {
++  LifoSemImpl<std::atomic> sem;
++
++  std::vector<std::thread> threads;
++  std::atomic<bool> go(false);
++  // Shared unpredictable counter to drive branch mispredictions
++  std::atomic<uint64_t> shared_counter(0);
++
++  BENCHMARK_SUSPEND {
++    for (int t = 0; t < waiters; ++t) {
++      threads.emplace_back([=, &sem, &shared_counter] {
++        for (uint32_t i = t; i < n; i += waiters) {
++          sem.wait();
++          // Unpredictable branch based on shared atomic state
++          uint64_t v = shared_counter.fetch_add(1, std::memory_order_relaxed);
++          if (v & 1) {
++            shared_counter.fetch_add(3, std::memory_order_relaxed);
++          } else {
++            shared_counter.fetch_add(7, std::memory_order_relaxed);
++          }
++        }
++      });
++    }
++    for (int t = 0; t < posters; ++t) {
++      threads.emplace_back([=, &sem, &go, &shared_counter] {
++        while (!go.load()) {
++          std::this_thread::yield();
++        }
++        for (uint32_t i = t; i < n; i += posters) {
++          sem.post();
++          // Unpredictable branch based on shared atomic state
++          uint64_t v = shared_counter.fetch_add(1, std::memory_order_relaxed);
++          if (v & 1) {
++            shared_counter.fetch_add(5, std::memory_order_relaxed);
++          } else {
++            shared_counter.fetch_add(11, std::memory_order_relaxed);
++          }
++        }
++      });
++    }
++  }
++
++  go.store(true);
++  for (auto& thr : threads) {
++    thr.join();
++  }
++}
++
+ BENCHMARK_DRAW_LINE();
+ BENCHMARK_NAMED_PARAM(contendedUse, 1_to_1, 1, 1)
+ BENCHMARK_NAMED_PARAM(contendedUse, 1_to_4, 1, 4)
+@@ -151,6 +199,7 @@
+ BENCHMARK_NAMED_PARAM(contendedUse, 16_to_16, 16, 16)
+ BENCHMARK_NAMED_PARAM(contendedUse, 32_to_32, 32, 32)
+ BENCHMARK_NAMED_PARAM(contendedUse, 32_to_1000, 32, 1000)
++BENCHMARK_NAMED_PARAM(contendedUseHighBranchMiss, 32_to_32, 32, 32)
+ 
+ // sudo nice -n -20 _build/opt/folly/test/LifoSemTests
+ //     --benchmark --bm_min_iters=10000000 --gtest_filter=-\*

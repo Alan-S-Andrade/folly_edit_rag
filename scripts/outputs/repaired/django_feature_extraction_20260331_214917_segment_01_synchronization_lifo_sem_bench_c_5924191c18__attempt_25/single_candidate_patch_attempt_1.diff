@@ -1,0 +1,161 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -136,87 +136,78 @@
+   }
+ }
+ 
++// Helper macro to generate 8 lines of ALU operations with unique constants.
++// v_var: accumulator variable
++// c_var: input character value
++// idx_var: current case index (e.g., base + 0)
++// offset_val: additional offset to ensure constant uniqueness across duplicated blocks
++#define ONE_CASE_8_LINES_BLOCK(v_var, c_var, idx_var, offset_val)              \
++  v_var = (v_var * 3) + (uint64_t)c_var + (idx_var + offset_val);            \
++  v_var = (v_var ^ (29 + (idx_var + offset_val))) + ((uint64_t)c_var * (31 + (idx_var + offset_val))); \
++  v_var = (v_var + (37 + (idx_var + offset_val))) * (((uint64_t)c_var | (41 + (idx_var + offset_val))) + 1); \
++  v_var = (v_var - (53 + (idx_var + offset_val))) ^ ((uint64_t)c_var + (59 * (idx_var + offset_val) + 1)); \
++  v_var = (v_var << ((idx_var + offset_val) % 7 + 1)) | (v_var >> ((idx_var + offset_val) % 5 + 1)) + ((uint64_t)c_var * (67 + (idx_var + offset_val))); \
++  v_var = (v_var & (71 + (idx_var + offset_val))) * ((uint64_t)c_var + (73 + (idx_var + offset_val))) - (79 + (idx_var + offset_val)); \
++  v_var = (v_var + (83 + (idx_var + offset_val))) / ((v_var % 97) + 1) + ((uint64_t)c_var ^ (89 + (idx_var + offset_val))); \
++  v_var = (v_var % (101 + (idx_var + offset_val))) + (v_var | (103 + (idx_var + offset_val))) * ((uint64_t)c_var - (107 + (idx_var + offset_val)));
++
+ #define CASES_8(v, c, base)                                                    \
+-  case base + 0:                                                               \
+-    v = (v * 3) + (uint64_t)c + (base + 0);                                    \
+-    v = (v ^ (29 + (base + 0))) + ((uint64_t)c * (31 + (base + 0)));          \
+-    v = (v + (37 + (base + 0))) * (((uint64_t)c | (41 + (base + 0))) + 1);    \
+-    v = (v - (53 + (base + 0))) ^ ((uint64_t)c + (59 * (base + 0) + 1));      \
+-    v = (v << ((base + 0) % 7 + 1)) | (v >> ((base + 0) % 5 + 1)) + ((uint64_t)c * (67 + (base + 0))); \
+-    v = (v & (71 + (base + 0))) * ((uint64_t)c + (73 + (base + 0))) - (79 + (base + 0)); \
+-    v = (v + (83 + (base + 0))) / ((v % 97) + 1) + ((uint64_t)c ^ (89 + (base + 0))); \
+-    v = (v % (101 + (base + 0))) + (v | (103 + (base + 0))) * ((uint64_t)c - (107 + (base + 0))); \
+-    break;                                                                     \
+-  case base + 1:                                                               \
+-    v = (v * 5) + (uint64_t)c + (base + 1);                                    \
+-    v = (v ^ (29 + (base + 1))) + ((uint64_t)c * (31 + (base + 1)));          \
+-    v = (v + (37 + (base + 1))) * (((uint64_t)c | (41 + (base + 1))) + 1);    \
+-    v = (v - (53 + (base + 1))) ^ ((uint64_t)c + (59 * (base + 1) + 1));      \
+-    v = (v << ((base + 1) % 7 + 1)) | (v >> ((base + 1) % 5 + 1)) + ((uint64_t)c * (67 + (base + 1))); \
+-    v = (v & (71 + (base + 1))) * ((uint64_t)c + (73 + (base + 1))) - (79 + (base + 1)); \
+-    v = (v + (83 + (base + 1))) / ((v % 97) + 1) + ((uint64_t)c ^ (89 + (base + 1))); \
+-    v = (v % (101 + (base + 1))) + (v | (103 + (base + 1))) * ((uint64_t)c - (107 + (base + 1))); \
+-    break;                                                                     \
+-  case base + 2:                                                               \
+-    v = (v * 7) + (uint64_t)c + (base + 2);                                    \
+-    v = (v ^ (29 + (base + 2))) + ((uint64_t)c * (31 + (base + 2)));          \
+-    v = (v + (37 + (base + 2))) * (((uint64_t)c | (41 + (base + 2))) + 1);    \
+-    v = (v - (53 + (base + 2))) ^ ((uint64_t)c + (59 * (base + 2) + 1));      \
+-    v = (v << ((base + 2) % 7 + 1)) | (v >> ((base + 2) % 5 + 1)) + ((uint64_t)c * (67 + (base + 2))); \
+-    v = (v & (71 + (base + 2))) * ((uint64_t)c + (73 + (base + 2))) - (79 + (base + 2)); \
+-    v = (v + (83 + (base + 2))) / ((v % 97) + 1) + ((uint64_t)c ^ (89 + (base + 2))); \
+-    v = (v % (101 + (base + 2))) + (v | (103 + (base + 2))) * ((uint64_t)c - (107 + (base + 2))); \
+-    break;                                                                     \
+-  case base + 3:                                                               \
+-    v = (v * 11) + (uint64_t)c + (base + 3);                                   \
+-    v = (v ^ (29 + (base + 3))) + ((uint64_t)c * (31 + (base + 3)));          \
+-    v = (v + (37 + (base + 3))) * (((uint64_t)c | (41 + (base + 3))) + 1);    \
+-    v = (v - (53 + (base + 3))) ^ ((uint64_t)c + (59 * (base + 3) + 1));      \
+-    v = (v << ((base + 3) % 7 + 1)) | (v >> ((base + 3) % 5 + 1)) + ((uint64_t)c * (67 + (base + 3))); \
+-    v = (v & (71 + (base + 3))) * ((uint64_t)c + (73 + (base + 3))) - (79 + (base + 3)); \
+-    v = (v + (83 + (base + 3))) / ((v % 97) + 1) + ((uint64_t)c ^ (89 + (base + 3))); \
+-    v = (v % (101 + (base + 3))) + (v | (103 + (base + 3))) * ((uint64_t)c - (107 + (base + 3))); \
+-    break;                                                                     \
+-  case base + 4:                                                               \
+-    v = (v * 13) + (uint64_t)c + (base + 4);                                   \
+-    v = (v ^ (29 + (base + 4))) + ((uint64_t)c * (31 + (base + 4)));          \
+-    v = (v + (37 + (base + 4))) * (((uint64_t)c | (41 + (base + 4))) + 1);    \
+-    v = (v - (53 + (base + 4))) ^ ((uint64_t)c + (59 * (base + 4) + 1));      \
+-    v = (v << ((base + 4) % 7 + 1)) | (v >> ((base + 4) % 5 + 1)) + ((uint64_t)c * (67 + (base + 4))); \
+-    v = (v & (71 + (base + 4))) * ((uint64_t)c + (73 + (base + 4))) - (79 + (base + 4)); \
+-    v = (v + (83 + (base + 4))) / ((v % 97) + 1) + ((uint64_t)c ^ (89 + (base + 4))); \
+-    v = (v % (101 + (base + 4))) + (v | (103 + (base + 4))) * ((uint64_t)c - (107 + (base + 4))); \
+-    break;                                                                     \
+-  case base + 5:                                                               \
+-    v = (v * 17) + (uint64_t)c + (base + 5);                                   \
+-    v = (v ^ (29 + (base + 5))) + ((uint64_t)c * (31 + (base + 5)));          \
+-    v = (v + (37 + (base + 5))) * (((uint64_t)c | (41 + (base + 5))) + 1);    \
+-    v = (v - (53 + (base + 5))) ^ ((uint64_t)c + (59 * (base + 5) + 1));      \
+-    v = (v << ((base + 5) % 7 + 1)) | (v >> ((base + 5) % 5 + 1)) + ((uint64_t)c * (67 + (base + 5))); \
+-    v = (v & (71 + (base + 5))) * ((uint64_t)c + (73 + (base + 5))) - (79 + (base + 5)); \
+-    v = (v + (83 + (base + 5))) / ((v % 97) + 1) + ((uint64_t)c ^ (89 + (base + 5))); \
+-    v = (v % (101 + (base + 5))) + (v | (103 + (base + 5))) * ((uint64_t)c - (107 + (base + 5))); \
+-    break;                                                                     \
+-  case base + 6:                                                               \
+-    v = (v * 19) + (uint64_t)c + (base + 6);                                   \
+-    v = (v ^ (29 + (base + 6))) + ((uint64_t)c * (31 + (base + 6)));          \
+-    v = (v + (37 + (base + 6))) * (((uint64_t)c | (41 + (base + 6))) + 1);    \
+-    v = (v - (53 + (base + 6))) ^ ((uint64_t)c + (59 * (base + 6) + 1));      \
+-    v = (v << ((base + 6) % 7 + 1)) | (v >> ((base + 6) % 5 + 1)) + ((uint64_t)c * (67 + (base + 6))); \
+-    v = (v & (71 + (base + 6))) * ((uint64_t)c + (73 + (base + 6))) - (79 + (base + 6)); \
+-    v = (v + (83 + (base + 6))) / ((v % 97) + 1) + ((uint64_t)c ^ (89 + (base + 6))); \
+-    v = (v % (101 + (base + 6))) + (v | (103 + (base + 6))) * ((uint64_t)c - (107 + (base + 6))); \
+-    break;                                                                     \
+-  case base + 7:                                                               \
+-    v = (v * 23) + (uint64_t)c + (base + 7);                                   \
+-    v = (v ^ (29 + (base + 7))) + ((uint64_t)c * (31 + (base + 7)));          \
+-    v = (v + (37 + (base + 7))) * (((uint64_t)c | (41 + (base + 7))) + 1);    \
+-    v = (v - (53 + (base + 7))) ^ ((uint64_t)c + (59 * (base + 7) + 1));      \
+-    v = (v << ((base + 7) % 7 + 1)) | (v >> ((base + 7) % 5 + 1)) + ((uint64_t)c * (67 + (base + 7))); \
+-    v = (v & (71 + (base + 7))) * ((uint64_t)c + (73 + (base + 7))) - (79 + (base + 7)); \
+-    v = (v + (83 + (base + 7))) / ((v % 97) + 1) + ((uint64_t)c ^ (89 + (base + 7))); \
+-    v = (v % (101 + (base + 7))) + (v | (103 + (base + 7))) * ((uint64_t)c - (107 + (base + 7))); \
+-    break;
++  case base + 0: {                                                             \
++    constexpr int current_idx = base + 0;                                      \
++    ONE_CASE_8_LINES_BLOCK(v, c, current_idx, 0);                              \
++    ONE_CASE_8_LINES_BLOCK(v, c, current_idx, 256);                            \
++    ONE_CASE_8_LINES_BLOCK(v, c, current_idx, 512);                            \
++    break;                                                                     \
++  }                                                                            \
++  case base + 1: {                                                             \
++    constexpr int current_idx = base + 1;                                      \
++    ONE_CASE_8_LINES_BLOCK(v, c, current_idx, 0);                              \
++    ONE_CASE_8_LINES_BLOCK(v, c, current_idx, 256);                            \
++    ONE_CASE_8_LINES_BLOCK(v, c, current_idx, 512);                            \
++    break;                                                                     \
++  }                                                                            \
++  case base + 2: {                                                             \
++    constexpr int current_idx = base + 2;                                      \
++    ONE_CASE_8_LINES_BLOCK(v, c, current_idx, 0);                              \
++    ONE_CASE_8_LINES_BLOCK(v, c, current_idx, 256);                            \
++    ONE_CASE_8_LINES_BLOCK(v, c, current_idx, 512);                            \
++    break;                                                                     \
++  }                                                                            \
++  case base + 3: {                                                             \
++    constexpr int current_idx = base + 3;                                      \
++    ONE_CASE_8_LINES_BLOCK(v, c, current_idx, 0);                              \
++    ONE_CASE_8_LINES_BLOCK(v, c, current_idx, 256);                            \
++    ONE_CASE_8_LINES_BLOCK(v, c, current_idx, 512);                            \
++    break;                                                                     \
++  }                                                                            \
++  case base + 4: {                                                             \
++    constexpr int current_idx = base + 4;                                      \
++    ONE_CASE_8_LINES_BLOCK(v, c, current_idx, 0);                              \
++    ONE_CASE_8_LINES_BLOCK(v, c, current_idx, 256);                            \
++    ONE_CASE_8_LINES_BLOCK(v, c, current_idx, 512);                            \
++    break;                                                                     \
++  }                                                                            \
++  case base + 5: {                                                             \
++    constexpr int current_idx = base + 5;                                      \
++    ONE_CASE_8_LINES_BLOCK(v, c, current_idx, 0);                              \
++    ONE_CASE_8_LINES_BLOCK(v, c, current_idx, 256);                            \
++    ONE_CASE_8_LINES_BLOCK(v, c, current_idx, 512);                            \
++    break;                                                                     \
++  }                                                                            \
++  case base + 6: {                                                             \
++    constexpr int current_idx = base + 6;                                      \
++    ONE_CASE_8_LINES_BLOCK(v, c, current_idx, 0);                              \
++    ONE_CASE_8_LINES_BLOCK(v, c, current_idx, 256);                            \
++    ONE_CASE_8_LINES_BLOCK(v, c, current_idx, 512);                            \
++    break;                                                                     \
++  }                                                                            \
++  case base + 7: {                                                             \
++    constexpr int current_idx = base + 7;                                      \
++    ONE_CASE_8_LINES_BLOCK(v, c, current_idx, 0);                              \
++    ONE_CASE_8_LINES_BLOCK(v, c, current_idx, 256);                            \
++    ONE_CASE_8_LINES_BLOCK(v, c, current_idx, 512);                            \
++    break;                                                                     \
++  }
+ 
+ #define CASES_256(v, c)                                                        \
+   CASES_8(v, c, 0)                                                             \

@@ -1,0 +1,20 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -250,9 +250,14 @@
+               break;
+           }
+ 
+-          auto coldMask = -uint64_t(i % 8 == 0);
+-          coldPos = (ChainNode*)(((uintptr_t)coldPos->next & coldMask) |
+-                                 ((uintptr_t)coldPos & ~coldMask));
++          // Original:
++          // auto coldMask = -uint64_t(i % 8 == 0);
++          // coldPos = (ChainNode*)(((uintptr_t)coldPos->next & coldMask) |
++          //                        ((uintptr_t)coldPos & ~coldMask));
++          // Corrective Patch: Replace branchless conditional with explicit branch
++          if (i % 8 == 0) {
++            coldPos = coldPos->next;
++          }
+           sem.post();
+         }
+         folly::doNotOptimizeAway(acc);

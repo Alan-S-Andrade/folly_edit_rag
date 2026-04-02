@@ -1,0 +1,38 @@
+--- a/thrift/lib/cpp2/test/ProtocolBench.cpp
++++ b/thrift/lib/cpp2/test/ProtocolBench.cpp
+@@ -200,6 +200,35 @@
+ OpEncodeX(OpEncode, Binary)
+ OpEncodeX(OpEncode, Compact)
+ 
++BENCHMARK(SimpleJSONProtocol_read_UnorderedSetInt_v2, iters) {
++  folly::BenchmarkSuspender susp;
++  using Serializer = SimpleJSONSerializer;
++  using Struct = UnorderedSetInt;
++  constexpr auto kSerializerMethod = SerializerMethod::Codegen;
++
++  auto strct = create<Struct>();
++  folly::IOBufQueue q;
++  Serializer::serialize(strct, &q);
++  auto buf = q.move();
++  // coalesce the IOBuf chain to test fast path
++  buf->coalesce();
++
++  Struct data;
++
++  susp.dismiss();
++
++  while (iters--) {
++    if constexpr (kSerializerMethod == SerializerMethod::Object) {
++      auto obj = protocol::parseObject<GetReader<Serializer>>(*buf);
++      folly::doNotOptimizeAway(obj);
++    } else {
++      Serializer::deserialize(buf.get(), data);
++      folly::doNotOptimizeAway(data);
++    }
++  }
++  susp.rehire();
++}
++
+ int main(int argc, char** argv) {
+   folly::Init init(&argc, &argv);
+   folly::runBenchmarks();

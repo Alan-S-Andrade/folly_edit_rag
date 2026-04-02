@@ -1,0 +1,241 @@
+--- a/thrift/lib/cpp2/test/ProtocolBench.cpp
++++ b/thrift/lib/cpp2/test/ProtocolBench.cpp
+@@ -26,6 +26,11 @@
+ #include <folly/init/Init.h>
+ #include <folly/portability/GFlags.h>
+ 
++#include <algorithm>
++#include <numeric>
++#include <random>
++#include <vector>
++
+ using namespace apache::thrift;
+ using namespace thrift::benchmark;
+ 
+@@ -60,6 +65,199 @@
+   Object,
+ };
+ 
++namespace {
++
++// I-cache-heavy workload to increase L1-icache-load-misses_MPKI
++#define OPS_V4(acc, c)                                     \
++  acc += c + 1;                                            \
++  acc ^= c + 2;                                            \
++  acc *= c + 3;                                            \
++  acc += c + 4;                                            \
++  acc ^= c + 5;                                            \
++  acc += c + 6;                                            \
++  acc ^= c + 7;                                            \
++  acc *= c + 8;                                            \
++  acc += c + 9;                                            \
++  acc ^= c + 10;                                           \
++  acc += c + 11;                                           \
++  acc ^= c + 12;                                           \
++  acc *= c + 13;                                           \
++  acc += c + 14;                                           \
++  acc ^= c + 15;                                           \
++  acc += c + 16;                                           \
++  acc ^= c + 17;                                           \
++  acc *= c + 18;                                           \
++  acc += c + 19;                                           \
++  acc ^= c + 20;                                           \
++  acc += c + 21;                                           \
++  acc ^= c + 22;                                           \
++  acc *= c + 23;                                           \
++  acc += c + 24;                                           \
++  acc ^= c + 25;                                           \
++  acc += c + 26;                                           \
++  acc ^= c + 27;                                           \
++  acc *= c + 28;
++
++#define CASES_16_V4(i, func_offset)                                 \
++  case i + 0:                                                       \
++    OPS_V4(acc, (i + 0) * 28 + func_offset);                        \
++    break;                                                          \
++  case i + 1:                                                       \
++    OPS_V4(acc, (i + 1) * 28 + func_offset);                        \
++    break;                                                          \
++  case i + 2:                                                       \
++    OPS_V4(acc, (i + 2) * 28 + func_offset);                        \
++    break;                                                          \
++  case i + 3:                                                       \
++    OPS_V4(acc, (i + 3) * 28 + func_offset);                        \
++    break;                                                          \
++  case i + 4:                                                       \
++    OPS_V4(acc, (i + 4) * 28 + func_offset);                        \
++    break;                                                          \
++  case i + 5:                                                       \
++    OPS_V4(acc, (i + 5) * 28 + func_offset);                        \
++    break;                                                          \
++  case i + 6:                                                       \
++    OPS_V4(acc, (i + 6) * 28 + func_offset);                        \
++    break;                                                          \
++  case i + 7:                                                       \
++    OPS_V4(acc, (i + 7) * 28 + func_offset);                        \
++    break;                                                          \
++  case i + 8:                                                       \
++    OPS_V4(acc, (i + 8) * 28 + func_offset);                        \
++    break;                                                          \
++  case i + 9:                                                       \
++    OPS_V4(acc, (i + 9) * 28 + func_offset);                        \
++    break;                                                          \
++  case i + 10:                                                      \
++    OPS_V4(acc, (i + 10) * 28 + func_offset);                       \
++    break;                                                          \
++  case i + 11:                                                      \
++    OPS_V4(acc, (i + 11) * 28 + func_offset);                       \
++    break;                                                          \
++  case i + 12:                                                      \
++    OPS_V4(acc, (i + 12) * 28 + func_offset);                       \
++    break;                                                          \
++  case i + 13:                                                      \
++    OPS_V4(acc, (i + 13) * 28 + func_offset);                       \
++    break;                                                          \
++  case i + 14:                                                      \
++    OPS_V4(acc, (i + 14) * 28 + func_offset);                       \
++    break;                                                          \
++  case i + 15:                                                      \
++    OPS_V4(acc, (i + 15) * 28 + func_offset);                       \
++    break;
++
++#define ALL_CASES_V4(func_offset) \
++  CASES_16_V4(0, func_offset)     \
++  CASES_16_V4(16, func_offset)    \
++  CASES_16_V4(32, func_offset)    \
++  CASES_16_V4(48, func_offset)    \
++  CASES_16_V4(64, func_offset)    \
++  CASES_16_V4(80, func_offset)    \
++  CASES_16_V4(96, func_offset)    \
++  CASES_16_V4(112, func_offset)   \
++  CASES_16_V4(128, func_offset)   \
++  CASES_16_V4(144, func_offset)   \
++  CASES_16_V4(160, func_offset)   \
++  CASES_16_V4(176, func_offset)   \
++  CASES_16_V4(192, func_offset)   \
++  CASES_16_V4(208, func_offset)   \
++  CASES_16_V4(224, func_offset)   \
++  CASES_16_V4(240, func_offset)
++
++__attribute__((noinline)) int do_work_v4_0(int x, int y) {
++  int acc = y;
++  switch (x) {
++    ALL_CASES_V4(0)
++  }
++  return acc;
++}
++__attribute__((noinline)) int do_work_v4_1(int x, int y) {
++  int acc = y;
++  switch (x) {
++    ALL_CASES_V4(1000000)
++  }
++  return acc;
++}
++__attribute__((noinline)) int do_work_v4_2(int x, int y) {
++  int acc = y;
++  switch (x) {
++    ALL_CASES_V4(2000000)
++  }
++  return acc;
++}
++
++#undef OPS_V4
++#undef CASES_16_V4
++#undef ALL_CASES_V4
++
++struct Node_v4 {
++  Node_v4* next;
++  unsigned char payload;
++};
++
++template <
++    SerializerMethod kSerializerMethod,
++    typename Serializer,
++    typename Struct>
++void readBench_LargeSetInt_v4(size_t iters) {
++  folly::BenchmarkSuspender susp;
++  auto strct = create<Struct>();
++  folly::IOBufQueue q;
++  Serializer::serialize(strct, &q);
++  auto buf = q.move();
++  buf->coalesce();
++
++  constexpr size_t kNumNodes = 2048;
++  std::vector<Node_v4> nodes(kNumNodes);
++  std::vector<int> indices(kNumNodes);
++  std::iota(indices.begin(), indices.end(), 0);
++  std::mt19937 g(1); // deterministic seed
++  std::shuffle(indices.begin(), indices.end(), g);
++
++  for (size_t i = 0; i < kNumNodes; ++i) {
++    nodes[i].next = &nodes[indices[i]];
++    nodes[i].payload = indices[i] & 0xff;
++  }
++  Node_v4* current_node = &nodes[0];
++  int acc = 0;
++
++  susp.dismiss();
++
++  size_t j = 0;
++  for (size_t i = 0; i < iters; ++i) {
++    if constexpr (kSerializerMethod == SerializerMethod::Object) {
++      auto obj = protocol::parseObject<GetReader<Serializer>>(*buf);
++      folly::doNotOptimizeAway(obj);
++    } else {
++      Struct data;
++      Serializer::deserialize(buf.get(), data);
++      folly::doNotOptimizeAway(data);
++    }
++
++    // Spin to increase I-cache misses
++    for (int k = 0; k < 15; ++k) {
++      current_node = current_node->next;
++      switch (j % 3) {
++        case 0:
++          acc = do_work_v4_0(current_node->payload, acc);
++          break;
++        case 1:
++          acc = do_work_v4_1(current_node->payload, acc);
++          break;
++        case 2:
++          acc = do_work_v4_2(current_node->payload, acc);
++          break;
++      }
++      j++;
++    }
++  }
++  folly::doNotOptimizeAway(acc);
++  susp.rehire();
++}
++
++} // namespace
+ // The benckmark is to measure single struct use case, the iteration here is
+ // more like a benchmark artifact, so avoid doing optimizationon iteration
+ // usecase in this benchmark (e.g. move string definition out of while loop)
+@@ -186,9 +384,9 @@
+   M(Prefix, proto, ComplexStruct)      \
+   M(Prefix, proto, ComplexUnion)
+ 
+-#define X(Prefix, proto) APPLY(X2, Prefix, proto)              
+-
+-#define OpEncodeX(Prefix, proto) APPLY(OpEncodeX2, Prefix, proto)              
++#define X(Prefix, proto) APPLY(X2, Prefix, proto)
++
++#define OpEncodeX(Prefix, proto) APPLY(OpEncodeX2, Prefix, proto)
+ 
+ X(, Binary)
+ X(, Compact)
+@@ -200,6 +398,13 @@
+ OpEncodeX(OpEncode, Binary)
+ OpEncodeX(OpEncode, Compact)
+ 
++BENCHMARK(ObjectCompactProtocol_read_LargeSetInt_v4, iters) {
++  readBench_LargeSetInt_v4<
++      SerializerMethod::Object,
++      CompactSerializer,
++      LargeSetInt>(iters);
++}
++
+ int main(int argc, char** argv) {
+   folly::Init init(&argc, &argv);
+   folly::runBenchmarks();

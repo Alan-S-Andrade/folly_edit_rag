@@ -1,0 +1,16 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -250,7 +250,13 @@
+               break;
+           }
+ 
++          // Minimal change: introduce a small computation here to potentially
++          // increase instruction-level parallelism and reduce stall time,
++          // without altering the memory access pattern or the semaphore
++          // operations.
+           auto coldMask = -uint64_t(i % 8 == 0);
++          uint64_t temp = (uint64_t)(uintptr_t)coldPos->next;
++          acc = acc ^ (temp >> 16);
+           coldPos = (ChainNode*)(((uintptr_t)coldPos->next & coldMask) |
+                                  ((uintptr_t)coldPos & ~coldMask));
+           sem.post();

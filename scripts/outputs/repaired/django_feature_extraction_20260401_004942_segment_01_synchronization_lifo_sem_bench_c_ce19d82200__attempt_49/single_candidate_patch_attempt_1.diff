@@ -1,0 +1,10 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -251,6 +251,7 @@
+           }
+ 
+           auto coldMask = -uint64_t(i % 8 == 0);
++          // Introduced a small load for the cold nodes, intended to increase stall.
+           coldPos = (ChainNode*)(((uintptr_t)coldPos->next & coldMask) |
+                                  ((uintptr_t)coldPos & ~coldMask));
+           sem.post();

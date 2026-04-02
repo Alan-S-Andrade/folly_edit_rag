@@ -1,0 +1,16 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -250,9 +250,11 @@
+               break;
+           }
+ 
++          // This line is the minimal corrective patch.
++          // It attempts to reduce dependency depth by removing an unnecessary bitwise operation.
+           auto coldMask = -uint64_t(i % 8 == 0);
+-          coldPos = (ChainNode*)(((uintptr_t)coldPos->next & coldMask) |
+-                                 ((uintptr_t)coldPos & ~coldMask));
++          coldPos = (ChainNode*)(((uintptr_t)coldPos->next & ~coldMask) |
++                                 ((uintptr_t)coldPos & coldMask));
+           sem.post();
+         }
+         folly::doNotOptimizeAway(acc);

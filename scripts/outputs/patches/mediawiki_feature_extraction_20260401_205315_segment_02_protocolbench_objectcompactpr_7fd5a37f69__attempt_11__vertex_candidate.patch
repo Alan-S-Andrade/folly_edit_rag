@@ -1,0 +1,190 @@
+--- a/thrift/lib/cpp2/test/ProtocolBench.cpp
++++ b/thrift/lib/cpp2/test/ProtocolBench.cpp
+@@ -25,9 +25,153 @@
+ #include <folly/Optional.h>
+ #include <folly/init/Init.h>
+ #include <folly/portability/GFlags.h>
++#include <vector>
+ 
+ using namespace apache::thrift;
+ using namespace thrift::benchmark;
++
++namespace {
++
++// The ALU ops are chosen to be a mix of arithmetic and logical operations.
++// The constants are generated based on case index and function index to prevent
++// compiler optimizations and increase code footprint.
++#define OPS_2(acc, c1, c2) \
++  acc = (acc * c1) + c2;
++
++#define OPS_4(acc, c1, c2, c3, c4) \
++  OPS_2(acc, c1, c2) \
++  acc = (acc ^ c3) - c4;
++
++#define OPS_8(acc, c1, c2, c3, c4, c5, c6, c7, c8) \
++  OPS_4(acc, c1, c2, c3, c4) \
++  OPS_4(acc, c5, c6, c7, c8)
++
++#define OPS_16( \
++    acc, c1, c2, c3, c4, c5, c6, c7, c8, c9, c10, c11, c12, c13, c14, c15, c16) \
++  OPS_8(acc, c1, c2, c3, c4, c5, c6, c7, c8) \
++  OPS_8(acc, c9, c10, c11, c12, c13, c14, c15, c16)
++
++#define OPS_28(acc, i, offset)                                           \
++  OPS_16(                                                                \
++      acc,                                                               \
++      (i * 28 + 1) ^ offset,                                             \
++      (i * 28 + 2) ^ offset,                                             \
++      (i * 28 + 3) ^ offset,                                             \
++      (i * 28 + 4) ^ offset,                                             \
++      (i * 28 + 5) ^ offset,                                             \
++      (i * 28 + 6) ^ offset,                                             \
++      (i * 28 + 7) ^ offset,                                             \
++      (i * 28 + 8) ^ offset,                                             \
++      (i * 28 + 9) ^ offset,                                             \
++      (i * 28 + 10) ^ offset,                                            \
++      (i * 28 + 11) ^ offset,                                            \
++      (i * 28 + 12) ^ offset,                                            \
++      (i * 28 + 13) ^ offset,                                            \
++      (i * 28 + 14) ^ offset,                                            \
++      (i * 28 + 15) ^ offset,                                            \
++      (i * 28 + 16) ^ offset)                                            \
++  OPS_8(                                                                 \
++      acc,                                                               \
++      (i * 28 + 17) ^ offset,                                            \
++      (i * 28 + 18) ^ offset,                                            \
++      (i * 28 + 19) ^ offset,                                            \
++      (i * 28 + 20) ^ offset,                                            \
++      (i * 28 + 21) ^ offset,                                            \
++      (i * 28 + 22) ^ offset,                                            \
++      (i * 28 + 23) ^ offset,                                            \
++      (i * 28 + 24) ^ offset)                                            \
++  OPS_4(                                                                 \
++      acc,                                                               \
++      (i * 28 + 25) ^ offset,                                            \
++      (i * 28 + 26) ^ offset,                                            \
++      (i * 28 + 27) ^ offset,                                            \
++      (i * 28 + 28) ^ offset)
++
++#define CASE_BLOCK_16(p, offset)                  \
++  case p + 0:                                     \
++    OPS_28(acc, p + 0, offset);                   \
++    break;                                        \
++  case p + 1:                                     \
++    OPS_28(acc, p + 1, offset);                   \
++    break;                                        \
++  case p + 2:                                     \
++    OPS_28(acc, p + 2, offset);                   \
++    break;                                        \
++  case p + 3:                                     \
++    OPS_28(acc, p + 3, offset);                   \
++    break;                                        \
++  case p + 4:                                     \
++    OPS_28(acc, p + 4, offset);                   \
++    break;                                        \
++  case p + 5:                                     \
++    OPS_28(acc, p + 5, offset);                   \
++    break;                                        \
++  case p + 6:                                     \
++    OPS_28(acc, p + 6, offset);                   \
++    break;                                        \
++  case p + 7:                                     \
++    OPS_28(acc, p + 7, offset);                   \
++    break;                                        \
++  case p + 8:                                     \
++    OPS_28(acc, p + 8, offset);                   \
++    break;                                        \
++  case p + 9:                                     \
++    OPS_28(acc, p + 9, offset);                   \
++    break;                                        \
++  case p + 10:                                    \
++    OPS_28(acc, p + 10, offset);                  \
++    break;                                        \
++  case p + 11:                                    \
++    OPS_28(acc, p + 11, offset);                  \
++    break;                                        \
++  case p + 12:                                    \
++    OPS_28(acc, p + 12, offset);                  \
++    break;                                        \
++  case p + 13:                                    \
++    OPS_28(acc, p + 13, offset);                  \
++    break;                                        \
++  case p + 14:                                    \
++    OPS_28(acc, p + 14, offset);                  \
++    break;                                        \
++  case p + 15:                                    \
++    OPS_28(acc, p + 15, offset);                  \
++    break;
++
++#define SWITCH_256(val, acc, offset) \
++  switch (val & 0xff) {              \
++    CASE_BLOCK_16(0, offset)         \
++    CASE_BLOCK_16(16, offset)        \
++    CASE_BLOCK_16(32, offset)        \
++    CASE_BLOCK_16(48, offset)        \
++    CASE_BLOCK_16(64, offset)        \
++    CASE_BLOCK_16(80, offset)        \
++    CASE_BLOCK_16(96, offset)        \
++    CASE_BLOCK_16(112, offset)       \
++    CASE_BLOCK_16(128, offset)       \
++    CASE_BLOCK_16(144, offset)       \
++    CASE_BLOCK_16(160, offset)       \
++    CASE_BLOCK_16(176, offset)       \
++    CASE_BLOCK_16(192, offset)       \
++    CASE_BLOCK_16(208, offset)       \
++    CASE_BLOCK_16(224, offset)       \
++    CASE_BLOCK_16(240, offset)       \
++    default:                         \
++      break;                         \
++  }
++
++__attribute__((noinline)) void switch_func_0(int val, int& acc) {
++  SWITCH_256(val, acc, 0xABCDEF0);
++}
++
++__attribute__((noinline)) void switch_func_1(int val, int& acc) {
++  SWITCH_256(val, acc, 0x1234567);
++}
++
++__attribute__((noinline)) void switch_func_2(int val, int& acc) {
++  SWITCH_256(val, acc, 0xFEDCBA9);
++}
++
++} // namespace
+ 
+ template <class>
+ struct SerializerTraits;
+@@ -200,6 +344,33 @@
+ OpEncodeX(OpEncode, Binary)
+ OpEncodeX(OpEncode, Compact)
+ 
++BENCHMARK(ObjectCompactProtocol_read_LargeSetInt_v11, iters) {
++  folly::BenchmarkSuspender susp;
++  constexpr size_t kSize = 1024 * 16;
++  struct Node {
++    Node* next;
++    char payload;
++  };
++  std::vector<Node> nodes(kSize);
++  for (size_t i = 0; i < kSize; ++i) {
++    nodes[i].next = &nodes[(i + 1) % kSize];
++    nodes[i].payload = (i * 37) & 0xFF;
++  }
++
++  Node* current = &nodes[0];
++  int acc = 0;
++  void (*funcs[])(int, int&) = {switch_func_0, switch_func_1, switch_func_2};
++  susp.dismiss();
++
++  for (size_t i = 0; i < iters; ++i) {
++    current = current->next;
++    funcs[i % 3](current->payload, acc);
++  }
++
++  folly::doNotOptimizeAway(acc);
++  susp.rehire();
++}
++
+ int main(int argc, char** argv) {
+   folly::Init init(&argc, &argv);
+   folly::runBenchmarks();

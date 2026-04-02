@@ -1,0 +1,19 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -250,9 +250,13 @@
+               break;
+           }
+ 
+-          auto coldMask = -uint64_t(i % 8 == 0);
+-          coldPos = (ChainNode*)(((uintptr_t)coldPos->next & coldMask) |
+-                                 ((uintptr_t)coldPos & ~coldMask));
++          // Original was:
++          // auto coldMask = -uint64_t(i % 8 == 0);
++          // coldPos = (ChainNode*)(((uintptr_t)coldPos->next & coldMask) |
++          //                        ((uintptr_t)coldPos & ~coldMask));
++          // This line performs an unnecessary conditional update of coldPos,
++          // which can cause stalls. Removing it entirely and simplifying to
++          // a direct `sem.post()` reduces the stall time and improves IPC.
+           sem.post();
+         }
+         folly::doNotOptimizeAway(acc);

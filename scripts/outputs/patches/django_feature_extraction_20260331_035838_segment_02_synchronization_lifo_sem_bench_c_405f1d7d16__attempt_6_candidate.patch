@@ -1,0 +1,13 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -207,7 +207,9 @@
+ // increase L1i MPKI.
+ __attribute__((noinline)) uint64_t switchC_refined(uint64_t v, int c) {
+   switch (c) {
+-    // Use a different set of multipliers and operations
++    // Use a different set of multipliers and operations.
++    // Added more cases and varied multipliers to increase instruction cache pressure.
++    // The goal is to hit the L1i MPKI target.
+     CASES_8(v, c * 5 + 1, 0)
+     CASES_8(v, c * 7 + 2, 8)
+     CASES_8(v, c * 11 + 3, 16)

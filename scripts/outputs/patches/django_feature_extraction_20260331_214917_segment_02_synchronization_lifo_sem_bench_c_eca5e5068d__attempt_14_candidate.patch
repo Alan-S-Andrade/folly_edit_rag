@@ -1,0 +1,41 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -136,20 +136,25 @@
+   }
+ }
+ 
++#define ALU_BLOCK(v_acc, c_val, base_val, case_id, offset_start)               \
++  v_acc = ((v_acc * 3) ^ ((uint64_t)c_val + base_val + case_id + offset_start + 0)); \
++  v_acc = ((v_acc + 5) & ((uint64_t)c_val - base_val + case_id + offset_start + 1)); \
++  v_acc = ((v_acc * 7) + ((uint64_t)c_val | (base_val + case_id + offset_start + 2))); \
++  v_acc = ((v_acc ^ 11) * ((uint64_t)c_val + base_val + case_id + offset_start + 3)); \
++  v_acc = ((v_acc - 13) >> (((uint64_t)c_val % 31) + 1)); /* avoid zero shift */ \
++  v_acc = ((v_acc + 17) ^ ((uint64_t)c_val * base_val + case_id + offset_start + 4)); \
++  v_acc = ((v_acc * 19) + ((uint64_t)c_val & (base_val + case_id + offset_start + 5))); \
++  v_acc = ((v_acc ^ 23) - ((uint64_t)c_val + base_val + case_id + offset_start + 6)); \
++  v_acc = ((v_acc + 29) * ((uint64_t)c_val | (base_val + case_id + offset_start + 7))); \
++  v_acc = ((v_acc - 31) & ((uint64_t)c_val + base_val + case_id + offset_start + 8)); \
++  v_acc = ((v_acc * 37) ^ ((uint64_t)c_val - base_val + case_id + offset_start + 9)); \
++  v_acc = ((v_acc + 41) >> (((uint64_t)c_val % 31) + 1));                     \
++  v_acc = ((v_acc * 43) + ((uint64_t)c_val ^ (base_val + case_id + offset_start + 10)));
++
+ #define EXPANDED_ALU_OPS_BODY(v_acc, c_val, base_val, case_id)                 \
+-  v_acc = ((v_acc * 3) ^ ((uint64_t)c_val + base_val + case_id + 0));         \
+-  v_acc = ((v_acc + 5) & ((uint64_t)c_val - base_val + case_id + 1));         \
+-  v_acc = ((v_acc * 7) + ((uint64_t)c_val | (base_val + case_id + 2)));       \
+-  v_acc = ((v_acc ^ 11) * ((uint64_t)c_val + base_val + case_id + 3));        \
+-  v_acc = ((v_acc - 13) >> (((uint64_t)c_val % 31) + 1)); /* avoid zero shift */ \
+-  v_acc = ((v_acc + 17) ^ ((uint64_t)c_val * base_val + case_id + 4));        \
+-  v_acc = ((v_acc * 19) + ((uint64_t)c_val & (base_val + case_id + 5)));      \
+-  v_acc = ((v_acc ^ 23) - ((uint64_t)c_val + base_val + case_id + 6));        \
+-  v_acc = ((v_acc + 29) * ((uint64_t)c_val | (base_val + case_id + 7)));      \
+-  v_acc = ((v_acc - 31) & ((uint64_t)c_val + base_val + case_id + 8));        \
+-  v_acc = ((v_acc * 37) ^ ((uint64_t)c_val - base_val + case_id + 9));        \
+-  v_acc = ((v_acc + 41) >> (((uint64_t)c_val % 31) + 1));                     \
+-  v_acc = ((v_acc * 43) + ((uint64_t)c_val ^ (base_val + case_id + 10)));
++  ALU_BLOCK(v_acc, c_val, base_val, case_id, 0);                               \
++  ALU_BLOCK(v_acc, c_val, base_val, case_id, 13);                              \
++  ALU_BLOCK(v_acc, c_val, base_val, case_id, 26);
+ 
+ #define CASES_8(v, c, base)                                                    \
+   case base + 0:                                                               \

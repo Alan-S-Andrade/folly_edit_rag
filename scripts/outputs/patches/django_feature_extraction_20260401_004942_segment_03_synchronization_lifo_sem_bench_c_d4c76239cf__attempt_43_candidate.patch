@@ -1,0 +1,16 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -250,8 +250,12 @@
+               break;
+           }
+ 
++          // The minimal change: avoid the conditional read of coldPos->next when
++          // coldMask is zero, as this could be a source of stalls.
++          // Instead, perform both reads and then conditionally use one.
++          ChainNode* nextColdPos = coldPos->next;
+           auto coldMask = -uint64_t(i % 8 == 0);
+-          coldPos = (ChainNode*)(((uintptr_t)coldPos->next & coldMask) |
++          coldPos = (ChainNode*)(((uintptr_t)nextColdPos & coldMask) |
+                                  ((uintptr_t)coldPos & ~coldMask));
+           sem.post();
+         }

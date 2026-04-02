@@ -1,0 +1,208 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -3,7 +3,8 @@
+  *
+  * Licensed under the Apache License, Version 2.0 (the "License");
+  * you may not use this file except in compliance with the License.
+- * You may obtain a copy of the License at
++ * You may
++ * obtain a copy of the License at
+  *
+  *     http://www.apache.org/licenses/LICENSE-2.0
+  *
+@@ -19,6 +20,13 @@
+ #include <folly/synchronization/NativeSemaphore.h>
+ 
+ #include <folly/Benchmark.h>
++#include <folly/logging/Check.h>
++
++#include <algorithm>
++#include <mutex>
++#include <numeric>
++#include <random>
++#include <vector>
+ 
+ using namespace folly;
+ 
+@@ -108,8 +116,172 @@
+   }
+ }
+ 
++namespace {
++
++#define OP1A(c) v += (c)*0x10101
++#define OP2A(c) v ^= (c) << 8
++#define OP3A(c) v = (v << 1) | (v >> 63)
++
++#define OP1B(c) v ^= (c)*0x10101
++#define OP2B(c) v += (c) << 5
++#define OP3B(c) v = (v << 2) | (v >> 62)
++
++#define OP1C(c) v -= (c)*0x101
++#define OP2C(c) v *= (c) | 1
++#define OP3C(c) v = (v << 3) | (v >> 61)
++
++#define CASE(i, op1, op2, op3) \
++  case i:                     \
++    op1(i);                   \
++    op2(i);                   \
++    op3(i);                   \
++    break;
++#define CASES_16(b, op1, op2, op3)                                           \
++  CASE(b + 0, op1, op2, op3) CASE(b + 1, op1, op2, op3) CASE(b + 2, op1, op2, \
++      op3) CASE(b + 3, op1, op2, op3) CASE(b + 4, op1, op2, op3) CASE(        \
++      b + 5, op1, op2, op3) CASE(b + 6, op1, op2, op3) CASE(b + 7, op1, op2,  \
++      op3) CASE(b + 8, op1, op2, op3) CASE(b + 9, op1, op2, op3) CASE(        \
++      b + 10, op1, op2, op3) CASE(b + 11, op1, op2, op3) CASE(b + 12, op1,    \
++      op2, op3) CASE(b + 13, op1, op2, op3) CASE(b + 14, op1, op2,            \
++      op3) CASE(b + 15, op1, op2, op3)
++#define CASES_256(op1, op2, op3)       \
++  CASES_16(0, op1, op2, op3)           \
++  CASES_16(16, op1, op2, op3)          \
++  CASES_16(32, op1, op2, op3)          \
++  CASES_16(48, op1, op2, op3)          \
++  CASES_16(64, op1, op2, op3)          \
++  CASES_16(80, op1, op2, op3)          \
++  CASES_16(96, op1, op2, op3)          \
++  CASES_16(112, op1, op2, op3)         \
++  CASES_16(128, op1, op2, op3)         \
++  CASES_16(144, op1, op2, op3)         \
++  CASES_16(160, op1, op2, op3)         \
++  CASES_16(176, op1, op2, op3)         \
++  CASES_16(192, op1, op2, op3)         \
++  CASES_16(208, op1, op2, op3)         \
++  CASES_16(224, op1, op2, op3)         \
++  CASES_16(240, op1, op2, op3)
++
++__attribute__((noinline)) uint64_t switchA(uint64_t v, int c) {
++  switch (c) {
++    CASES_256(OP1A, OP2A, OP3A);
++  }
++  return v;
++}
++__attribute__((noinline)) uint64_t switchB(uint64_t v, int c) {
++  switch (c) {
++    CASES_256(OP1B, OP2B, OP3B);
++  }
++  return v;
++}
++__attribute__((noinline)) uint64_t switchC(uint64_t v, int c) {
++  switch (c) {
++    CASES_256(OP1C, OP2C, OP3C);
++  }
++  return v;
++}
++
++struct ChaseUtil {
++  struct ChainNode {
++    ChainNode* next;
++    char pad[56];
++  };
++  static_assert(sizeof(ChainNode) == 64, "ChainNode should be 64 bytes");
++
++  static constexpr size_t kHotLen = 16384;
++  static constexpr size_t kColdLen = 2u << 20;
++
++  static ChainNode hotNodes[kHotLen];
++  static ChainNode* coldNodes;
++  static std::once_flag init_flag;
++
++  static void init() {
++    std::call_once(init_flag, [] {
++      coldNodes = new ChainNode[kColdLen];
++      initChain(hotNodes, kHotLen);
++      initChain(coldNodes, kColdLen);
++    });
++  }
++
++  static void initChain(ChainNode* nodes, size_t len) {
++    std::vector<size_t> perm(len);
++    std::iota(perm.begin(), perm.end(), 0u);
++    std::mt19937_64 rng(42);
++    for (size_t i = len - 1; i > 0; --i) {
++      std::swap(perm[i], perm[rng() % (i + 1)]);
++    }
++    for (size_t i = 0; i < len; ++i) {
++      nodes[perm[i]].next = &nodes[perm[(i + 1) % len]];
++    }
++  }
++};
++ChaseUtil::ChainNode ChaseUtil::hotNodes[ChaseUtil::kHotLen];
++ChaseUtil::ChainNode* ChaseUtil::coldNodes = nullptr;
++std::once_flag ChaseUtil::init_flag;
++} // namespace
++
++static void contendedUse_v1(uint32_t n, int posters, int waiters) {
++  LifoSem sem;
++
++  std::vector<std::thread> threads;
++  std::atomic<bool> go(false);
++
++  BENCHMARK_SUSPEND {
++    ChaseUtil::init();
++    for (int t = 0; t < waiters; ++t) {
++      threads.emplace_back([=, &sem] {
++        for (uint32_t i = t; i < n; i += waiters) {
++          sem.wait();
++        }
++      });
++    }
++    for (int t = 0; t < posters; ++t) {
++      threads.emplace_back([=, &sem, &go] {
++        ChaseUtil::ChainNode* hotPos =
++            &ChaseUtil::hotNodes[t % ChaseUtil::kHotLen];
++        ChaseUtil::ChainNode* coldPos =
++            &ChaseUtil::coldNodes[t % ChaseUtil::kColdLen];
++        uint64_t acc = 0;
++
++        while (!go.load()) {
++          std::this_thread::yield();
++        }
++        for (uint32_t i = t; i < n; i += posters) {
++          constexpr size_t INNER_ITERS = 8;
++          for (size_t j = 0; j < INNER_ITERS; ++j) {
++            hotPos = hotPos->next;
++            uint64_t payload = (uint64_t)(uintptr_t)hotPos;
++            switch (j % 3) {
++              case 0:
++                acc = switchA(acc, payload & 0xFF);
++                break;
++              case 1:
++                acc = switchB(acc, payload & 0xFF);
++                break;
++              case 2:
++                acc = switchC(acc, payload & 0xFF);
++                break;
++            }
++            auto coldMask = -uint64_t(j % 8 == 0);
++            coldPos = (ChaseUtil::ChainNode*)((uintptr_t)coldPos->next &
++                                                  coldMask |
++                                              (uintptr_t)coldPos & ~coldMask);
++          }
++          sem.post();
++        }
++        folly::doNotOptimizeAway(acc);
++      });
++    }
++  }
++
++  go.store(true);
++  for (auto& thr : threads) {
++    thr.join();
++  }
++}
++
+ static void contendedUse(uint32_t n, int posters, int waiters) {
+-  LifoSemImpl<std::atomic> sem;
++  LifoSem sem;
+ 
+   std::vector<std::thread> threads;
+   std::atomic<bool> go(false);
+@@ -142,6 +314,7 @@
+ 
+ BENCHMARK_DRAW_LINE();
+ BENCHMARK_NAMED_PARAM(contendedUse, 1_to_1, 1, 1)
++BENCHMARK_NAMED_PARAM(contendedUse_v1, 32_to_32_v1, 32, 32)
+ BENCHMARK_NAMED_PARAM(contendedUse, 1_to_4, 1, 4)
+ BENCHMARK_NAMED_PARAM(contendedUse, 1_to_32, 1, 32)
+ BENCHMARK_NAMED_PARAM(contendedUse, 4_to_1, 4, 1)

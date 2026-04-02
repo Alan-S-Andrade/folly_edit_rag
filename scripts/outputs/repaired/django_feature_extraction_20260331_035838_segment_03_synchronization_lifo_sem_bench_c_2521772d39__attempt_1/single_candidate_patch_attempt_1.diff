@@ -1,0 +1,85 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -301,6 +301,74 @@
+   }
+ }
+ 
++namespace {
++// New benchmark for synchronization_lifo_sem_bench binary, adding nearby local variant
++// to contendedUse(32_to_1000). This variant introduces a pointer-chase load
++// into the hot path and rotates through 3 __attribute__((noinline)) switch
++// functions to increase L1-icache-load-misses and branch-misses.
++static void contendedUse_32_to_1000_extended(uint32_t n, int posters, int waiters) {
++  LifoSemImpl<std::atomic> sem;
++
++  std::vector<std::thread> threads;
++  std::atomic<bool> go(false);
++
++  BENCHMARK_SUSPEND {
++    for (int t = 0; t < waiters; ++t) {
++      threads.emplace_back([=, &sem] {
++        for (uint32_t i = t; i < n; i += waiters) {
++          sem.wait();
++        }
++      });
++    }
++    for (int t = 0; t < posters; ++t) {
++      threads.emplace_back([=, &sem, &go] {
++        ChainNode* hotPos = &hotNodes[t % kHotLen];
++        ChainNode* coldPos = &coldNodes[t % kColdLen];
++        uint64_t acc = t;
++
++        while (!go.load()) {
++          std::this_thread::yield();
++        }
++        for (uint32_t i = t; i < n; i += posters) {
++          // Pointer chase to get payload for switch index
++          hotPos = hotPos->next;
++          uint64_t payload = (uint64_t)(uintptr_t)hotPos;
++
++          // Rotate through switch functions to increase instruction footprint
++          switch (i % 3) {
++            case 0:
++              acc = switchA(acc, payload & 0xFF);
++              break;
++            case 1:
++              acc = switchB(acc, payload & 0xFF);
++              break;
++            case 2:
++              acc = switchC(acc, payload & 0xFF);
++              break;
++          }
++
++          // This part is from the original contendedUse_v2 and is kept for minimal change.
++          // It might be removed in future iterations if IPC is affected negatively.
++          auto coldMask = -uint64_t(i % 8 == 0);
++          coldPos = (ChainNode*)(((uintptr_t)coldPos->next & coldMask) |
++                                 ((uintptr_t)coldPos & ~coldMask));
++
++          sem.post();
++        }
++        folly::doNotOptimizeAway(acc);
++        folly::doNotOptimizeAway(hotPos);
++        folly::doNotOptimizeAway(coldPos);
++      });
++    }
++  }
++
++  go.store(true);
++  for (auto& thr : threads) {
++    thr.join();
++  }
++}
++} // namespace
++
+ BENCHMARK_DRAW_LINE();
+ BENCHMARK_NAMED_PARAM(contendedUse, 1_to_1, 1, 1)
+ BENCHMARK_NAMED_PARAM(contendedUse, 1_to_4, 1, 4)
+@@ -313,6 +381,7 @@
+ BENCHMARK_NAMED_PARAM(contendedUse, 32_to_32, 32, 32)
+ BENCHMARK_NAMED_PARAM(contendedUse_v2, 32_to_32_v2, 32, 32)
+ BENCHMARK_NAMED_PARAM(contendedUse, 32_to_1000, 32, 1000)
++BENCHMARK_NAMED_PARAM(contendedUse_32_to_1000_extended, 32_to_1000_ext, 32, 1000)
+ 
+ // sudo nice -n -20 _build/opt/folly/test/LifoSemTests
+ //     --benchmark --bm_min_iters=10000000 --gtest_filter=-\*

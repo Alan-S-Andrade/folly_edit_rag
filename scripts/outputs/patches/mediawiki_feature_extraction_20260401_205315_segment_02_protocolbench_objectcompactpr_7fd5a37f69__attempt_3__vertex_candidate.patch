@@ -1,0 +1,148 @@
+--- a/thrift/lib/cpp2/test/ProtocolBench.cpp
++++ b/thrift/lib/cpp2/test/ProtocolBench.cpp
+@@ -3,6 +3,7 @@
+  *
+  * Licensed under the Apache License, Version 2.0 (the "License");
+  * you may not use this file except in compliance with the License.
++ * You may in compliance with the License.
+  * You may obtain a copy of the License at
+  *
+  *     http://www.apache.org/licenses/LICENSE-2.0
+@@ -25,6 +26,9 @@
+ #include <folly/Optional.h>
+ #include <folly/init/Init.h>
+ #include <folly/portability/GFlags.h>
++
++#include <memory>
++#include <vector>
+ 
+ using namespace apache::thrift;
+ using namespace thrift::benchmark;
+@@ -200,6 +204,127 @@
+ OpEncodeX(OpEncode, Binary)
+ OpEncodeX(OpEncode, Compact)
+ 
++#define F_ALU_GROUP(acc, c) \
++  acc += c;                 \
++  acc ^= (c + 1);           \
++  acc *= (c - 1);           \
++  acc -= (c + 2);           \
++  acc |= (c + 3);
++
++#define CASE_BLOCK(i, base, acc)   \
++  case i:                          \
++    F_ALU_GROUP(acc, base + 0 * 5);  \
++    F_ALU_GROUP(acc, base + 1 * 5);  \
++    F_ALU_GROUP(acc, base + 2 * 5);  \
++    F_ALU_GROUP(acc, base + 3 * 5);  \
++    F_ALU_GROUP(acc, base + 4 * 5);  \
++    F_ALU_GROUP(acc, base + 5 * 5);  \
++    break;
++
++#define CASES_16(i_start, base_start, acc) \
++  CASE_BLOCK(i_start + 0, base_start + 0 * 30, acc)   \
++  CASE_BLOCK(i_start + 1, base_start + 1 * 30, acc)   \
++  CASE_BLOCK(i_start + 2, base_start + 2 * 30, acc)   \
++  CASE_BLOCK(i_start + 3, base_start + 3 * 30, acc)   \
++  CASE_BLOCK(i_start + 4, base_start + 4 * 30, acc)   \
++  CASE_BLOCK(i_start + 5, base_start + 5 * 30, acc)   \
++  CASE_BLOCK(i_start + 6, base_start + 6 * 30, acc)   \
++  CASE_BLOCK(i_start + 7, base_start + 7 * 30, acc)   \
++  CASE_BLOCK(i_start + 8, base_start + 8 * 30, acc)   \
++  CASE_BLOCK(i_start + 9, base_start + 9 * 30, acc)   \
++  CASE_BLOCK(i_start + 10, base_start + 10 * 30, acc) \
++  CASE_BLOCK(i_start + 11, base_start + 11 * 30, acc) \
++  CASE_BLOCK(i_start + 12, base_start + 12 * 30, acc) \
++  CASE_BLOCK(i_start + 13, base_start + 13 * 30, acc) \
++  CASE_BLOCK(i_start + 14, base_start + 14 * 30, acc) \
++  CASE_BLOCK(i_start + 15, base_start + 15 * 30, acc)
++
++#define ALL_CASES(base, acc) \
++  CASES_16(0, base, acc) \
++  CASES_16(16, base + 16 * 30, acc) \
++  CASES_16(32, base + 32 * 30, acc) \
++  CASES_16(48, base + 48 * 30, acc) \
++  CASES_16(64, base + 64 * 30, acc) \
++  CASES_16(80, base + 80 * 30, acc) \
++  CASES_16(96, base + 96 * 30, acc) \
++  CASES_16(112, base + 112 * 30, acc) \
++  CASES_16(128, base + 128 * 30, acc) \
++  CASES_16(144, base + 144 * 30, acc) \
++  CASES_16(160, base + 160 * 30, acc) \
++  CASES_16(176, base + 176 * 30, acc) \
++  CASES_16(192, base + 192 * 30, acc) \
++  CASES_16(208, base + 208 * 30, acc) \
++  CASES_16(224, base + 224 * 30, acc) \
++  CASES_16(240, base + 240 * 30, acc)
++
++__attribute__((noinline)) int large_switch_func_v3_1(volatile const char* data) {
++    int acc = 0;
++    switch (*data & 0xff) {
++        ALL_CASES(1000, acc);
++    }
++    return acc;
++}
++__attribute__((noinline)) int large_switch_func_v3_2(volatile const char* data) {
++    int acc = 0;
++    switch (*data & 0xff) {
++        ALL_CASES(1000 + 256 * 30 * 2, acc);
++    }
++    return acc;
++}
++__attribute__((noinline)) int large_switch_func_v3_3(volatile const char* data) {
++    int acc = 0;
++    switch (*data & 0xff) {
++        ALL_CASES(1000 + 256 * 30 * 4, acc);
++    }
++    return acc;
++}
++
++#undef F_ALU_GROUP
++#undef CASE_BLOCK
++#undef CASES_16
++#undef ALL_CASES
++
++BENCHMARK(ObjectCompactProtocol_read_LargeSetInt_v3, iters) {
++    folly::BenchmarkSuspender susp;
++
++    struct Node {
++        Node* next;
++        char payload[64];
++    };
++
++    constexpr size_t num_nodes = 256;
++    std::vector<Node> nodes(num_nodes);
++    for (size_t i = 0; i < num_nodes; ++i) {
++        nodes[i].next = &nodes[(i + 1) % num_nodes];
++        for (int j = 0; j < 64; ++j) {
++            nodes[i].payload[j] = (i * 13 + j * 7) & 0xff;
++        }
++    }
++
++    volatile Node* p = &nodes[0];
++    long acc = 0;
++
++    susp.dismiss();
++
++    for (size_t i = 0; i < iters; ++i) {
++        p = p->next;
++        switch (i % 3) {
++            case 0:
++                acc += large_switch_func_v3_1(p->payload);
++                break;
++            case 1:
++                acc += large_switch_func_v3_2(p->payload);
++                break;
++            case 2:
++                acc += large_switch_func_v3_3(p->payload);
++                break;
++        }
++    }
++
++    folly::doNotOptimizeAway(acc);
++    susp.rehire();
++}
++
+ int main(int argc, char** argv) {
+   folly::Init init(&argc, &argv);
+   folly::runBenchmarks();

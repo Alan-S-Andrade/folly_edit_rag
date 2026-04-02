@@ -1,0 +1,19 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -137,15 +137,7 @@
+ }
+ 
+ #define ALU_OPS_PER_CASE(v, c, base, offset) \
+-  v = (v + 3) + (uint64_t)c + base + offset + 0x1; \
+-  v = (v ^ 5) + (uint64_t)c + base + offset + 0x2; \
+-  v = (v * 7) + (uint64_t)c + base + offset + 0x3; \
+-  v = (v + 11) + (uint64_t)c + base + offset + 0x4; \
+-  v = (v ^ 13) + (uint64_t)c + base + offset + 0x5; \
+-  v = (v * 17) + (uint64_t)c + base + offset + 0x6; \
+-  v = (v + 19) + (uint64_t)c + base + offset + 0x7; \
+-  v = (v ^ 23) + (uint64_t)c + base + offset + 0x8; \
+-  v = (v * 29) + (uint64_t)c + base + offset + 0x9;
++  v = (v + 3) + (uint64_t)c + base + offset + 0x1;
+ 
+ #undef CASES_8
+ #define CASES_8(v, c, base)                                                    \

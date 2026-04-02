@@ -1,0 +1,11 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -260,7 +260,7 @@
+           // stalls if the condition is unpredictable. For this attempt, we will
+           // simplify it by always advancing `coldPos` to its `next`. This
+           // reduces complexity and potential stall cycles, aiming to improve IPC.
+-          coldPos = hotPos; // Simplified assignment to reduce branches and loads.
++          coldPos = coldPos->next; // Always advance coldPos to its next node.
+ 
+           sem.post();
+         }

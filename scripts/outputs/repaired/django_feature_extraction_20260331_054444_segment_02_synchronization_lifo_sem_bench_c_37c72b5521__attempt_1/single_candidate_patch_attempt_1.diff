@@ -1,0 +1,19 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -313,6 +313,7 @@
+ BENCHMARK_NAMED_PARAM(contendedUse, 32_to_32, 32, 32)
+ BENCHMARK_NAMED_PARAM(contendedUse_v2, 32_to_32_v2, 32, 32)
+ BENCHMARK_NAMED_PARAM(contendedUse, 32_to_1000, 32, 1000)
++BENCHMARK_NAMED_PARAM(contendedUse_v2, 32_to_1000_v2, 32, 1000)
+ 
+ // sudo nice -n -20 _build/opt/folly/test/LifoSemTests
+ //     --benchmark --bm_min_iters=10000000 --gtest_filter=-\*
+@@ -338,6 +339,8 @@
+ // contendedUse(16_to_16)                                     238.57ns    4.19M
+ // contendedUse(32_to_32)                                     219.82ns    4.55M
+ // contendedUse(32_to_1000)                                   777.42ns    1.29M
++// contendedUse_v2(32_to_32_v2)                               209.67ns    4.77M
++// contendedUse_v2(32_to_1000_v2)                             771.23ns    1.30M
+ // ============================================================================
+ 
+ int main(int argc, char** argv) {

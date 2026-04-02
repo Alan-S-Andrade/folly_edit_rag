@@ -1,0 +1,13 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -295,8 +295,8 @@
+         for (uint32_t i = t; i < n; i += posters) {
+           hotPos = hotPos->next;
+           hotPos2 = hotPos2->next;
+-          uint64_t payload =
+-              (uint64_t)(uintptr_t)hotPos + (uint64_t)(uintptr_t)hotPos2;
++          uint64_t payload = (uint64_t)(uintptr_t)hotPos ^
++              (uint64_t)(uintptr_t)hotPos2;
+           switch (i % 3) {
+             case 0:
+               acc = switchA(acc, payload & 0xFF);

@@ -1,0 +1,26 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -179,7 +179,22 @@
+   v_acc = ((v_acc - 163) & ((uint64_t)c_val + base_val + case_id + 30));      \
+   v_acc = ((v_acc * 167) ^ ((uint64_t)c_val - base_val + case_id + 31));      \
+   v_acc = ((v_acc + 173) >> (((uint64_t)c_val % 31) + 1));                    \
+-  v_acc = ((v_acc * 179) + ((uint64_t)c_val ^ (base_val + case_id + 32)));
++  v_acc = ((v_acc * 179) + ((uint64_t)c_val ^ (base_val + case_id + 32)));   \
++                                                                               \
++  /* Fourth block of operations to significantly increase I-cache footprint */ \
++  v_acc = ((v_acc * 181) ^ ((uint64_t)c_val + base_val + case_id + 33));     \
++  v_acc = ((v_acc + 191) & ((uint64_t)c_val - base_val + case_id + 34));     \
++  v_acc = ((v_acc * 193) + ((uint64_t)c_val | (base_val + case_id + 35)));   \
++  v_acc = ((v_acc ^ 197) * ((uint64_t)c_val + base_val + case_id + 36));     \
++  v_acc = ((v_acc - 199) >> (((uint64_t)c_val % 31) + 1));                   \
++  v_acc = ((v_acc + 211) ^ ((uint64_t)c_val * base_val + case_id + 37));     \
++  v_acc = ((v_acc * 223) + ((uint64_t)c_val & (base_val + case_id + 38)));   \
++  v_acc = ((v_acc ^ 227) - ((uint64_t)c_val + base_val + case_id + 39));     \
++  v_acc = ((v_acc + 229) * ((uint64_t)c_val | (base_val + case_id + 40)));   \
++  v_acc = ((v_acc - 233) & ((uint64_t)c_val + base_val + case_id + 41));     \
++  v_acc = ((v_acc * 239) ^ ((uint64_t)c_val - base_val + case_id + 42));     \
++  v_acc = ((v_acc + 241) >> (((uint64_t)c_val % 31) + 1));                   \
++  v_acc = ((v_acc * 251) + ((uint64_t)c_val ^ (base_val + case_id + 43)));
+ 
+ #define CASES_8(v, c, base)                                                    \
+   case base + 0:                                                               \

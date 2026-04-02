@@ -1,0 +1,11 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -118,7 +118,7 @@
+   char pad[56];
+ };
+ 
+-constexpr size_t kHotLen = 16384;
++constexpr size_t kHotLen = 32768;
+ constexpr size_t kColdLen = 2u << 20;
+ 
+ alignas(64) static ChainNode hotNodes[kHotLen];

@@ -1,0 +1,202 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -147,6 +147,24 @@
+     v = (v ^ 109) + (uint64_t)c + base + 0;                                    \
+     v = (v * 113) + (uint64_t)c + base + 0;                                    \
+     v = (v ^ 127) + (uint64_t)c + base + 0;                                    \
++    v = (v * 131) + (uint64_t)c + base + 0;                                    \
++    v = (v ^ 137) + (uint64_t)c + base + 0;                                    \
++    v = (v * 139) + (uint64_t)c + base + 0;                                    \
++    v = (v ^ 149) + (uint64_t)c + base + 0;                                    \
++    v = (v * 151) + (uint64_t)c + base + 0;                                    \
++    v = (v ^ 157) + (uint64_t)c + base + 0;                                    \
++    v = (v * 163) + (uint64_t)c + base + 0;                                    \
++    v = (v ^ 167) + (uint64_t)c + base + 0;                                    \
++    v = (v * 173) + (uint64_t)c + base + 0;                                    \
++    v = (v ^ 179) + (uint64_t)c + base + 0;                                    \
++    v = (v * 181) + (uint64_t)c + base + 0;                                    \
++    v = (v ^ 191) + (uint64_t)c + base + 0;                                    \
++    v = (v * 193) + (uint64_t)c + base + 0;                                    \
++    v = (v ^ 197) + (uint64_t)c + base + 0;                                    \
++    v = (v * 199) + (uint64_t)c + base + 0;                                    \
++    v = (v ^ 211) + (uint64_t)c + base + 0;                                    \
++    v = (v * 223) + (uint64_t)c + base + 0;                                    \
++    v = (v ^ 227) + (uint64_t)c + base + 0;                                    \
+     break;                                                                     \
+   case base + 1:                                                               \
+     v = (v * 5) + (uint64_t)c + base + 1;                                      \
+@@ -158,6 +176,24 @@
+     v = (v ^ 149) + (uint64_t)c + base + 1;                                    \
+     v = (v * 151) + (uint64_t)c + base + 1;                                    \
+     v = (v ^ 157) + (uint64_t)c + base + 1;                                    \
++    v = (v * 229) + (uint64_t)c + base + 1;                                    \
++    v = (v ^ 233) + (uint64_t)c + base + 1;                                    \
++    v = (v * 239) + (uint64_t)c + base + 1;                                    \
++    v = (v ^ 241) + (uint64_t)c + base + 1;                                    \
++    v = (v * 251) + (uint64_t)c + base + 1;                                    \
++    v = (v ^ 257) + (uint64_t)c + base + 1;                                    \
++    v = (v * 263) + (uint64_t)c + base + 1;                                    \
++    v = (v ^ 269) + (uint64_t)c + base + 1;                                    \
++    v = (v * 271) + (uint64_t)c + base + 1;                                    \
++    v = (v ^ 277) + (uint64_t)c + base + 1;                                    \
++    v = (v * 281) + (uint64_t)c + base + 1;                                    \
++    v = (v ^ 283) + (uint64_t)c + base + 1;                                    \
++    v = (v * 293) + (uint64_t)c + base + 1;                                    \
++    v = (v ^ 307) + (uint64_t)c + base + 1;                                    \
++    v = (v * 311) + (uint64_t)c + base + 1;                                    \
++    v = (v ^ 313) + (uint64_t)c + base + 1;                                    \
++    v = (v * 317) + (uint64_t)c + base + 1;                                    \
++    v = (v ^ 331) + (uint64_t)c + base + 1;                                    \
+     break;                                                                     \
+   case base + 2:                                                               \
+     v = (v * 7) + (uint64_t)c + base + 2;                                      \
+@@ -169,6 +205,24 @@
+     v = (v ^ 179) + (uint64_t)c + base + 2;                                    \
+     v = (v * 181) + (uint64_t)c + base + 2;                                    \
+     v = (v ^ 191) + (uint64_t)c + base + 2;                                    \
++    v = (v * 337) + (uint64_t)c + base + 2;                                    \
++    v = (v ^ 347) + (uint64_t)c + base + 2;                                    \
++    v = (v * 349) + (uint64_t)c + base + 2;                                    \
++    v = (v ^ 353) + (uint64_t)c + base + 2;                                    \
++    v = (v * 359) + (uint64_t)c + base + 2;                                    \
++    v = (v ^ 367) + (uint64_t)c + base + 2;                                    \
++    v = (v * 373) + (uint64_t)c + base + 2;                                    \
++    v = (v ^ 379) + (uint64_t)c + base + 2;                                    \
++    v = (v * 383) + (uint64_t)c + base + 2;                                    \
++    v = (v ^ 389) + (uint64_t)c + base + 2;                                    \
++    v = (v * 397) + (uint64_t)c + base + 2;                                    \
++    v = (v ^ 401) + (uint64_t)c + base + 2;                                    \
++    v = (v * 409) + (uint64_t)c + base + 2;                                    \
++    v = (v ^ 419) + (uint64_t)c + base + 2;                                    \
++    v = (v * 421) + (uint64_t)c + base + 2;                                    \
++    v = (v ^ 431) + (uint64_t)c + base + 2;                                    \
++    v = (v * 433) + (uint64_t)c + base + 2;                                    \
++    v = (v ^ 439) + (uint64_t)c + base + 2;                                    \
+     break;                                                                     \
+   case base + 3:                                                               \
+     v = (v * 11) + (uint64_t)c + base + 3;                                     \
+@@ -180,6 +234,24 @@
+     v = (v ^ 211) + (uint64_t)c + base + 3;                                    \
+     v = (v * 223) + (uint64_t)c + base + 3;                                    \
+     v = (v ^ 227) + (uint64_t)c + base + 3;                                    \
++    v = (v * 443) + (uint64_t)c + base + 3;                                    \
++    v = (v ^ 449) + (uint64_t)c + base + 3;                                    \
++    v = (v * 457) + (uint64_t)c + base + 3;                                    \
++    v = (v ^ 461) + (uint64_t)c + base + 3;                                    \
++    v = (v * 463) + (uint64_t)c + base + 3;                                    \
++    v = (v ^ 467) + (uint64_t)c + base + 3;                                    \
++    v = (v * 479) + (uint64_t)c + base + 3;                                    \
++    v = (v ^ 487) + (uint64_t)c + base + 3;                                    \
++    v = (v * 491) + (uint64_t)c + base + 3;                                    \
++    v = (v ^ 499) + (uint64_t)c + base + 3;                                    \
++    v = (v * 503) + (uint64_t)c + base + 3;                                    \
++    v = (v ^ 509) + (uint64_t)c + base + 3;                                    \
++    v = (v * 521) + (uint64_t)c + base + 3;                                    \
++    v = (v ^ 523) + (uint64_t)c + base + 3;                                    \
++    v = (v * 541) + (uint64_t)c + base + 3;                                    \
++    v = (v ^ 547) + (uint64_t)c + base + 3;                                    \
++    v = (v * 557) + (uint64_t)c + base + 3;                                    \
++    v = (v ^ 563) + (uint64_t)c + base + 3;                                    \
+     break;                                                                     \
+   case base + 4:                                                               \
+     v = (v * 13) + (uint64_t)c + base + 4;                                     \
+@@ -191,6 +263,24 @@
+     v = (v ^ 241) + (uint64_t)c + base + 4;                                    \
+     v = (v * 251) + (uint64_t)c + base + 4;                                    \
+     v = (v ^ 257) + (uint64_t)c + base + 4;                                    \
++    v = (v * 569) + (uint64_t)c + base + 4;                                    \
++    v = (v ^ 571) + (uint64_t)c + base + 4;                                    \
++    v = (v * 577) + (uint64_t)c + base + 4;                                    \
++    v = (v ^ 587) + (uint64_t)c + base + 4;                                    \
++    v = (v * 593) + (uint64_t)c + base + 4;                                    \
++    v = (v ^ 599) + (uint64_t)c + base + 4;                                    \
++    v = (v * 601) + (uint64_t)c + base + 4;                                    \
++    v = (v ^ 607) + (uint64_t)c + base + 4;                                    \
++    v = (v * 613) + (uint64_t)c + base + 4;                                    \
++    v = (v ^ 617) + (uint64_t)c + base + 4;                                    \
++    v = (v * 619) + (uint64_t)c + base + 4;                                    \
++    v = (v ^ 631) + (uint64_t)c + base + 4;                                    \
++    v = (v * 641) + (uint64_t)c + base + 4;                                    \
++    v = (v ^ 643) + (uint64_t)c + base + 4;                                    \
++    v = (v * 647) + (uint64_t)c + base + 4;                                    \
++    v = (v ^ 653) + (uint64_t)c + base + 4;                                    \
++    v = (v * 659) + (uint64_t)c + base + 4;                                    \
++    v = (v ^ 661) + (uint64_t)c + base + 4;                                    \
+     break;                                                                     \
+   case base + 5:                                                               \
+     v = (v * 17) + (uint64_t)c + base + 5;                                     \
+@@ -202,6 +292,24 @@
+     v = (v ^ 277) + (uint64_t)c + base + 5;                                    \
+     v = (v * 281) + (uint64_t)c + base + 5;                                    \
+     v = (v ^ 283) + (uint64_t)c + base + 5;                                    \
++    v = (v * 673) + (uint64_t)c + base + 5;                                    \
++    v = (v ^ 677) + (uint64_t)c + base + 5;                                    \
++    v = (v * 683) + (uint64_t)c + base + 5;                                    \
++    v = (v ^ 691) + (uint64_t)c + base + 5;                                    \
++    v = (v * 701) + (uint64_t)c + base + 5;                                    \
++    v = (v ^ 709) + (uint64_t)c + base + 5;                                    \
++    v = (v * 719) + (uint64_t)c + base + 5;                                    \
++    v = (v ^ 727) + (uint64_t)c + base + 5;                                    \
++    v = (v * 733) + (uint64_t)c + base + 5;                                    \
++    v = (v ^ 739) + (uint64_t)c + base + 5;                                    \
++    v = (v * 743) + (uint64_t)c + base + 5;                                    \
++    v = (v ^ 751) + (uint64_t)c + base + 5;                                    \
++    v = (v * 757) + (uint64_t)c + base + 5;                                    \
++    v = (v ^ 761) + (uint64_t)c + base + 5;                                    \
++    v = (v * 769) + (uint64_t)c + base + 5;                                    \
++    v = (v ^ 773) + (uint64_t)c + base + 5;                                    \
++    v = (v * 787) + (uint64_t)c + base + 5;                                    \
++    v = (v ^ 797) + (uint64_t)c + base + 5;                                    \
+     break;                                                                     \
+   case base + 6:                                                               \
+     v = (v * 19) + (uint64_t)c + base + 6;                                     \
+@@ -213,6 +321,24 @@
+     v = (v ^ 313) + (uint64_t)c + base + 6;                                    \
+     v = (v * 317) + (uint64_t)c + base + 6;                                    \
+     v = (v ^ 331) + (uint64_t)c + base + 6;                                    \
++    v = (v * 809) + (uint64_t)c + base + 6;                                    \
++    v = (v ^ 811) + (uint64_t)c + base + 6;                                    \
++    v = (v * 821) + (uint64_t)c + base + 6;                                    \
++    v = (v ^ 823) + (uint64_t)c + base + 6;                                    \
++    v = (v * 827) + (uint64_t)c + base + 6;                                    \
++    v = (v ^ 829) + (uint64_t)c + base + 6;                                    \
++    v = (v * 839) + (uint64_t)c + base + 6;                                    \
++    v = (v ^ 853) + (uint64_t)c + base + 6;                                    \
++    v = (v * 857) + (uint64_t)c + base + 6;                                    \
++    v = (v ^ 859) + (uint64_t)c + base + 6;                                    \
++    v = (v * 863) + (uint64_t)c + base + 6;                                    \
++    v = (v ^ 877) + (uint64_t)c + base + 6;                                    \
++    v = (v * 881) + (uint64_t)c + base + 6;                                    \
++    v = (v ^ 883) + (uint64_t)c + base + 6;                                    \
++    v = (v * 887) + (uint64_t)c + base + 6;                                    \
++    v = (v ^ 907) + (uint64_t)c + base + 6;                                    \
++    v = (v * 911) + (uint64_t)c + base + 6;                                    \
++    v = (v ^ 919) + (uint64_t)c + base + 6;                                    \
+     break;                                                                     \
+   case base + 7:                                                               \
+     v = (v * 23) + (uint64_t)c + base + 7;                                     \
+@@ -224,6 +350,24 @@
+     v = (v ^ 353) + (uint64_t)c + base + 7;                                    \
+     v = (v * 359) + (uint64_t)c + base + 7;                                    \
+     v = (v ^ 367) + (uint64_t)c + base + 7;                                    \
++    v = (v * 929) + (uint64_t)c + base + 7;                                    \
++    v = (v ^ 937) + (uint64_t)c + base + 7;                                    \
++    v = (v * 941) + (uint64_t)c + base + 7;                                    \
++    v = (v ^ 947) + (uint64_t)c + base + 7;                                    \
++    v = (v * 953) + (uint64_t)c + base + 7;                                    \
++    v = (v ^ 967) + (uint64_t)c + base + 7;                                    \
++    v = (v * 971) + (uint64_t)c + base + 7;                                    \
++    v = (v ^ 977) + (uint64_t)c + base + 7;                                    \
++    v = (v * 983) + (uint64_t)c + base + 7;                                    \
++    v = (v ^ 991) + (uint64_t)c + base + 7;                                    \
++    v = (v * 997) + (uint64_t)c + base + 7;                                    \
++    v = (v ^ 1009) + (uint64_t)c + base + 7;                                   \
++    v = (v * 1013) + (uint64_t)c + base + 7;                                   \
++    v = (v ^ 1019) + (uint64_t)c + base + 7;                                   \
++    v = (v * 1021) + (uint64_t)c + base + 7;                                   \
++    v = (v ^ 1031) + (uint64_t)c + base + 7;                                   \
++    v = (v * 1033) + (uint64_t)c + base + 7;                                   \
++    v = (v ^ 1039) + (uint64_t)c + base + 7;                                   \
+     break;
+ 
+ #define CASES_256(v, c)                                                        \

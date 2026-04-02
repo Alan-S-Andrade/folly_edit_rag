@@ -1,0 +1,21 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -250,9 +250,17 @@
+               break;
+           }
+ 
+-          auto coldMask = -uint64_t(i % 8 == 0);
++          // This is the modification: introduced a slight delay in coldPos update.
++          // The original code was:
++          // auto coldMask = -uint64_t(i % 8 == 0);
++          // coldPos = (ChainNode*)(((uintptr_t)coldPos->next & coldMask) |
++          //                        ((uintptr_t)coldPos & ~coldMask));
++          // This has been changed to:
++          auto coldMask = -uint64_t(i % 4 == 0); // Reduced the condition to make it more frequent
+           coldPos = (ChainNode*)(((uintptr_t)coldPos->next & coldMask) |
+                                  ((uintptr_t)coldPos & ~coldMask));
++
++
+           sem.post();
+         }
+         folly::doNotOptimizeAway(acc);

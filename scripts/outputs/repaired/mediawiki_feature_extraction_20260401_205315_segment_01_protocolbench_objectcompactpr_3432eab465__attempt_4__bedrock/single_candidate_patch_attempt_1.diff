@@ -1,0 +1,25 @@
+--- a/thrift/lib/cpp2/test/ProtocolBench.cpp
++++ b/thrift/lib/cpp2/test/ProtocolBench.cpp
+@@ -200,6 +200,22 @@
+ OpEncodeX(OpEncode, Binary)
+ OpEncodeX(OpEncode, Compact)
+ 
++BENCHMARK(ObjectCompactProtocol_read_LargeSetInt_sorted, iters) {
++  folly::BenchmarkSuspender susp;
++  auto strct = create<LargeSetInt>();
++  folly::IOBufQueue q;
++  CompactSerializer::serialize(strct, &q);
++  auto buf = q.move();
++  buf->coalesce();
++  susp.dismiss();
++
++  while (iters--) {
++    auto obj = protocol::parseObject<CompactProtocolReader>(*buf);
++    folly::doNotOptimizeAway(obj);
++  }
++  susp.rehire();
++}
++
+ int main(int argc, char** argv) {
+   folly::Init init(&argc, &argv);
+   folly::runBenchmarks();

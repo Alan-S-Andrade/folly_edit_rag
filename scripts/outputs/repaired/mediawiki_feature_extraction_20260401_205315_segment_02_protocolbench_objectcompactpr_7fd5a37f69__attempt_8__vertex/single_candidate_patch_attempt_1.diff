@@ -1,0 +1,168 @@
+--- a/thrift/lib/cpp2/test/ProtocolBench.cpp
++++ b/thrift/lib/cpp2/test/ProtocolBench.cpp
+@@ -23,8 +23,14 @@
+ #include <folly/Benchmark.h>
+ #include <folly/BenchmarkUtil.h>
+ #include <folly/Optional.h>
++#include <folly/Random.h>
+ #include <folly/init/Init.h>
+ #include <folly/portability/GFlags.h>
++
++#include <algorithm>
++#include <numeric>
++#include <random>
++#include <vector>
+ 
+ using namespace apache::thrift;
+ using namespace thrift::benchmark;
+@@ -186,9 +192,9 @@
+   M(Prefix, proto, ComplexStruct)      \
+   M(Prefix, proto, ComplexUnion)
+ 
+-#define X(Prefix, proto) APPLY(X2, Prefix, proto)              
+-
+-#define OpEncodeX(Prefix, proto) APPLY(OpEncodeX2, Prefix, proto)              
++#define X(Prefix, proto) APPLY(X2, Prefix, proto)
++
++#define OpEncodeX(Prefix, proto) APPLY(OpEncodeX2, Prefix, proto)
+ 
+ X(, Binary)
+ X(, Compact)
+@@ -200,6 +206,137 @@
+ OpEncodeX(OpEncode, Binary)
+ OpEncodeX(OpEncode, Compact)
+ 
++namespace {
++
++struct Node_L1i_v1 {
++  Node_L1i_v1* next;
++  uint64_t payload;
++};
++
++template <int F>
++__attribute__((noinline)) uint64_t do_work_L1i_v1(uint64_t acc, uint8_t idx) {
++  constexpr int offset = F * 256 * 28;
++  switch (idx) {
++#define CASE_BLOCK_L1i_v1(i)                                                   \
++  case i:                                                                      \
++    acc += (i * 28 + 1 + offset);                                              \
++    acc ^= (i * 28 + 2 + offset);                                              \
++    acc *= (i * 28 + 3 + offset);                                              \
++    acc += (i * 28 + 4 + offset);                                              \
++    acc ^= (i * 28 + 5 + offset);                                              \
++    acc *= (i * 28 + 6 + offset);                                              \
++    acc += (i * 28 + 7 + offset);                                              \
++    acc ^= (i * 28 + 8 + offset);                                              \
++    acc *= (i * 28 + 9 + offset);                                              \
++    acc += (i * 28 + 10 + offset);                                             \
++    acc ^= (i * 28 + 11 + offset);                                             \
++    acc *= (i * 28 + 12 + offset);                                             \
++    acc += (i * 28 + 13 + offset);                                             \
++    acc ^= (i * 28 + 14 + offset);                                             \
++    acc *= (i * 28 + 15 + offset);                                             \
++    acc += (i * 28 + 16 + offset);                                             \
++    acc ^= (i * 28 + 17 + offset);                                             \
++    acc *= (i * 28 + 18 + offset);                                             \
++    acc += (i * 28 + 19 + offset);                                             \
++    acc ^= (i * 28 + 20 + offset);                                             \
++    acc *= (i * 28 + 21 + offset);                                             \
++    acc += (i * 28 + 22 + offset);                                             \
++    acc ^= (i * 28 + 23 + offset);                                             \
++    acc *= (i * 28 + 24 + offset);                                             \
++    acc += (i * 28 + 25 + offset);                                             \
++    acc ^= (i * 28 + 26 + offset);                                             \
++    acc *= (i * 28 + 27 + offset);                                             \
++    acc += (i * 28 + 28 + offset);                                             \
++    break;
++
++#define CASES_16_L1i_v1(i)                                                     \
++  CASE_BLOCK_L1i_v1(i + 0)                                                     \
++  CASE_BLOCK_L1i_v1(i + 1)                                                     \
++  CASE_BLOCK_L1i_v1(i + 2)                                                     \
++  CASE_BLOCK_L1i_v1(i + 3)                                                     \
++  CASE_BLOCK_L1i_v1(i + 4)                                                     \
++  CASE_BLOCK_L1i_v1(i + 5)                                                     \
++  CASE_BLOCK_L1i_v1(i + 6)                                                     \
++  CASE_BLOCK_L1i_v1(i + 7)                                                     \
++  CASE_BLOCK_L1i_v1(i + 8)                                                     \
++  CASE_BLOCK_L1i_v1(i + 9)                                                     \
++  CASE_BLOCK_L1i_v1(i + 10)                                                    \
++  CASE_BLOCK_L1i_v1(i + 11)                                                    \
++  CASE_BLOCK_L1i_v1(i + 12)                                                    \
++  CASE_BLOCK_L1i_v1(i + 13)                                                    \
++  CASE_BLOCK_L1i_v1(i + 14)                                                    \
++  CASE_BLOCK_L1i_v1(i + 15)
++
++    CASES_16_L1i_v1(0)
++    CASES_16_L1i_v1(16)
++    CASES_16_L1i_v1(32)
++    CASES_16_L1i_v1(48)
++    CASES_16_L1i_v1(64)
++    CASES_16_L1i_v1(80)
++    CASES_16_L1i_v1(96)
++    CASES_16_L1i_v1(112)
++    CASES_16_L1i_v1(128)
++    CASES_16_L1i_v1(144)
++    CASES_16_L1i_v1(160)
++    CASES_16_L1i_v1(176)
++    CASES_16_L1i_v1(192)
++    CASES_16_L1i_v1(208)
++    CASES_16_L1i_v1(224)
++    CASES_16_L1i_v1(240)
++
++#undef CASE_BLOCK_L1i_v1
++#undef CASES_16_L1i_v1
++  }
++  return acc;
++}
++
++} // namespace
++
++BENCHMARK(ObjectCompactProtocol_read_LargeSetInt_L1i_v1, iters) {
++  folly::BenchmarkSuspender susp;
++
++  constexpr size_t num_nodes = 65536;
++  static std::vector<Node_L1i_v1> nodes(num_nodes);
++  static bool initialized = false;
++
++  if (!initialized) {
++    std::vector<int> indices(num_nodes);
++    std::iota(indices.begin(), indices.end(), 0);
++    std::mt19937 g(1);
++    std::shuffle(indices.begin(), indices.end(), g);
++
++    for (size_t i = 0; i < num_nodes; ++i) {
++      nodes[indices[i]].next = &nodes[indices[(i + 1) % num_nodes]];
++      nodes[indices[i]].payload = folly::Random::rand64(g);
++    }
++    initialized = true;
++  }
++
++  Node_L1i_v1* current = &nodes[0];
++  uint64_t acc = 0;
++
++  susp.dismiss();
++
++  for (size_t j = 0; j < iters; ++j) {
++    uint8_t idx = current->payload & 0xFF;
++    switch (j % 3) {
++      case 0:
++        acc = do_work_L1i_v1<0>(acc, idx);
++        break;
++      case 1:
++        acc = do_work_L1i_v1<1>(acc, idx);
++        break;
++      case 2:
++        acc = do_work_L1i_v1<2>(acc, idx);
++        break;
++    }
++    current = current->next;
++  }
++
++  folly::doNotOptimizeAway(acc);
++  folly::doNotOptimizeAway(current);
++}
++
+ int main(int argc, char** argv) {
+   folly::Init init(&argc, &argv);
+   folly::runBenchmarks();

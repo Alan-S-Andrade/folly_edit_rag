@@ -1,0 +1,157 @@
+--- a/thrift/lib/cpp2/test/ProtocolBench.cpp
++++ b/thrift/lib/cpp2/test/ProtocolBench.cpp
+@@ -186,9 +186,9 @@
+   M(Prefix, proto, ComplexStruct)      \
+   M(Prefix, proto, ComplexUnion)
+ 
+-#define X(Prefix, proto) APPLY(X2, Prefix, proto)              
+-
+-#define OpEncodeX(Prefix, proto) APPLY(OpEncodeX2, Prefix, proto)              
++#define X(Prefix, proto) APPLY(X2, Prefix, proto)
++
++#define OpEncodeX(Prefix, proto) APPLY(OpEncodeX2, Prefix, proto)
+ 
+ X(, Binary)
+ X(, Compact)
+@@ -200,6 +200,141 @@
+ OpEncodeX(OpEncode, Binary)
+ OpEncodeX(OpEncode, Compact)
+ 
++namespace {
++
++struct Node {
++  Node* next;
++  int payload;
++};
++
++// Common macros for generating switch cases with lots of ALU ops.
++#define GEN_CASE(i, base_const1, base_const2) \
++    case i: \
++        acc = (acc * (base_const1 + 4*i)) + (base_const2 + i); \
++        acc = (acc ^ (base_const1 + 20 + 4*i)) - (base_const2 + 20 + i); \
++        acc = (acc * (base_const1 + 40 + 4*i)) + (base_const2 + 40 + i); \
++        acc = (acc ^ (base_const1 + 60 + 4*i)) - (base_const2 + 60 + i); \
++        acc = (acc * (base_const1 + 80 + 4*i)) + (base_const2 + 80 + i); \
++        acc = (acc ^ (base_const1 + 100 + 4*i)) - (base_const2 + 100 + i); \
++        acc = (acc * (base_const1 + 120 + 4*i)) + (base_const2 + 120 + i); \
++        acc = (acc ^ (base_const1 + 140 + 4*i)) - (base_const2 + 140 + i); \
++        acc = (acc * (base_const1 + 160 + 4*i)) + (base_const2 + 160 + i); \
++        acc = (acc ^ (base_const1 + 180 + 4*i)) - (base_const2 + 180 + i); \
++        acc = (acc * (base_const1 + 200 + 4*i)) + (base_const2 + 200 + i); \
++        acc = (acc ^ (base_const1 + 220 + 4*i)) - (base_const2 + 220 + i); \
++        acc = (acc * (base_const1 + 240 + 4*i)) + (base_const2 + 240 + i); \
++        acc = (acc ^ (base_const1 + 260 + 4*i)) - (base_const2 + 260 + i); \
++        acc = (acc * (base_const1 + 4*i)) + (base_const2 + i + 1); \
++        acc = (acc ^ (base_const1 + 20 + 4*i)) - (base_const2 + 20 + i + 1); \
++        acc = (acc * (base_const1 + 40 + 4*i)) + (base_const2 + 40 + i + 1); \
++        acc = (acc ^ (base_const1 + 60 + 4*i)) - (base_const2 + 60 + i + 1); \
++        acc = (acc * (base_const1 + 80 + 4*i)) + (base_const2 + 80 + i + 1); \
++        acc = (acc ^ (base_const1 + 100 + 4*i)) - (base_const2 + 100 + i + 1); \
++        acc = (acc * (base_const1 + 120 + 4*i)) + (base_const2 + 120 + i + 1); \
++        acc = (acc ^ (base_const1 + 140 + 4*i)) - (base_const2 + 140 + i + 1); \
++        acc = (acc * (base_const1 + 160 + 4*i)) + (base_const2 + 160 + i + 1); \
++        acc = (acc ^ (base_const1 + 180 + 4*i)) - (base_const2 + 180 + i + 1); \
++        acc = (acc * (base_const1 + 200 + 4*i)) + (base_const2 + 200 + i + 1); \
++        acc = (acc ^ (base_const1 + 220 + 4*i)) - (base_const2 + 220 + i + 1); \
++        acc = (acc * (base_const1 + 240 + 4*i)) + (base_const2 + 240 + i + 1); \
++        acc = (acc ^ (base_const1 + 260 + 4*i)) - (base_const2 + 260 + i + 1); \
++        break;
++
++#define GEN_CASES_16(i, base_const1, base_const2) \
++    GEN_CASE(i+0, base_const1, base_const2) GEN_CASE(i+1, base_const1, base_const2) \
++    GEN_CASE(i+2, base_const1, base_const2) GEN_CASE(i+3, base_const1, base_const2) \
++    GEN_CASE(i+4, base_const1, base_const2) GEN_CASE(i+5, base_const1, base_const2) \
++    GEN_CASE(i+6, base_const1, base_const2) GEN_CASE(i+7, base_const1, base_const2) \
++    GEN_CASE(i+8, base_const1, base_const2) GEN_CASE(i+9, base_const1, base_const2) \
++    GEN_CASE(i+10, base_const1, base_const2) GEN_CASE(i+11, base_const1, base_const2) \
++    GEN_CASE(i+12, base_const1, base_const2) GEN_CASE(i+13, base_const1, base_const2) \
++    GEN_CASE(i+14, base_const1, base_const2) GEN_CASE(i+15, base_const1, base_const2)
++
++#define GEN_CASES_256(base_const1, base_const2) \
++    GEN_CASES_16(0, base_const1, base_const2) GEN_CASES_16(16, base_const1, base_const2) \
++    GEN_CASES_16(32, base_const1, base_const2) GEN_CASES_16(48, base_const1, base_const2) \
++    GEN_CASES_16(64, base_const1, base_const2) GEN_CASES_16(80, base_const1, base_const2) \
++    GEN_CASES_16(96, base_const1, base_const2) GEN_CASES_16(112, base_const1, base_const2) \
++    GEN_CASES_16(128, base_const1, base_const2) GEN_CASES_16(144, base_const1, base_const2) \
++    GEN_CASES_16(160, base_const1, base_const2) GEN_CASES_16(176, base_const1, base_const2) \
++    GEN_CASES_16(192, base_const1, base_const2) GEN_CASES_16(208, base_const1, base_const2) \
++    GEN_CASES_16(224, base_const1, base_const2) GEN_CASES_16(240, base_const1, base_const2)
++
++__attribute__((noinline)) int churn_code_1(int acc, int index) {
++  switch (index) {
++    GEN_CASES_256(101, 11)
++    default:
++      break;
++  }
++  return acc;
++}
++
++__attribute__((noinline)) int churn_code_2(int acc, int index) {
++  switch (index) {
++    GEN_CASES_256(201, 211)
++    default:
++      break;
++  }
++  return acc;
++}
++
++__attribute__((noinline)) int churn_code_3(int acc, int index) {
++  switch (index) {
++    GEN_CASES_256(301, 311)
++    default:
++      break;
++  }
++  return acc;
++}
++
++#undef GEN_CASE
++#undef GEN_CASES_16
++#undef GEN_CASES_256
++
++} // namespace
++
++BENCHMARK(ObjectCompactProtocol_read_LargeSetInt_v6, iters) {
++    folly::BenchmarkSuspender susp;
++
++    constexpr size_t kNumNodes = 4096;
++    std::vector<Node> nodes(kNumNodes);
++    // Use a PRNG to initialize next pointers to avoid trivial-to-predict
++    // access patterns.
++    uint32_t seed = 12345;
++    auto lcg = [&]() {
++      seed = (1103515245 * seed + 12345) & 0x7fffffff;
++      return seed;
++    };
++    for (size_t i = 0; i < kNumNodes; ++i) {
++        nodes[i].next = &nodes[lcg() % kNumNodes];
++        nodes[i].payload = lcg();
++    }
++    Node* current = &nodes[0];
++    int acc = 1;
++
++    susp.dismiss();
++
++    for (size_t i = 0; i < iters; ++i) {
++        int index = current->payload & 0xFF;
++        switch (i % 3) {
++            case 0:
++                acc = churn_code_1(acc, index);
++                break;
++            case 1:
++                acc = churn_code_2(acc, index);
++                break;
++            case 2:
++                acc = churn_code_3(acc, index);
++                break;
++        }
++        current = current->next;
++    }
++
++    folly::doNotOptimizeAway(acc);
++    folly::doNotOptimizeAway(current);
++    susp.rehire();
++}
++
+ int main(int argc, char** argv) {
+   folly::Init init(&argc, &argv);
+   folly::runBenchmarks();

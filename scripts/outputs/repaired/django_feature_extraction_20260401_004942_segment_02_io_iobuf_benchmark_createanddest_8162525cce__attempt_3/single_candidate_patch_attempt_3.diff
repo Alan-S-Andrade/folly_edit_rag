@@ -1,0 +1,110 @@
+--- a/folly/io/test/IOBufBenchmark.cpp
++++ b/folly/io/test/IOBufBenchmark.cpp
+@@ -122,6 +122,31 @@
+   }
+ }
+ 
++namespace {
++// Helper for createAndDestroyMulti_IndirectBranch
++[[maybe_unused]] int switch3(const std::vector<uint64_t>& vec, int idx, uint64_t& current) {
++  switch (idx % 3) {
++    case 0:
++      return vec[current & 0xFF] & 0xFF;
++    case 1:
++      return vec[(current >> 8) & 0xFF] & 0xFF;
++    case 2:
++      return vec[(current >> 16) & 0xFF] & 0xFF;
++  }
++  return 0; // Unreachable
++}
++
++[[maybe_unused]] int switch2(const std::vector<uint64_t>& vec, int idx, uint64_t& current) {
++  switch (idx % 2) {
++    case 0:
++      return vec[current & 0xFF] & 0xFF;
++    case 1:
++      return vec[(current >> 8) & 0xFF] & 0xFF;
++  }
++  return 0; // Unreachable
++}
++} // namespace
++
+ static void createAndDestroyMulti(size_t iters, size_t size) {
+   static constexpr auto kSize = 1024;
+   std::array<std::unique_ptr<IOBuf>, kSize> buffers;
+@@ -133,7 +158,6 @@
+   }
+ }
+ 
+-BENCHMARK_DRAW_LINE();
+ BENCHMARK_NAMED_PARAM(createAndDestroyMulti, 64, 64)
+ BENCHMARK_NAMED_PARAM(createAndDestroyMulti, 256, 256)
+ BENCHMARK_NAMED_PARAM(createAndDestroyMulti, 1024, 1024)
+@@ -145,6 +169,57 @@
+ BENCHMARK_NAMED_PARAM(createAndDestroyMulti, 10240, 10240)
+ BENCHMARK_NAMED_PARAM(createAndDestroyMulti, 16384, 16384)
+ BENCHMARK_NAMED_PARAM(createAndDestroyMulti, 17000, 17000)
++
++static void createAndDestroyMulti_IndirectBranch(size_t iters) {
++  static constexpr auto kSize = 1024;
++  std::vector<uint64_t> indirect_data(256);
++  for (size_t i = 0; i < indirect_data.size(); ++i) {
++    indirect_data[i] = i * 3; // Some arbitrary calculation
++  }
++
++  std::array<std::unique_ptr<IOBuf>, kSize> buffers;
++  uint64_t current = 0; // Payload
++
++  while (iters--) {
++    for (auto i = 0; i < kSize; ++i) {
++      buffers[i] = IOBuf::create(128); // Small size to keep IOBuf creation fast
++    }
++    // Perform a series of operations that involve indirect branches
++    // and pointer chasing to defeat branch prediction.
++    for (int j = 0; j < 1024; ++j) {
++      current ^= indirect_data[switch3(indirect_data, j, current)];
++      current ^= indirect_data[switch2(indirect_data, j, current)];
++    }
++    folly::doNotOptimizeAway(current);
++  }
++}
++BENCHMARK_NAMED_PARAM(createAndDestroyMulti_IndirectBranch, 1024)
++
++BENCHMARK(createAndDestroyMulti_LargeAlloc, iters) {
++  static constexpr auto kSize = 1024;
++  std::array<std::unique_ptr<IOBuf>, kSize> buffers;
++  size_t size = 1024 * 1024; // 1MB allocation
++
++  while (iters--) {
++    for (auto i = 0; i < kSize; ++i) {
++      buffers[i] = IOBuf::create(size);
++    }
++  }
++}
++
++static void createAndDestroyMulti_1024_Variant(size_t iters) {
++  static constexpr auto kSize = 1024;
++  std::array<std::unique_ptr<IOBuf>, kSize> buffers;
++
++  while (iters--) {
++    for (auto i = 0; i < kSize; ++i) {
++      buffers[i] = IOBuf::create(1024);
++    }
++  }
++}
++BENCHMARK_NAMED_PARAM(createAndDestroyMulti_1024_Variant, 1024)
++
++
+ BENCHMARK_DRAW_LINE();
+ 
+ /**
+@@ -175,6 +250,9 @@
+  *  createAndDestroyMulti(16384)                                93.03us   10.75K
+  *  createAndDestroyMulti(17000)                                93.85us   10.66K
+  *  ----------------------------------------------------------------------------
++ *  createAndDestroyMulti_IndirectBranch(1024)                  88.62us   11.28K
++ *  ----------------------------------------------------------------------------
++ *  createAndDestroyMulti_LargeAlloc                           ??? ns    ??? K
+  *  ============================================================================
+  */
+ 

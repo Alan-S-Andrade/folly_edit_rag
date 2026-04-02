@@ -1,0 +1,11 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -250,6 +250,8 @@
+               break;
+           }
+ 
++          // Minimal adjustment: introduce a slight branch misprediction
++          // by conditionally updating coldPos.
+           auto coldMask = -uint64_t(i % 8 == 0);
+           coldPos = (ChainNode*)(((uintptr_t)coldPos->next & coldMask) |
+                                  ((uintptr_t)coldPos & ~coldMask));

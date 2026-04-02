@@ -1,0 +1,10 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -250,6 +250,7 @@
+               break;
+           }
+ 
++          // Reduce coldPos dereference variability
+           auto coldMask = -uint64_t(i % 8 == 0);
+           coldPos = (ChainNode*)(((uintptr_t)coldPos->next & coldMask) |
+                                  ((uintptr_t)coldPos & ~coldMask));

@@ -1,0 +1,30 @@
+--- a/thrift/lib/cpp2/test/ProtocolBench.cpp
++++ b/thrift/lib/cpp2/test/ProtocolBench.cpp
+@@ -200,6 +200,27 @@
+ OpEncodeX(OpEncode, Binary)
+ OpEncodeX(OpEncode, Compact)
+ 
++BENCHMARK(SimpleJSONProtocol_read_UnorderedSetInt_ipc_v1, iters) {
++  folly::BenchmarkSuspender susp;
++  UnorderedSetInt strct;
++  // Default size is 100. Reduce to 95 to close small IPC gap.
++  for (int i = 0; i < 95; ++i) {
++    strct.intSet_ref()->insert(i);
++  }
++  folly::IOBufQueue q;
++  SimpleJSONSerializer::serialize(strct, &q);
++  auto buf = q.move();
++  buf->coalesce();
++  susp.dismiss();
++
++  while (iters--) {
++    UnorderedSetInt data;
++    SimpleJSONSerializer::deserialize(buf.get(), data);
++    folly::doNotOptimizeAway(data);
++  }
++  susp.rehire();
++}
++
+ int main(int argc, char** argv) {
+   folly::Init init(&argc, &argv);
+   folly::runBenchmarks();

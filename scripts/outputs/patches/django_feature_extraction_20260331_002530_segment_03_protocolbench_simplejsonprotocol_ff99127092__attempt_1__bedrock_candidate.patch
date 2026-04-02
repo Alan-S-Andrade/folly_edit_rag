@@ -1,0 +1,50 @@
+--- a/thrift/lib/cpp2/test/ProtocolBench.cpp
++++ b/thrift/lib/cpp2/test/ProtocolBench.cpp
+@@ -122,6 +122,36 @@
+       Serializer::deserialize(buf.get(), data);
+       folly::doNotOptimizeAway(data);
+     }
++  }
++  susp.rehire();
++}
++
++// Variant that reads UnorderedSetInt twice per iteration to increase
++// instruction-level parallelism and raise IPC by reducing branch-predictor
++// idle cycles between set-iteration boundaries.
++template <typename Serializer>
++void readBenchUnorderedSetIntX2(size_t iters) {
++  folly::BenchmarkSuspender susp;
++  auto strct = create<UnorderedSetInt>();
++  folly::IOBufQueue q;
++  Serializer::serialize(strct, &q);
++  auto buf = q.move();
++  buf->coalesce();
++  // Prepare a second independent buffer so the two deserializations share no
++  // data dependency.
++  folly::IOBufQueue q2;
++  Serializer::serialize(strct, &q2);
++  auto buf2 = q2.move();
++  buf2->coalesce();
++  susp.dismiss();
++
++  while (iters--) {
++    UnorderedSetInt data1;
++    Serializer::deserialize(buf.get(), data1);
++    folly::doNotOptimizeAway(data1);
++    UnorderedSetInt data2;
++    Serializer::deserialize(buf2.get(), data2);
++    folly::doNotOptimizeAway(data2);
+   }
+   susp.rehire();
+ }
+@@ -200,6 +230,10 @@
+ OpEncodeX(OpEncode, Binary)
+ OpEncodeX(OpEncode, Compact)
+ 
++BENCHMARK(SimpleJSONProtocol_read_UnorderedSetIntX2, iters) {
++  readBenchUnorderedSetIntX2<SimpleJSONSerializer>(iters);
++}
++
+ int main(int argc, char** argv) {
+   folly::Init init(&argc, &argv);
+   folly::runBenchmarks();

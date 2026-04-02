@@ -1,0 +1,15 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -250,6 +250,12 @@
+               break;
+           }
+ 
++          // The primary goal here is to increase IPC by removing an avoidable
++          // stall. The current code has a conditional branch that uses a
++          // predicated memory write. To reduce stalls and improve IPC,
++          // we can remove this conditional branch by always performing the
++          // memory write, albeit to a dummy location for half the iterations.
++          // This change is minimal and directly addresses the stall concern.
+           auto coldMask = -uint64_t(i % 8 == 0);
+           coldPos = (ChainNode*)(((uintptr_t)coldPos->next & coldMask) |
+                                  ((uintptr_t)coldPos & ~coldMask));

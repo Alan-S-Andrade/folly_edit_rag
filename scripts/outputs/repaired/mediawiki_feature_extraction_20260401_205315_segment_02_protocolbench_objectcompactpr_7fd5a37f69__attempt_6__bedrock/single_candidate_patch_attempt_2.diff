@@ -1,0 +1,65 @@
+--- a/thrift/lib/cpp2/test/ProtocolBench.cpp
++++ b/thrift/lib/cpp2/test/ProtocolBench.cpp
+@@ -200,6 +200,62 @@
+ OpEncodeX(OpEncode, Binary)
+ OpEncodeX(OpEncode, Compact)
+ 
++// Generated benchmark: high L1-icache-load-misses via many distinct call sites
++BENCHMARK(ObjectCompactProtocol_read_LargeSetInt_HighIcache, iters) {
++  folly::BenchmarkSuspender susp;
++  auto strct = create<LargeSetInt>();
++  // Serialize using each of many serializer types to force icache pressure
++  auto serialize_and_get_buf = [&](auto serializer_tag) {
++    folly::IOBufQueue q;
++    using S = typename std::decay_t<decltype(serializer_tag)>::type;
++    S::serialize(strct, &q);
++    auto buf = q.move();
++    buf->coalesce();
++    return buf;
++  };
++  struct TagCompact { using type = CompactSerializer; };
++  struct TagBinary { using type = BinarySerializer; };
++  struct TagJSON { using type = JSONSerializer; };
++  struct TagSimpleJSON { using type = SimpleJSONSerializer; };
++
++  auto buf0 = serialize_and_get_buf(TagCompact{});
++  auto buf1 = serialize_and_get_buf(TagBinary{});
++  auto buf2 = serialize_and_get_buf(TagJSON{});
++  auto buf3 = serialize_and_get_buf(TagSimpleJSON{});
++
++  susp.dismiss();
++  while (iters--) {
++    {
++      auto obj = protocol::parseObject<CompactProtocolReader>(*buf0);
++      folly::doNotOptimizeAway(obj);
++    }
++    {
++      auto obj = protocol::parseObject<BinaryProtocolReader>(*buf1);
++      folly::doNotOptimizeAway(obj);
++    }
++    {
++      auto obj = protocol::parseObject<CompactProtocolReader>(*buf0);
++      folly::doNotOptimizeAway(obj);
++    }
++    {
++      auto obj = protocol::parseObject<BinaryProtocolReader>(*buf1);
++      folly::doNotOptimizeAway(obj);
++    }
++    {
++      LargeSetInt data0, data1, data2, data3;
++      CompactSerializer::deserialize(buf0.get(), data0);
++      folly::doNotOptimizeAway(data0);
++      BinarySerializer::deserialize(buf1.get(), data1);
++      folly::doNotOptimizeAway(data1);
++      JSONSerializer::deserialize(buf2.get(), data2);
++      folly::doNotOptimizeAway(data2);
++      SimpleJSONSerializer::deserialize(buf3.get(), data3);
++      folly::doNotOptimizeAway(data3);
++    }
++  }
++  susp.rehire();
++}
++
+ int main(int argc, char** argv) {
+   folly::Init init(&argc, &argv);
+   folly::runBenchmarks();

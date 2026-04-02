@@ -1,0 +1,13 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -117,8 +117,8 @@
+   char pad[64 - sizeof(ChainNode*)];
+ };
+ 
+-// Hot chain: 1 MB (16384 nodes)
+-static constexpr size_t kHotLen = 16384;
++// Hot chain: 4 MB (65536 nodes)
++static constexpr size_t kHotLen = 65536;
+ static ChainNode hotNodes[kHotLen];
+ 
+ // Cold chain: 128 MB (2M nodes)

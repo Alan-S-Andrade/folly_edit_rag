@@ -1,0 +1,119 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -202,6 +202,17 @@
+   return v;
+ }
+ 
++// switchD: a fourth noinline dispatch target with distinct arithmetic,
++// used only by contendedUse_v2 and contendedUse_hot to widen the hot
++// instruction footprint and reduce average dependency depth per iteration.
++__attribute__((noinline)) uint64_t switchD(uint64_t v, int c) {
++  switch (c & 0xFF) {
++    CASES_256(v, c * 7);
++    default:;
++  }
++  return v;
++}
++
+ struct DepWorkInitializer {
+   DepWorkInitializer() {
+     coldNodes = new ChainNode[kColdLen];
+@@ -267,9 +278,14 @@
+     thr.join();
+   }
+ }
+-} // namespace
+-
+-static void contendedUse(uint32_t n, int posters, int waiters) {
++
++// contendedUse_hot: derived from contendedUse_v2 / contendedUse(32_to_1000).
++// The key difference is the poster hot path uses a 4-way switch (A/B/C/D)
++// instead of 3-way, breaking a dependency chain length that stalls IPC in the
++// baseline.  Each arm computes independent arithmetic on `acc` before posting,
++// reducing the average carry-chain depth per iteration and increasing IPC
++// without changing the synchronization structure or thread counts.
++static void contendedUse_hot(uint32_t n, int posters, int waiters) {
+   LifoSemImpl<std::atomic> sem;
+ 
+   std::vector<std::thread> threads;
+@@ -285,12 +301,36 @@
+     }
+     for (int t = 0; t < posters; ++t) {
+       threads.emplace_back([=, &sem, &go] {
++        ChainNode* hotPos = &hotNodes[t % kHotLen];
++        uint64_t acc = t + 1;
++
+         while (!go.load()) {
+           std::this_thread::yield();
+         }
+         for (uint32_t i = t; i < n; i += posters) {
++          hotPos = hotPos->next;
++          uint64_t payload = (uint64_t)(uintptr_t)hotPos;
++          // 4-way dispatch reduces average dependency-chain depth vs 3-way:
++          // each case feeds acc into a different noinline function so the
++          // out-of-order engine can overlap more independent micro-ops.
++          switch (i % 4) {
++            case 0:
++              acc = switchA(acc, payload & 0xFF);
++              break;
++            case 1:
++              acc = switchB(acc, payload & 0xFF);
++              break;
++            case 2:
++              acc = switchC(acc, payload & 0xFF);
++              break;
++            case 3:
++              acc = switchD(acc, payload & 0xFF);
++              break;
++          }
+           sem.post();
+         }
++        folly::doNotOptimizeAway(acc);
++        folly::doNotOptimizeAway(hotPos);
+       });
+     }
+   }
+@@ -300,9 +340,43 @@
+     thr.join();
+   }
+ }
++} // namespace
++
++static void contendedUse(uint32_t n, int posters, int waiters) {
++  LifoSemImpl<std::atomic> sem;
++
++  std::vector<std::thread> threads;
++  std::atomic<bool> go(false);
++
++  BENCHMARK_SUSPEND {
++    for (int t = 0; t < waiters; ++t) {
++      threads.emplace_back([=, &sem] {
++        for (uint32_t i = t; i < n; i += waiters) {
++          sem.wait();
++        }
++      });
++    }
++    for (int t = 0; t < posters; ++t) {
++      threads.emplace_back([=, &sem, &go] {
++        while (!go.load()) {
++          std::this_thread::yield();
++        }
++        for (uint32_t i = t; i < n; i += posters) {
++          sem.post();
++        }
++      });
++    }
++  }
++
++  go.store(true);
++  for (auto& thr : threads) {
++    thr.join();
++  }
++}
+ 
+ BENCHMARK_DRAW_LINE();
+ BENCHMARK_NAMED_PARAM(contendedUse, 1_to_1, 1, 1)
++BENCHMARK_NAMED_PARAM(contendedUse_hot, 1_to_1_hot, 1, 1)
+ BENCHMARK_NAMED_PARAM(contendedUse, 1_to_4, 1, 4)
+ BENCHMARK_NAMED_PARAM(contendedUse, 1_to_32, 1, 32)
+ BENCHMARK_NAMED_PARAM(contendedUse, 4_to_1, 4, 1)

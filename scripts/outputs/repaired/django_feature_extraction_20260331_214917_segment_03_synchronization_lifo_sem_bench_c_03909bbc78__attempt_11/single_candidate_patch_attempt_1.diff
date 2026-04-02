@@ -1,0 +1,13 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -237,8 +237,9 @@
+         }
+         for (uint32_t i = t; i < n; i += posters) {
+           hotPos = hotPos->next;
++          // Derive payload from the current coldPos, allowing the coldPos->next fetch to potentially overlap.
++          uint64_t payload = (uint64_t)(uintptr_t)coldPos; 
+           coldPos = coldPos->next; // Always advance coldPos to ensure regular cache misses
+-          uint64_t payload = (uint64_t)(uintptr_t)coldPos; // Derive payload from the cold, cache-missing pointer chase
+           switch (i % 3) {
+             case 0:
+               acc = switchA(acc, payload & 0xFF);

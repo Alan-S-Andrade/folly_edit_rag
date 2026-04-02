@@ -1,0 +1,18 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -250,12 +250,9 @@
+               break;
+           }
+ 
+-          // Previous logic: auto coldMask = -uint64_t(i % 8 == 0);
+-          //                 coldPos = (ChainNode*)(((uintptr_t)coldPos->next & coldMask) |
+-          //                                        ((uintptr_t)coldPos & ~coldMask));
+-          // Refined: Make the coldPos->next load conditional to reduce memory stall,
+-          // preserving the 1/8th traversal rate.
+-          if (i % 8 == 0) {
++          // Make the coldPos->next dereference conditional based on the loop variable
++          // to reduce memory stall for the cold cache access pattern.
++          if ((i / posters) % 8 == 0) { // Condition to access coldPos->next
+             coldPos = coldPos->next;
+           }
+           sem.post();

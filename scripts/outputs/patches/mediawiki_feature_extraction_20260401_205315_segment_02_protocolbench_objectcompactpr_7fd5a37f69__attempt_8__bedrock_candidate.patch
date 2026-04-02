@@ -1,0 +1,38 @@
+--- a/thrift/lib/cpp2/test/ProtocolBench.cpp
++++ b/thrift/lib/cpp2/test/ProtocolBench.cpp
+@@ -200,6 +200,35 @@
+ OpEncodeX(OpEncode, Binary)
+ OpEncodeX(OpEncode, Compact)
+ 
++BENCHMARK(ObjectCompactProtocol_read_LargeSetInt_icache_pressure, iters) {
++  folly::BenchmarkSuspender susp;
++  auto strct = create<LargeSetInt>();
++  folly::IOBufQueue q;
++  CompactSerializer::serialize(strct, &q);
++  auto buf = q.move();
++  buf->coalesce();
++  // Build many independent serialized copies to defeat the icache prefetcher
++  // and drive up L1-icache-load-misses, which suppresses IPC.
++  constexpr size_t kNumBufs = 64;
++  std::vector<std::unique_ptr<folly::IOBuf>> bufs;
++  bufs.reserve(kNumBufs);
++  for (size_t i = 0; i < kNumBufs; ++i) {
++    bufs.push_back(buf->clone());
++  }
++  susp.dismiss();
++
++  size_t idx = 0;
++  while (iters--) {
++    // Rotate through copies so each parse call re-traverses the same data but
++    // the indirect-call dispatch through the protocol reader plus the
++    // protocol::Object insertion into a std::set flushes icache lines.
++    auto& b = bufs[idx++ % kNumBufs];
++    auto obj = protocol::parseObject<CompactProtocolReader>(*b);
++    folly::doNotOptimizeAway(obj);
++  }
++  susp.rehire();
++}
++
+ int main(int argc, char** argv) {
+   folly::Init init(&argc, &argv);
+   folly::runBenchmarks();

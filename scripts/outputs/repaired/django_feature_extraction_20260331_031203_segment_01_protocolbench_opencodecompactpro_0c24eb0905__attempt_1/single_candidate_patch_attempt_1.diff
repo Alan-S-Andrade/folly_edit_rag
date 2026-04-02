@@ -1,0 +1,68 @@
+--- a/thrift/lib/cpp2/test/ProtocolBench.cpp
++++ b/thrift/lib/cpp2/test/ProtocolBench.cpp
+@@ -125,6 +125,46 @@
+   }
+   susp.rehire();
+ }
++
++// NEW: Variant for simplified ComplexStruct reading
++// This function aims to reduce L1-dcache-stores_SPKI by serializing a
++// ComplexStruct where dynamic container fields (map, set, list) are empty.
++// This reduces the amount of data written during deserialization.
++template <
++    SerializerMethod kSerializerMethod,
++    typename Serializer,
++    typename Struct>
++void readBench_SimplifiedComplexStruct(size_t iters) {
++  folly::BenchmarkSuspender susp;
++  // Create the struct and then simplify its complex fields *before* serialization.
++  auto strct = create<Struct>();
++  if constexpr (std::is_same_v<Struct, ComplexStruct>) {
++      // Clear dynamic containers to reduce write traffic during deserialization
++      strct.m()->clear(); // Empty map
++      strct.s()->clear(); // Empty set
++      strct.l()->clear(); // Empty list
++  }
++
++  folly::IOBufQueue q;
++  Serializer::serialize(strct, &q);
++  auto buf = q.move();
++  // coalesce the IOBuf chain to test fast path
++  buf->coalesce();
++  susp.dismiss();
++
++  while (iters--) {
++    if constexpr (kSerializerMethod == SerializerMethod::Object) {
++      auto obj = protocol::parseObject<GetReader<Serializer>>(*buf);
++      folly::doNotOptimizeAway(obj);
++    } else {
++      Struct data;
++      Serializer::deserialize(buf.get(), data);
++      folly::doNotOptimizeAway(data);
++    }
++  }
++  susp.rehire();
++}
++
+ 
+ constexpr SerializerMethod getSerializerMethod(std::string_view prefix) {
+   return prefix == "" || prefix == "OpEncode" ? SerializerMethod::Codegen
+@@ -200,6 +240,18 @@
+ OpEncodeX(OpEncode, Binary)
+ OpEncodeX(OpEncode, Compact)
+ 
++// NEW BENCHMARK REGISTRATION
++// This new benchmark variant simplifies the ComplexStruct by clearing its
++// dynamic container fields (map, set, list) before serialization. This should
++// reduce the amount of data written during deserialization, potentially
++// improving IPC and reducing L1-dcache-stores_SPKI.
++BENCHMARK(OpEncodeCompactProtocol_read_ComplexStruct_Simplified, iters) {
++  readBench_SimplifiedComplexStruct<
++      getSerializerMethod("OpEncode"),
++      CompactSerializer,
++      OpComplexStruct>(iters);
++}
++
+ int main(int argc, char** argv) {
+   folly::Init init(&argc, &argv);
+   folly::runBenchmarks();

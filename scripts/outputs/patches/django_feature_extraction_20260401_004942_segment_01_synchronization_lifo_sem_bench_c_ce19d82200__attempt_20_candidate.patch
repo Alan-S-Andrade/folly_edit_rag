@@ -1,0 +1,18 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -250,9 +250,13 @@
+               break;
+           }
+ 
++          // This is the line being modified:
+           auto coldMask = -uint64_t(i % 8 == 0);
+-          coldPos = (ChainNode*)(((uintptr_t)coldPos->next & coldMask) |
+-                                 ((uintptr_t)coldPos & ~coldMask));
++          // The original code below had a small calculation to decide whether to
++          // advance coldPos. To minimize stall time for IPC, we will always
++          // advance coldPos, effectively removing the conditional branch logic
++          // and potentially improving instruction-level parallelism.
++          coldPos = coldPos->next;
+           sem.post();
+         }
+         folly::doNotOptimizeAway(acc);

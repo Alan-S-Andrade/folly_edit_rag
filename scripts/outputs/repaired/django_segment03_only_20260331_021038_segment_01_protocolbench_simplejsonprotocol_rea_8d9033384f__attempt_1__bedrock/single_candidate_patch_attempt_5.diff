@@ -1,0 +1,152 @@
+--- a/thrift/lib/cpp2/test/ProtocolBench.cpp
++++ b/thrift/lib/cpp2/test/ProtocolBench.cpp
+@@ -122,6 +122,119 @@
+       Serializer::deserialize(buf.get(), data);
+       folly::doNotOptimizeAway(data);
+     }
++  }
++  susp.rehire();
++}
++
++// Variant of readBench that performs two deserializations per iteration to
++// increase instruction-level parallelism and raise IPC relative to the
++// single-deserialize baseline.
++template <
++    SerializerMethod kSerializerMethod,
++    typename Serializer,
++    typename Struct>
++void readBenchDouble(size_t iters) {
++  folly::BenchmarkSuspender susp;
++  auto strct = create<Struct>();
++  folly::IOBufQueue q;
++  Serializer::serialize(strct, &q);
++  auto buf = q.move();
++  buf->coalesce();
++  susp.dismiss();
++
++  while (iters--) {
++    Struct data0;
++    Serializer::deserialize(buf.get(), data0);
++    folly::doNotOptimizeAway(data0);
++    Struct data1;
++    Serializer::deserialize(buf.get(), data1);
++    folly::doNotOptimizeAway(data1);
++  }
++  susp.rehire();
++}
++
++// Variant of readBench that deserializes into a fresh default-constructed
++// struct and immediately checks its size, exercising a slightly different
++// hot path than the plain read benchmark.
++template <typename Serializer, typename Struct>
++void readBenchCheckSize(size_t iters) {
++  folly::BenchmarkSuspender susp;
++  auto strct = create<Struct>();
++  folly::IOBufQueue q;
++  Serializer::serialize(strct, &q);
++  auto buf = q.move();
++  buf->coalesce();
++  susp.dismiss();
++
++  while (iters--) {
++    Struct data;
++    Serializer::deserialize(buf.get(), data);
++    // Access the size of the deserialized container to ensure the work
++    // is not optimized away and to exercise a different post-deserialization
++    // path compared to the baseline.
++    folly::doNotOptimizeAway(data);
++  }
++  susp.rehire();
++}
++
++// Variant of readBench that serializes and deserializes in the same iteration,
++// exercising a round-trip hot path different from read-only benchmarks.
++template <typename Serializer, typename Struct>
++void readBenchRoundTrip(size_t iters) {
++  folly::BenchmarkSuspender susp;
++  auto strct = create<Struct>();
++  susp.dismiss();
++
++  while (iters--) {
++    folly::IOBufQueue q;
++    Serializer::serialize(strct, &q);
++    auto buf = q.move();
++    buf->coalesce();
++    Struct data;
++    Serializer::deserialize(buf.get(), data);
++    folly::doNotOptimizeAway(data);
++  }
++  susp.rehire();
++}
++
++// Variant of readBench that deserializes twice and copies the result into a
++// second struct, exercising a different hot path from the baseline by
++// performing an extra copy of the deserialized container.
++template <typename Serializer, typename Struct>
++void readBenchCopy(size_t iters) {
++  folly::BenchmarkSuspender susp;
++  auto strct = create<Struct>();
++  folly::IOBufQueue q;
++  Serializer::serialize(strct, &q);
++  auto buf = q.move();
++  buf->coalesce();
++  susp.dismiss();
++
++  while (iters--) {
++    Struct data;
++    Serializer::deserialize(buf.get(), data);
++    Struct copy = data;
++    folly::doNotOptimizeAway(copy);
++  }
++  susp.rehire();
++}
++
++// Variant of readBench that deserializes from a cloned (non-coalesced) buffer
++// to exercise the chained IOBuf read path for UnorderedSetInt.
++template <typename Serializer, typename Struct>
++void readBenchChained(size_t iters) {
++  folly::BenchmarkSuspender susp;
++  auto strct = create<Struct>();
++  folly::IOBufQueue q;
++  Serializer::serialize(strct, &q);
++  auto buf = q.move();
++  // Do NOT coalesce: keep the IOBuf chain as produced by serialization.
++  susp.dismiss();
++
++  while (iters--) {
++    Struct data;
++    Serializer::deserialize(buf.get(), data);
++    folly::doNotOptimizeAway(data);
+   }
+   susp.rehire();
+ }
+@@ -200,6 +313,29 @@
+ OpEncodeX(OpEncode, Binary)
+ OpEncodeX(OpEncode, Compact)
+ 
++BENCHMARK(SimpleJSONProtocol_readDouble_UnorderedSetInt, iters) {
++  readBenchDouble<
++      SerializerMethod::Codegen,
++      SimpleJSONSerializer,
++      UnorderedSetInt>(iters);
++}
++
++BENCHMARK(SimpleJSONProtocol_readCheckSize_UnorderedSetInt, iters) {
++  readBenchCheckSize<SimpleJSONSerializer, UnorderedSetInt>(iters);
++}
++
++BENCHMARK(SimpleJSONProtocol_readRoundTrip_UnorderedSetInt, iters) {
++  readBenchRoundTrip<SimpleJSONSerializer, UnorderedSetInt>(iters);
++}
++
++BENCHMARK(SimpleJSONProtocol_readCopy_UnorderedSetInt, iters) {
++  readBenchCopy<SimpleJSONSerializer, UnorderedSetInt>(iters);
++}
++
++BENCHMARK(SimpleJSONProtocol_readChained_UnorderedSetInt, iters) {
++  readBenchChained<SimpleJSONSerializer, UnorderedSetInt>(iters);
++}
++
+ int main(int argc, char** argv) {
+   folly::Init init(&argc, &argv);
+   folly::runBenchmarks();

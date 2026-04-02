@@ -1,0 +1,70 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -139,27 +139,43 @@
+ #define CASES_8(v, c, base)                                                    \
+   case base + 0:                                                               \
+     v = (v * 3) + (uint64_t)c + base + 0;                                      \
++    v = (v ^ (29 + base + 0)) + ((uint64_t)c * (31 + base + 0));              \
++    v = (v + (37 + base + 0)) * (((uint64_t)c | (41 + base + 0)) + 1);        \
+     break;                                                                     \
+   case base + 1:                                                               \
+     v = (v * 5) + (uint64_t)c + base + 1;                                      \
++    v = (v ^ (29 + base + 1)) + ((uint64_t)c * (31 + base + 1));              \
++    v = (v + (37 + base + 1)) * (((uint64_t)c | (41 + base + 1)) + 1);        \
+     break;                                                                     \
+   case base + 2:                                                               \
+     v = (v * 7) + (uint64_t)c + base + 2;                                      \
++    v = (v ^ (29 + base + 2)) + ((uint64_t)c * (31 + base + 2));              \
++    v = (v + (37 + base + 2)) * (((uint64_t)c | (41 + base + 2)) + 1);        \
+     break;                                                                     \
+   case base + 3:                                                               \
+     v = (v * 11) + (uint64_t)c + base + 3;                                     \
++    v = (v ^ (29 + base + 3)) + ((uint64_t)c * (31 + base + 3));              \
++    v = (v + (37 + base + 3)) * (((uint64_t)c | (41 + base + 3)) + 1);        \
+     break;                                                                     \
+   case base + 4:                                                               \
+     v = (v * 13) + (uint64_t)c + base + 4;                                     \
++    v = (v ^ (29 + base + 4)) + ((uint64_t)c * (31 + base + 4));              \
++    v = (v + (37 + base + 4)) * (((uint64_t)c | (41 + base + 4)) + 1);        \
+     break;                                                                     \
+   case base + 5:                                                               \
+     v = (v * 17) + (uint64_t)c + base + 5;                                     \
++    v = (v ^ (29 + base + 5)) + ((uint64_t)c * (31 + base + 5));              \
++    v = (v + (37 + base + 5)) * (((uint64_t)c | (41 + base + 5)) + 1);        \
+     break;                                                                     \
+   case base + 6:                                                               \
+     v = (v * 19) + (uint64_t)c + base + 6;                                     \
++    v = (v ^ (29 + base + 6)) + ((uint64_t)c * (31 + base + 6));              \
++    v = (v + (37 + base + 6)) * (((uint64_t)c | (41 + base + 6)) + 1);        \
+     break;                                                                     \
+   case base + 7:                                                               \
+     v = (v * 23) + (uint64_t)c + base + 7;                                     \
++    v = (v ^ (29 + base + 7)) + ((uint64_t)c * (31 + base + 7));              \
++    v = (v + (37 + base + 7)) * (((uint64_t)c | (41 + base + 7)) + 1);        \
+     break;
+ 
+ #define CASES_256(v, c)                                                        \
+@@ -303,6 +319,7 @@
+ 
+ BENCHMARK_DRAW_LINE();
+ BENCHMARK_NAMED_PARAM(contendedUse, 1_to_1, 1, 1)
++BENCHMARK_NAMED_PARAM(contendedUse_v2, 32_to_1000_branchy, 32, 1000)
+ BENCHMARK_NAMED_PARAM(contendedUse_v2, 1_to_1_branchy, 1, 1)
+ BENCHMARK_NAMED_PARAM(contendedUse, 1_to_4, 1, 4)
+ BENCHMARK_NAMED_PARAM(contendedUse, 1_to_32, 1, 32)
+@@ -330,6 +347,7 @@
+ // single_thread_native_trywait                                  7.30ns  136.98M
+ // ----------------------------------------------------------------------------
+ // contendedUse(1_to_1)                                       158.22ns    6.32M
++// contendedUse(1_to_1_branchy)                                ?          ?
+ // contendedUse(1_to_4)                                       574.73ns    1.74M
+ // contendedUse(1_to_32)                                      592.94ns    1.69M
+ // contendedUse(4_to_1)                                       118.28ns    8.45M
+@@ -338,6 +356,7 @@
+ // contendedUse(32_to_1)                                      165.06ns    6.06M
+ // contendedUse(16_to_16)                                     238.57ns    4.19M
+ // contendedUse(32_to_32)                                     219.82ns    4.55M
++// contendedUse(32_to_32_v2)                                   ?          ?
+ // contendedUse(32_to_1000)                                   777.42ns    1.29M
+ // ============================================================================
+ 

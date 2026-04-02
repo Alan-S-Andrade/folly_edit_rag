@@ -63,13 +63,19 @@ class _BedrockModelAdapter:
         )
         region = os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION") or LOCATION or "us-east-1"
 
+        read_timeout = int(os.environ.get("BEDROCK_READ_TIMEOUT_SECONDS", "600"))
+
         if bearer_token:
             # Use bearer-token auth: skip SigV4 signing and inject the token
             # as an Authorization header on every request.
             self._client = boto3.client(
                 "bedrock-runtime",
                 region_name=region,
-                config=BotoConfig(signature_version=botocore.UNSIGNED),
+                config=BotoConfig(
+                    signature_version=botocore.UNSIGNED,
+                    read_timeout=read_timeout,
+                    retries={"max_attempts": 2},
+                ),
             )
             _token = bearer_token  # capture for closure
 
@@ -82,7 +88,14 @@ class _BedrockModelAdapter:
             )
         else:
             # Fall back to standard IAM credential chain (SigV4).
-            self._client = boto3.client("bedrock-runtime", region_name=region)
+            self._client = boto3.client(
+                "bedrock-runtime",
+                region_name=region,
+                config=BotoConfig(
+                    read_timeout=read_timeout,
+                    retries={"max_attempts": 2},
+                ),
+            )
 
     def generate_content(self, prompt: str) -> SimpleNamespace:
         response = self._client.converse(

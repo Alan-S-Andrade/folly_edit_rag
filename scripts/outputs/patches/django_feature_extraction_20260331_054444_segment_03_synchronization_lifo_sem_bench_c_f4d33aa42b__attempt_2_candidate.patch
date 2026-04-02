@@ -1,0 +1,85 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -301,6 +301,74 @@
+   }
+ }
+ 
++// Add a derived benchmark that increases the hot chain length to potentially
++// increase branch mispredictions.
++static void contendedUse_v3(uint32_t n, int posters, int waiters) {
++  LifoSemImpl<std::atomic> sem;
++
++  std::vector<std::thread> threads;
++  std::atomic<bool> go(false);
++
++  // Use a larger hot chain for contendedUse_v3
++  constexpr size_t kHotLen_v3 = 32768; // Double the original hot length
++  alignas(64) static ChainNode hotNodes_v3[kHotLen_v3];
++  static bool initialized_v3 = false;
++  if (!initialized_v3) {
++    initChain(hotNodes_v3, kHotLen_v3);
++    initialized_v3 = true;
++  }
++
++  BENCHMARK_SUSPEND {
++    for (int t = 0; t < waiters; ++t) {
++      threads.emplace_back([=, &sem] {
++        for (uint32_t i = t; i < n; i += waiters) {
++          sem.wait();
++        }
++      });
++    }
++    for (int t = 0; t < posters; ++t) {
++      threads.emplace_back([=, &sem, &go] {
++        ChainNode* hotPos = &hotNodes_v3[t % kHotLen_v3]; // Use the larger hot chain
++        ChainNode* coldPos = &coldNodes[t % kColdLen];
++        uint64_t acc = t;
++
++        while (!go.load()) {
++          std::this_thread::yield();
++        }
++        for (uint32_t i = t; i < n; i += posters) {
++          hotPos = hotPos->next;
++          uint64_t payload = (uint64_t)(uintptr_t)hotPos;
++          switch (i % 3) {
++            case 0:
++              acc = switchA(acc, payload & 0xFF);
++              break;
++            case 1:
++              acc = switchB(acc, payload & 0xFF);
++              break;
++            case 2:
++              acc = switchC(acc, payload & 0xFF);
++              break;
++          }
++
++          auto coldMask = -uint64_t(i % 8 == 0);
++          coldPos = (ChainNode*)(((uintptr_t)coldPos->next & coldMask) |
++                                 ((uintptr_t)coldPos & ~coldMask));
++          sem.post();
++        }
++        folly::doNotOptimizeAway(acc);
++        folly::doNotOptimizeAway(hotPos);
++        folly::doNotOptimizeAway(coldPos);
++      });
++    }
++  }
++
++  go.store(true);
++  for (auto& thr : threads) {
++    thr.join();
++  }
++}
++
++
+ BENCHMARK_DRAW_LINE();
+ BENCHMARK_NAMED_PARAM(contendedUse, 1_to_1, 1, 1)
+ BENCHMARK_NAMED_PARAM(contendedUse, 1_to_4, 1, 4)
+@@ -313,6 +381,7 @@
+ BENCHMARK_NAMED_PARAM(contendedUse, 32_to_32, 32, 32)
+ BENCHMARK_NAMED_PARAM(contendedUse_v2, 32_to_32_v2, 32, 32)
+ BENCHMARK_NAMED_PARAM(contendedUse, 32_to_1000, 32, 1000)
++BENCHMARK_NAMED_PARAM(contendedUse_v3, 8_to_100_v3, 8, 100) // Added derived benchmark
+ 
+ // sudo nice -n -20 _build/opt/folly/test/LifoSemTests
+ //     --benchmark --bm_min_iters=10000000 --gtest_filter=-\*

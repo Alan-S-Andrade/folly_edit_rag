@@ -1,0 +1,115 @@
+--- a/thrift/lib/cpp2/test/ProtocolBench.cpp
++++ b/thrift/lib/cpp2/test/ProtocolBench.cpp
+@@ -186,9 +186,9 @@
+   M(Prefix, proto, ComplexStruct)      \
+   M(Prefix, proto, ComplexUnion)
+ 
+-#define X(Prefix, proto) APPLY(X2, Prefix, proto)              
+-
+-#define OpEncodeX(Prefix, proto) APPLY(OpEncodeX2, Prefix, proto)              
++#define X(Prefix, proto) APPLY(X2, Prefix, proto)
++
++#define OpEncodeX(Prefix, proto) APPLY(OpEncodeX2, Prefix, proto)
+ 
+ X(, Binary)
+ X(, Compact)
+@@ -200,6 +200,99 @@
+ OpEncodeX(OpEncode, Binary)
+ OpEncodeX(OpEncode, Compact)
+ 
++namespace {
++
++constexpr size_t kChaseArraySize = 16384; // 128KiB of pointers
++struct ChaseNode {
++  ChaseNode* next;
++  int64_t payload;
++};
++std::vector<ChaseNode> chase_array(kChaseArraySize);
++ChaseNode* chase_head = nullptr;
++
++void setup_chase_array() {
++  if (chase_head) {
++    return;
++  }
++
++  std::vector<size_t> indices(kChaseArraySize);
++  for (size_t i = 0; i < kChaseArraySize; ++i) {
++    indices[i] = i;
++  }
++
++  // Using a fixed seed for reproducibility.
++  srand(12345);
++  // Fisher-Yates shuffle
++  for (size_t i = kChaseArraySize - 1; i > 0; --i) {
++    size_t j = rand() % (i + 1);
++    std::swap(indices[i], indices[j]);
++  }
++
++  for (size_t i = 0; i < kChaseArraySize - 1; ++i) {
++    chase_array[indices[i]].next = &chase_array[indices[i + 1]];
++    chase_array[indices[i]].payload = rand();
++  }
++  chase_array[indices.back()].next = &chase_array[indices[0]]; // loop back
++  chase_array[indices.back()].payload = rand();
++
++  chase_head = &chase_array[indices[0]];
++}
++
++__attribute__((noinline)) ChaseNode* chase_step_A(ChaseNode* p) {
++  return p->next;
++}
++__attribute__((noinline)) ChaseNode* chase_step_B(ChaseNode* p) {
++  return p->next;
++}
++__attribute__((noinline)) ChaseNode* chase_step_C(ChaseNode* p) {
++  return p->next;
++}
++
++} // namespace
++
++BENCHMARK(ObjectCompactProtocol_read_LargeSetInt_v1, iters) {
++  folly::BenchmarkSuspender susp;
++  // Setup from readBench<Object, Compact, LargeSetInt>
++  auto strct = create<LargeSetInt>();
++  folly::IOBufQueue q;
++  CompactSerializer::serialize(strct, &q);
++  auto buf = q.move();
++  buf->coalesce();
++
++  // Setup for perturbation
++  setup_chase_array();
++  ChaseNode* p = chase_head;
++
++  susp.dismiss();
++
++  while (iters--) {
++    // Original work
++    auto obj = protocol::parseObject<CompactProtocolReader>(*buf);
++    folly::doNotOptimizeAway(obj);
++
++    // Perturbation
++    for (int j = 0; j < 5; ++j) {
++      switch ((p->payload) & 0x3) {
++        case 0:
++          p = chase_step_A(p);
++          break;
++        case 1:
++          p = chase_step_B(p);
++          break;
++        case 2:
++          p = chase_step_C(p);
++          break;
++        default:
++          p = p->next;
++          break;
++      }
++    }
++  }
++
++  folly::doNotOptimizeAway(p);
++  susp.rehire();
++}
++
+ int main(int argc, char** argv) {
+   folly::Init init(&argc, &argv);
+   folly::runBenchmarks();

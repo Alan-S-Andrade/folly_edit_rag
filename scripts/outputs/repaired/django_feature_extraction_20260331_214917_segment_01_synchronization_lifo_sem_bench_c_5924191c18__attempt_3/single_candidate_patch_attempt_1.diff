@@ -1,0 +1,20 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -250,9 +250,14 @@
+               break;
+           }
+ 
+-          auto coldMask = -uint64_t(i % 8 == 0);
+-          coldPos = (ChainNode*)(((uintptr_t)coldPos->next & coldMask) |
+-                                 ((uintptr_t)coldPos & ~coldMask));
++          // Previous logic: auto coldMask = -uint64_t(i % 8 == 0);
++          //                 coldPos = (ChainNode*)(((uintptr_t)coldPos->next & coldMask) |
++          //                                        ((uintptr_t)coldPos & ~coldMask));
++          // Refined: Make the coldPos->next load conditional to reduce memory stall,
++          // preserving the 1/8th traversal rate.
++          if (i % 8 == 0) {
++            coldPos = coldPos->next;
++          }
+           sem.post();
+         }
+         folly::doNotOptimizeAway(acc);

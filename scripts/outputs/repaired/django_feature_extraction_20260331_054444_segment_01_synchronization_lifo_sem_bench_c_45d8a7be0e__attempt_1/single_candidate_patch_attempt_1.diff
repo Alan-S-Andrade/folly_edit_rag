@@ -1,0 +1,104 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -202,6 +202,15 @@
+   return v;
+ }
+ 
++// Added benchmark variant for contendedUse
++__attribute__((noinline)) uint64_t switchD(uint64_t v, int c) {
++  switch (c) {
++    CASES_256(v, c * 7);
++    default:;
++  }
++  return v;
++}
++
+ struct DepWorkInitializer {
+   DepWorkInitializer() {
+     coldNodes = new ChainNode[kColdLen];
+@@ -300,6 +309,67 @@
+     thr.join();
+   }
+ }
++
++// New benchmark variant for contendedUse, adding new switch logic
++static void contendedUse_sync_lifo_sem_bench(uint32_t n, int posters, int waiters) {
++  LifoSemImpl<std::atomic> sem;
++
++  std::vector<std::thread> threads;
++  std::atomic<bool> go(false);
++
++  BENCHMARK_SUSPEND {
++    for (int t = 0; t < waiters; ++t) {
++      threads.emplace_back([=, &sem] {
++        for (uint32_t i = t; i < n; i += waiters) {
++          sem.wait();
++        }
++      });
++    }
++    for (int t = 0; t < posters; ++t) {
++      threads.emplace_back([=, &sem, &go] {
++        ChainNode* hotPos = &hotNodes[t % kHotLen];
++        ChainNode* coldPos = &coldNodes[t % kColdLen];
++        uint64_t acc = t;
++
++        while (!go.load()) {
++          std::this_thread::yield();
++        }
++        for (uint32_t i = t; i < n; i += posters) {
++          hotPos = hotPos->next;
++          uint64_t payload = (uint64_t)(uintptr_t)hotPos;
++          switch (i % 4) { // Slightly different dispatch for uniqueness
++            case 0:
++              acc = switchA(acc, payload & 0xFF);
++              break;
++            case 1:
++              acc = switchB(acc, payload & 0xFF);
++              break;
++            case 2:
++              acc = switchC(acc, payload & 0xFF);
++              break;
++            case 3: // New switch call
++              acc = switchD(acc, payload & 0xFF);
++              break;
++          }
++
++          auto coldMask = -uint64_t(i % 8 == 0);
++          coldPos = (ChainNode*)(((uintptr_t)coldPos->next & coldMask) |
++                                 ((uintptr_t)coldPos & ~coldMask));
++          sem.post();
++        }
++        folly::doNotOptimizeAway(acc);
++        folly::doNotOptimizeAway(hotPos);
++        folly::doNotOptimizeAway(coldPos);
++      });
++    }
++  }
++
++  go.store(true);
++  for (auto& thr : threads) {
++    thr.join();
++  }
++}
++
+ 
+ BENCHMARK_DRAW_LINE();
+ BENCHMARK_NAMED_PARAM(contendedUse, 1_to_1, 1, 1)
+@@ -313,6 +383,7 @@
+ BENCHMARK_NAMED_PARAM(contendedUse, 32_to_32, 32, 32)
+ BENCHMARK_NAMED_PARAM(contendedUse_v2, 32_to_32_v2, 32, 32)
+ BENCHMARK_NAMED_PARAM(contendedUse, 32_to_1000, 32, 1000)
++BENCHMARK_NAMED_PARAM(contendedUse_sync_lifo_sem_bench, sync_lifo_sem_bench_32_to_1000, 32, 1000) // New benchmark registration
+ 
+ // sudo nice -n -20 _build/opt/folly/test/LifoSemTests
+ //     --benchmark --bm_min_iters=10000000 --gtest_filter=-\*
+@@ -337,7 +408,9 @@
+ // contendedUse(32_to_1)                                      165.06ns    6.06M
+ // contendedUse(16_to_16)                                     238.57ns    4.19M
+ // contendedUse(32_to_32)                                     219.82ns    4.55M
++// contendedUse(32_to_32_v2)                                  X.XXns    X.XM // Placeholder for V2 benchmark
+ // contendedUse(32_to_1000)                                   777.42ns    1.29M
++// sync_lifo_sem_bench_32_to_1000                              X.XXns    X.XM // New benchmark
+ // ============================================================================
+ 
+ int main(int argc, char** argv) {

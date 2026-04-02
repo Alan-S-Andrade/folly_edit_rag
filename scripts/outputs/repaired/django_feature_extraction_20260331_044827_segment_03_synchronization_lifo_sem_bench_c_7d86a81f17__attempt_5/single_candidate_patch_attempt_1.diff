@@ -1,0 +1,26 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -453,18 +453,11 @@
+           // latency of sem.post().
+           hotPos = hotPos->next;
+           uint64_t payload = (uint64_t)(uintptr_t)hotPos;
+-          switch (i % 3) {
+-            case 0:
+-              acc = switchA(acc, payload & 0xFF);
+-              break;
+-            case 1:
+-              acc = switchB(acc, payload & 0xFF);
+-              break;
+-            case 2:
+-              acc = switchC(acc, payload & 0xFF);
+-              break;
+-          }
+-
++          // Refinement: Replaced switch with a direct call to switchA.
++          // This removes a conditional branch based on `i % 3`,
++          // simplifying control flow and potentially improving IPC.
++          acc = switchA(acc, payload & 0xFF);
++          
+           // Refinement: Always follow the cold chain. This removes a conditional
+           // data dependency, potentially improving IPC by simplifying the
+           // instruction flow and making memory access patterns more regular.

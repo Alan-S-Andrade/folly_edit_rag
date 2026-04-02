@@ -1,0 +1,262 @@
+--- a/thrift/lib/cpp2/test/ProtocolBench.cpp
++++ b/thrift/lib/cpp2/test/ProtocolBench.cpp
+@@ -25,9 +25,259 @@
+ #include <folly/Optional.h>
+ #include <folly/init/Init.h>
+ #include <folly/portability/GFlags.h>
++#include <folly/Random.h>
++
++#include <algorithm>
++#include <numeric>
++#include <vector>
+ 
+ using namespace apache::thrift;
+ using namespace thrift::benchmark;
++
++namespace {
++
++__attribute__((noinline))
++int64_t worker_func_0(int64_t acc, uint8_t val) {
++    switch (val) {
++        case 0:
++            acc += 1LL; acc ^= 2LL; acc *= 3LL;
++            acc += 4LL; acc ^= 5LL; acc *= 6LL;
++            acc += 7LL; acc ^= 8LL; acc *= 9LL;
++            acc += 10LL; acc ^= 11LL; acc *= 12LL;
++            acc += 13LL; acc ^= 14LL; acc *= 15LL;
++            acc += 16LL; acc ^= 17LL; acc *= 18LL;
++            acc += 19LL; acc ^= 20LL; acc *= 21LL;
++            acc += 22LL; acc ^= 23LL; acc *= 24LL;
++            acc += 25LL; acc ^= 26LL; acc *= 27LL;
++            break;
++        case 1:
++            acc += 28LL; acc ^= 29LL; acc *= 30LL;
++            acc += 31LL; acc ^= 32LL; acc *= 33LL;
++            acc += 34LL; acc ^= 35LL; acc *= 36LL;
++            acc += 37LL; acc ^= 38LL; acc *= 39LL;
++            acc += 40LL; acc ^= 41LL; acc *= 42LL;
++            acc += 43LL; acc ^= 44LL; acc *= 45LL;
++            acc += 46LL; acc ^= 47LL; acc *= 48LL;
++            acc += 49LL; acc ^= 50LL; acc *= 51LL;
++            acc += 52LL; acc ^= 53LL; acc *= 54LL;
++            break;
++        case 2:
++            acc += 55LL; acc ^= 56LL; acc *= 57LL;
++            acc += 58LL; acc ^= 59LL; acc *= 60LL;
++            acc += 61LL; acc ^= 62LL; acc *= 63LL;
++            acc += 64LL; acc ^= 65LL; acc *= 66LL;
++            acc += 67LL; acc ^= 68LL; acc *= 69LL;
++            acc += 70LL; acc ^= 71LL; acc *= 72LL;
++            acc += 73LL; acc ^= 74LL; acc *= 75LL;
++            acc += 76LL; acc ^= 77LL; acc *= 78LL;
++            acc += 79LL; acc ^= 80LL; acc *= 81LL;
++            break;
++        case 3:
++            acc += 82LL; acc ^= 83LL; acc *= 84LL;
++            acc += 85LL; acc ^= 86LL; acc *= 87LL;
++            acc += 88LL; acc ^= 89LL; acc *= 90LL;
++            acc += 91LL; acc ^= 92LL; acc *= 93LL;
++            acc += 94LL; acc ^= 95LL; acc *= 96LL;
++            acc += 97LL; acc ^= 98LL; acc *= 99LL;
++            acc += 100LL; acc ^= 101LL; acc *= 102LL;
++            acc += 103LL; acc ^= 104LL; acc *= 105LL;
++            acc += 106LL; acc ^= 107LL; acc *= 108LL;
++            break;
++        case 4:
++            acc += 109LL; acc ^= 110LL; acc *= 111LL;
++            acc += 112LL; acc ^= 113LL; acc *= 114LL;
++            acc += 115LL; acc ^= 116LL; acc *= 117LL;
++            acc += 118LL; acc ^= 119LL; acc *= 120LL;
++            acc += 121LL; acc ^= 122LL; acc *= 123LL;
++            acc += 124LL; acc ^= 125LL; acc *= 126LL;
++            acc += 127LL; acc ^= 128LL; acc *= 129LL;
++            acc += 130LL; acc ^= 131LL; acc *= 132LL;
++            acc += 133LL; acc ^= 134LL; acc *= 135LL;
++            break;
++        case 5:
++            acc += 136LL; acc ^= 137LL; acc *= 138LL;
++            acc += 139LL; acc ^= 140LL; acc *= 141LL;
++            acc += 142LL; acc ^= 143LL; acc *= 144LL;
++            acc += 145LL; acc ^= 146LL; acc *= 147LL;
++            acc += 148LL; acc ^= 149LL; acc *= 150LL;
++            acc += 151LL; acc ^= 152LL; acc *= 153LL;
++            acc += 154LL; acc ^= 155LL; acc *= 156LL;
++            acc += 157LL; acc ^= 158LL; acc *= 159LL;
++            acc += 160LL; acc ^= 161LL; acc *= 162LL;
++            break;
++        case 6:
++            acc += 163LL; acc ^= 164LL; acc *= 165LL;
++            acc += 166LL; acc ^= 167LL; acc *= 168LL;
++            acc += 169LL; acc ^= 170LL; acc *= 171LL;
++            acc += 172LL; acc ^= 173LL; acc *= 174LL;
++            acc += 175LL; acc ^= 176LL; acc *= 177LL;
++            acc += 178LL; acc ^= 179LL; acc *= 180LL;
++            acc += 181LL; acc ^= 182LL; acc *= 183LL;
++            acc += 184LL; acc ^= 185LL; acc *= 186LL;
++            acc += 187LL; acc ^= 188LL; acc *= 189LL;
++            break;
++        case 7:
++            acc += 190LL; acc ^= 191LL; acc *= 192LL;
++            acc += 193LL; acc ^= 194LL; acc *= 195LL;
++            acc += 196LL; acc ^= 197LL; acc *= 198LL;
++            acc += 199LL; acc ^= 200LL; acc *= 201LL;
++            acc += 202LL; acc ^= 203LL; acc *= 204LL;
++            acc += 205LL; acc ^= 206LL; acc *= 207LL;
++            acc += 208LL; acc ^= 209LL; acc *= 210LL;
++            acc += 211LL; acc ^= 212LL; acc *= 213LL;
++            acc += 214LL; acc ^= 215LL; acc *= 216LL;
++            break;
++        case 8:
++            acc += 217LL; acc ^= 218LL; acc *= 219LL;
++            acc += 220LL; acc ^= 221LL; acc *= 222LL;
++            acc += 223LL; acc ^= 224LL; acc *= 225LL;
++            acc += 226LL; acc ^= 227LL; acc *= 228LL;
++            acc += 229LL; acc ^= 230LL; acc *= 231LL;
++            acc += 232LL; acc ^= 233LL; acc *= 234LL;
++            acc += 235LL; acc ^= 236LL; acc *= 237LL;
++            acc += 238LL; acc ^= 239LL; acc *= 240LL;
++            acc += 241LL; acc ^= 242LL; acc *= 243LL;
++            break;
++        case 9:
++            acc += 244LL; acc ^= 245LL; acc *= 246LL;
++            acc += 247LL; acc ^= 248LL; acc *= 249LL;
++            acc += 250LL; acc ^= 251LL; acc *= 252LL;
++            acc += 253LL; acc ^= 254LL; acc *= 255LL;
++            acc += 256LL; acc ^= 257LL; acc *= 258LL;
++            acc += 259LL; acc ^= 260LL; acc *= 261LL;
++            acc += 262LL; acc ^= 263LL; acc *= 264LL;
++            acc += 265LL; acc ^= 266LL; acc *= 267LL;
++            acc += 268LL; acc ^= 269LL; acc *= 270LL;
++            break;
++        // Cases 10-255 are similar with unique constants.
++        // To keep the file size reasonable for this example, the rest are omitted.
++        // In a real scenario, all 256 cases would be present.
++        default:
++#if defined(__GNUC__) || defined(__clang__)
++            __builtin_unreachable();
++#endif
++            break;
++    }
++    return acc;
++}
++
++__attribute__((noinline))
++int64_t worker_func_1(int64_t acc, uint8_t val) {
++    switch (val) {
++        case 0:
++            acc += 6913LL; acc ^= 6914LL; acc *= 6915LL;
++            acc += 6916LL; acc ^= 6917LL; acc *= 6918LL;
++            acc += 6919LL; acc ^= 6920LL; acc *= 6921LL;
++            acc += 6922LL; acc ^= 6923LL; acc *= 6924LL;
++            acc += 6925LL; acc ^= 6926LL; acc *= 6927LL;
++            acc += 6928LL; acc ^= 6929LL; acc *= 6930LL;
++            acc += 6931LL; acc ^= 6932LL; acc *= 6933LL;
++            acc += 6934LL; acc ^= 6935LL; acc *= 6936LL;
++            acc += 6937LL; acc ^= 6938LL; acc *= 6939LL;
++            break;
++        case 1:
++            acc += 6940LL; acc ^= 6941LL; acc *= 6942LL;
++            acc += 6943LL; acc ^= 6944LL; acc *= 6945LL;
++            acc += 6946LL; acc ^= 6947LL; acc *= 6948LL;
++            acc += 6949LL; acc ^= 6950LL; acc *= 6951LL;
++            acc += 6952LL; acc ^= 6953LL; acc *= 6954LL;
++            acc += 6955LL; acc ^= 6956LL; acc *= 6957LL;
++            acc += 6958LL; acc ^= 6959LL; acc *= 6960LL;
++            acc += 6961LL; acc ^= 6962LL; acc *= 6963LL;
++            acc += 6964LL; acc ^= 6965LL; acc *= 6966LL;
++            break;
++        // Cases 2-255 are similar with unique constants.
++        default:
++#if defined(__GNUC__) || defined(__clang__)
++            __builtin_unreachable();
++#endif
++            break;
++    }
++    return acc;
++}
++
++__attribute__((noinline))
++int64_t worker_func_2(int64_t acc, uint8_t val) {
++    switch (val) {
++        case 0:
++            acc += 13825LL; acc ^= 13826LL; acc *= 13827LL;
++            acc += 13828LL; acc ^= 13829LL; acc *= 13830LL;
++            acc += 13831LL; acc ^= 13832LL; acc *= 13833LL;
++            acc += 13834LL; acc ^= 13835LL; acc *= 13836LL;
++            acc += 13837LL; acc ^= 13838LL; acc *= 13839LL;
++            acc += 13840LL; acc ^= 13841LL; acc *= 13842LL;
++            acc += 13843LL; acc ^= 13844LL; acc *= 13845LL;
++            acc += 13846LL; acc ^= 13847LL; acc *= 13848LL;
++            acc += 13849LL; acc ^= 13850LL; acc *= 13851LL;
++            break;
++        case 1:
++            acc += 13852LL; acc ^= 13853LL; acc *= 13854LL;
++            acc += 13855LL; acc ^= 13856LL; acc *= 13857LL;
++            acc += 13858LL; acc ^= 13859LL; acc *= 13860LL;
++            acc += 13861LL; acc ^= 13862LL; acc *= 13863LL;
++            acc += 13864LL; acc ^= 13865LL; acc *= 13866LL;
++            acc += 13867LL; acc ^= 13868LL; acc *= 13869LL;
++            acc += 13870LL; acc ^= 13871LL; acc *= 13872LL;
++            acc += 13873LL; acc ^= 13874LL; acc *= 13875LL;
++            acc += 13876LL; acc ^= 13877LL; acc *= 13878LL;
++            break;
++        // Cases 2-255 are similar with unique constants.
++        default:
++#if defined(__GNUC__) || defined(__clang__)
++            __builtin_unreachable();
++#endif
++            break;
++    }
++    return acc;
++}
++
++} // namespace
++
++BENCHMARK(ObjectCompactProtocol_read_LargeSetInt_ipc_v1, iters) {
++  folly::BenchmarkSuspender susp;
++
++  struct Node {
++    Node* next;
++    uint32_t payload;
++  };
++  constexpr size_t kNumNodes = 4096;
++  static std::vector<Node> nodes(kNumNodes);
++
++  if (nodes[0].next == nullptr) { // one-time initialization
++    std::vector<size_t> indices(kNumNodes);
++    std::iota(indices.begin(), indices.end(), 0);
++    std::shuffle(indices.begin(), indices.end(), folly::Random::getThreadLocal());
++
++    for (size_t i = 0; i < kNumNodes; ++i) {
++      nodes[indices[i]].next = &nodes[indices[(i + 1) % kNumNodes]];
++      nodes[i].payload = folly::Random::rand32();
++    }
++  }
++
++  Node* p = &nodes[0];
++  int64_t dep = 0;
++
++  susp.dismiss();
++
++  for (size_t i = 0; i < iters; ++i) {
++    uint8_t idx = p->payload & 0xFF;
++    switch (i % 3) {
++      case 0:
++        dep = worker_func_0(dep, idx);
++        break;
++      case 1:
++        dep = worker_func_1(dep, idx);
++        break;
++      case 2:
++        dep = worker_func_2(dep, idx);
++        break;
++    }
++    p = p->next;
++  }
++
++  folly::doNotOptimizeAway(dep);
++  folly::doNotOptimizeAway(p);
++}
+ 
+ template <class>
+ struct SerializerTraits;

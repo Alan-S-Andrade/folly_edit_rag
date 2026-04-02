@@ -1,0 +1,422 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -20,6 +20,11 @@
+ 
+ #include <folly/Benchmark.h>
+ 
++#include <algorithm>
++#include <numeric>
++#include <random>
++#include <vector>
++
+ using namespace folly;
+ 
+ BENCHMARK(lifo_sem_pingpong, iters) {
+@@ -140,8 +145,398 @@
+   }
+ }
+ 
++// ---------------------------------------------------------------------------
++// Pointer-chase chain infrastructure for contendedUse_chasing_1_to_1
++// ---------------------------------------------------------------------------
++namespace {
++
++struct ChaseNode {
++  ChaseNode* next;
++  char pad[56]; // 64 bytes total
++};
++
++static constexpr size_t kHotLen = 16384; // 1 MB — exceeds L1d (48 KB)
++static ChaseNode hotNodes[kHotLen];
++
++static constexpr size_t kColdLen = 1u << 17; // 128 KB — stresses LLC
++static ChaseNode coldNodes[kColdLen];
++
++static bool chainsInited = false;
++
++static void initChain(ChaseNode* nodes, size_t len) {
++  std::vector<size_t> perm(len);
++  std::iota(perm.begin(), perm.end(), 0u);
++  std::mt19937_64 rng(0xdeadbeefcafe1234ULL);
++  for (size_t i = len - 1; i > 0; --i) {
++    std::swap(perm[i], perm[rng() % (i + 1)]);
++  }
++  for (size_t i = 0; i < len; ++i) {
++    nodes[perm[i]].next = &nodes[perm[(i + 1) % len]];
++  }
++}
++
++static void ensureChainsInited() {
++  if (!chainsInited) {
++    initChain(hotNodes, kHotLen);
++    initChain(coldNodes, kColdLen);
++    chainsInited = true;
++  }
++}
++
++__attribute__((noinline)) uint64_t switchFnA(uint64_t v, int c) {
++  switch (c & 0xFF) {
++    case 0: v += 0xA0B1C2D3ULL; v ^= 0x1234567890ABCDEFull; break;
++    case 1: v *= 0x9e3779b97f4a7c15ULL; v ^= v >> 33; break;
++    case 2: v += 0xBF58476D1CE4E5B9ULL; v ^= v >> 31; break;
++    case 3: v *= 0x94D049BB133111EBULL; v ^= v >> 27; break;
++    case 4: v += 0xC4CEB9FE1A85EC53ULL; v ^= 0xFEDCBA9876543210ULL; break;
++    case 5: v -= 0x6C62272E07BB0142ULL; v ^= v >> 29; break;
++    case 6: v ^= 0xA5A5A5A5A5A5A5A5ULL; v += v >> 17; break;
++    case 7: v *= 0xFF51AFD7ED558CCDULL; v ^= v >> 23; break;
++    case 8: v += 0x123456789ABCDEF0ULL; v ^= 0xFEDCBA9876543210ULL; break;
++    case 9: v -= 0x0FEDCBA987654321ULL; v ^= v >> 19; break;
++    case 10: v ^= 0xDEADBEEFCAFEBABEULL; v *= 0x6B43A9B5ULL; break;
++    case 11: v += 0x5555555555555555ULL; v ^= v >> 37; break;
++    case 12: v *= 0xAAAAAAAAAAAAAAAAULL; v ^= v >> 13; break;
++    case 13: v -= 0x3333333333333333ULL; v ^= v >> 41; break;
++    case 14: v ^= 0xCCCCCCCCCCCCCCCCULL; v += v >> 7; break;
++    case 15: v += 0xEEEEEEEEEEEEEEEEULL; v ^= v >> 43; break;
++    default: v ^= (uint64_t)c * 0x9e3779b97f4a7c15ULL; v += v >> 11; break;
++  }
++  return v;
++}
++
++__attribute__((noinline)) uint64_t switchFnB(uint64_t v, int c) {
++  switch (c & 0xFF) {
++    case 0: v ^= 0x0F0F0F0F0F0F0F0FULL; v *= 0xBF58476D1CE4E5B9ULL; break;
++    case 1: v += 0xF0F0F0F0F0F0F0F0ULL; v ^= v >> 29; break;
++    case 2: v -= 0x0102030405060708ULL; v ^= v >> 17; break;
++    case 3: v ^= 0xA1B2C3D4E5F60718ULL; v += v >> 13; break;
++    case 4: v *= 0x94D049BB133111EBULL; v ^= v >> 31; break;
++    case 5: v += 0x13579BDF2468ACE0ULL; v ^= 0xFEDCBA9876543210ULL; break;
++    case 6: v -= 0xFEDCBA9876543210ULL; v ^= v >> 23; break;
++    case 7: v ^= 0x8765432112345678ULL; v *= 0xC4CEB9FE1A85EC53ULL; break;
++    case 8: v += 0xDEADC0DEDEADC0DEULL; v ^= v >> 37; break;
++    case 9: v *= 0x6666666666666667ULL; v ^= v >> 19; break;
++    case 10: v -= 0x7777777777777777ULL; v ^= v >> 41; break;
++    case 11: v ^= 0x8888888888888888ULL; v += v >> 43; break;
++    case 12: v += 0x9999999999999999ULL; v ^= v >> 7; break;
++    case 13: v *= 0xAAAAAAAAAAAAAAAAULL; v ^= v >> 11; break;
++    case 14: v -= 0xBBBBBBBBBBBBBBBBULL; v ^= v >> 53; break;
++    case 15: v ^= 0xCCCCCCCCCCCCCCCCULL; v += v >> 3; break;
++    default: v += (uint64_t)c * 0xBF58476D1CE4E5B9ULL; v ^= v >> 17; break;
++  }
++  return v;
++}
++
++__attribute__((noinline)) uint64_t switchFnC(uint64_t v, int c) {
++  switch (c & 0xFF) {
++    case 0: v *= 0x9e3779b97f4a7c15ULL; v ^= v >> 47; break;
++    case 1: v ^= 0x1111111111111111ULL; v += v >> 53; break;
++    case 2: v += 0x2222222222222222ULL; v ^= 0xAAAAAAAAAAAAAAAAULL; break;
++    case 3: v -= 0x3333333333333333ULL; v *= 0xFF51AFD7ED558CCDULL; break;
++    case 4: v ^= 0x4444444444444444ULL; v ^= v >> 29; break;
++    case 5: v *= 0x5555555555555556ULL; v ^= v >> 13; break;
++    case 6: v += 0x6666666666666666ULL; v ^= v >> 37; break;
++    case 7: v -= 0x7777777777777777ULL; v ^= v >> 23; break;
++    case 8: v ^= 0x8888888888888888ULL; v += v >> 17; break;
++    case 9: v *= 0x9999999999999999ULL; v ^= v >> 43; break;
++    case 10: v += 0xAAAAAAAAAAAAAAAAULL; v ^= v >> 7; break;
++    case 11: v -= 0xBBBBBBBBBBBBBBBBULL; v ^= v >> 19; break;
++    case 12: v ^= 0xCCCCCCCCCCCCCCCCULL; v *= 0x6B43A9B5ULL; break;
++    case 13: v += 0xDDDDDDDDDDDDDDDDULL; v ^= v >> 31; break;
++    case 14: v -= 0xEEEEEEEEEEEEEEEEULL; v ^= v >> 11; break;
++    case 15: v ^= 0xFFFFFFFFFFFFFFFFULL; v += v >> 41; break;
++    default: v -= (uint64_t)c * 0x94D049BB133111EBULL; v ^= v >> 23; break;
++  }
++  return v;
++}
++
++static constexpr size_t kInnerIters = 500000;
++
++static void contendedUse_chasing(uint32_t n, int posters, int waiters) {
++  BENCHMARK_SUSPEND {
++    ensureChainsInited();
++  }
++
++  LifoSemImpl<std::atomic> sem;
++  std::vector<std::thread> threads;
++  std::atomic<bool> go(false);
++
++  BENCHMARK_SUSPEND {
++    for (int t = 0; t < waiters; ++t) {
++      threads.emplace_back([=, &sem] {
++        for (uint32_t i = t; i < n; i += waiters) {
++          sem.wait();
++        }
++      });
++    }
++    for (int t = 0; t < posters; ++t) {
++      threads.emplace_back([=, &sem, &go] {
++        while (!go.load()) {
++          std::this_thread::yield();
++        }
++        for (uint32_t i = t; i < n; i += posters) {
++          sem.post();
++        }
++      });
++    }
++  }
++
++  // Timed hot path: pointer-chase through large arrays + 3-way switch dispatch
++  ChaseNode* hotPos = &hotNodes[0];
++  ChaseNode* coldPos = &coldNodes[0];
++  uint64_t acc = 0;
++  for (size_t j = 0; j < kInnerIters; ++j) {
++    hotPos = hotPos->next; // dependent load — defeats prefetcher
++    uint64_t payload = reinterpret_cast<uint64_t>(hotPos);
++    int sel = static_cast<int>(j % 3);
++    if (sel == 0) {
++      acc = switchFnA(acc, static_cast<int>(payload & 0xFF));
++    } else if (sel == 1) {
++      acc = switchFnB(acc, static_cast<int>(payload & 0xFF));
++    } else {
++      acc = switchFnC(acc, static_cast<int>(payload & 0xFF));
++    }
++    // Branchless cold-chain step every 8 iterations
++    uint64_t coldMask = -(uint64_t)(j % 8 == 0);
++    coldPos = reinterpret_cast<ChaseNode*>(
++        (reinterpret_cast<uintptr_t>(coldPos->next) & coldMask) |
++        (reinterpret_cast<uintptr_t>(coldPos) & ~coldMask));
++  }
++  folly::doNotOptimizeAway(acc);
++  folly::doNotOptimizeAway(coldPos);
++
++  go.store(true);
++  for (auto& thr : threads) {
++    thr.join();
++  }
++}
++
++// contendedUse variant with tryWait spinning before blocking wait,
++// materially changing the hot path relative to plain contendedUse.
++static void contendedUse_tryWaitSpin(uint32_t n, int posters, int waiters) {
++  LifoSemImpl<std::atomic> sem;
++
++  std::vector<std::thread> threads;
++  std::atomic<bool> go(false);
++
++  BENCHMARK_SUSPEND {
++    for (int t = 0; t < waiters; ++t) {
++      threads.emplace_back([=, &sem] {
++        for (uint32_t i = t; i < n; i += waiters) {
++          // Spin with tryWait up to 64 times before falling back to wait()
++          bool got = false;
++          for (int spin = 0; spin < 64; ++spin) {
++            if (sem.tryWait()) {
++              got = true;
++              break;
++            }
++            asm_volatile_memory();
++          }
++          if (!got) {
++            sem.wait();
++          }
++        }
++      });
++    }
++    for (int t = 0; t < posters; ++t) {
++      threads.emplace_back([=, &sem, &go] {
++        while (!go.load()) {
++          std::this_thread::yield();
++        }
++        for (uint32_t i = t; i < n; i += posters) {
++          sem.post();
++        }
++      });
++    }
++  }
++
++  go.store(true);
++  for (auto& thr : threads) {
++    thr.join();
++  }
++}
++
++// contendedUse variant with batched post (post N tokens at once then wait N),
++// materially changing the hot path relative to plain contendedUse.
++static void contendedUse_batchedPost(uint32_t n, int posters, int waiters) {
++  LifoSemImpl<std::atomic> sem;
++
++  std::vector<std::thread> threads;
++  std::atomic<bool> go(false);
++
++  static constexpr int kBatch = 4;
++
++  BENCHMARK_SUSPEND {
++    for (int t = 0; t < waiters; ++t) {
++      threads.emplace_back([=, &sem] {
++        for (uint32_t i = t; i < n; i += waiters) {
++          sem.wait();
++          asm_volatile_memory();
++          asm_volatile_memory();
++        }
++      });
++    }
++    for (int t = 0; t < posters; ++t) {
++      threads.emplace_back([=, &sem, &go] {
++        while (!go.load()) {
++          std::this_thread::yield();
++        }
++        uint32_t i = t;
++        while (i < n) {
++          // Post up to kBatch tokens in a tight loop before yielding
++          int batch = 0;
++          while (batch < kBatch && i < n) {
++            sem.post();
++            i += posters;
++            ++batch;
++          }
++          asm_volatile_memory();
++        }
++      });
++    }
++  }
++
++  go.store(true);
++  for (auto& thr : threads) {
++    thr.join();
++  }
++}
++
++// contendedUse variant where waiters yield between tryWait attempts,
++// inserting a thread yield into the hot path to stress scheduler interactions.
++static void contendedUse_yieldSpin(uint32_t n, int posters, int waiters) {
++  LifoSemImpl<std::atomic> sem;
++
++  std::vector<std::thread> threads;
++  std::atomic<bool> go(false);
++
++  BENCHMARK_SUSPEND {
++    for (int t = 0; t < waiters; ++t) {
++      threads.emplace_back([=, &sem] {
++        for (uint32_t i = t; i < n; i += waiters) {
++          bool got = false;
++          for (int spin = 0; spin < 32; ++spin) {
++            if (sem.tryWait()) {
++              got = true;
++              break;
++            }
++            std::this_thread::yield();
++          }
++          if (!got) {
++            sem.wait();
++          }
++        }
++      });
++    }
++    for (int t = 0; t < posters; ++t) {
++      threads.emplace_back([=, &sem, &go] {
++        while (!go.load()) {
++          std::this_thread::yield();
++        }
++        for (uint32_t i = t; i < n; i += posters) {
++          sem.post();
++        }
++      });
++    }
++  }
++
++  go.store(true);
++  for (auto& thr : threads) {
++    thr.join();
++  }
++}
++
++// contendedUse variant where each waiter thread performs a double post-wait
++// round-trip per iteration using a secondary semaphore, materially changing
++// the hot path by adding an extra synchronization round-trip.
++static void contendedUse_doubleSync(uint32_t n, int posters, int waiters) {
++  LifoSemImpl<std::atomic> sem;
++  LifoSemImpl<std::atomic> ack;
++
++  std::vector<std::thread> threads;
++  std::atomic<bool> go(false);
++
++  BENCHMARK_SUSPEND {
++    for (int t = 0; t < waiters; ++t) {
++      threads.emplace_back([=, &sem, &ack] {
++        for (uint32_t i = t; i < n; i += waiters) {
++          sem.wait();
++          ack.post();
++        }
++      });
++    }
++    for (int t = 0; t < posters; ++t) {
++      threads.emplace_back([=, &sem, &ack, &go] {
++        while (!go.load()) {
++          std::this_thread::yield();
++        }
++        for (uint32_t i = t; i < n; i += posters) {
++          sem.post();
++          ack.wait();
++        }
++      });
++    }
++  }
++
++  go.store(true);
++  for (auto& thr : threads) {
++    thr.join();
++  }
++}
++
++// contendedUse variant where each poster thread posts two tokens per iteration
++// and each waiter performs two waits per iteration, doubling the per-iteration
++// synchronization work in the hot path relative to plain contendedUse.
++static void contendedUse_doublePost(uint32_t n, int posters, int waiters) {
++  LifoSemImpl<std::atomic> sem;
++
++  std::vector<std::thread> threads;
++  std::atomic<bool> go(false);
++
++  BENCHMARK_SUSPEND {
++    for (int t = 0; t < waiters; ++t) {
++      threads.emplace_back([=, &sem] {
++        for (uint32_t i = t; i < n; i += waiters) {
++          sem.wait();
++          asm_volatile_memory();
++          sem.wait();
++          asm_volatile_memory();
++        }
++      });
++    }
++    for (int t = 0; t < posters; ++t) {
++      threads.emplace_back([=, &sem, &go] {
++        while (!go.load()) {
++          std::this_thread::yield();
++        }
++        for (uint32_t i = t; i < n; i += posters) {
++          sem.post();
++          asm_volatile_memory();
++          sem.post();
++          asm_volatile_memory();
++        }
++      });
++    }
++  }
++
++  go.store(true);
++  for (auto& thr : threads) {
++    thr.join();
++  }
++}
++
++} // namespace
++
+ BENCHMARK_DRAW_LINE();
+ BENCHMARK_NAMED_PARAM(contendedUse, 1_to_1, 1, 1)
++BENCHMARK_NAMED_PARAM(contendedUse_doublePost, 1_to_1_doublePost, 1, 1)
++BENCHMARK_NAMED_PARAM(contendedUse_doubleSync, 1_to_1_doubleSync, 1, 1)
++BENCHMARK_NAMED_PARAM(contendedUse_yieldSpin, 1_to_1_yieldSpin, 1, 1)
++BENCHMARK_NAMED_PARAM(contendedUse_tryWaitSpin, 1_to_1_tryWaitSpin, 1, 1)
++BENCHMARK_NAMED_PARAM(contendedUse_batchedPost, 1_to_1_batchedPost, 1, 1)
++BENCHMARK_NAMED_PARAM(contendedUse_chasing, 1_to_1_chasing, 1, 1)
+ BENCHMARK_NAMED_PARAM(contendedUse, 1_to_4, 1, 4)
+ BENCHMARK_NAMED_PARAM(contendedUse, 1_to_32, 1, 32)
+ BENCHMARK_NAMED_PARAM(contendedUse, 4_to_1, 4, 1)
+@@ -174,7 +569,7 @@
+ // contendedUse(8_to_100)                                     701.46ns    1.43M
+ // contendedUse(32_to_1)                                      165.06ns    6.06M
+ // contendedUse(16_to_16)                                     238.57ns    4.19M
+-// contendedUse(32_to_32)                                     219.82ns    4.55M
++// contendedUse(32_to_32)                                      219.82ns    4.55M
+ // contendedUse(32_to_1000)                                   777.42ns    1.29M
+ // ============================================================================
+ 

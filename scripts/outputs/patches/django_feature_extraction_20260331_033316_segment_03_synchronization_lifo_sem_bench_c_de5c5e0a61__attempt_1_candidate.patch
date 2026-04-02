@@ -1,0 +1,92 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -136,30 +136,53 @@
+   }
+ }
+ 
++// Helper macro to generate a single ALU line, ensuring unique constants
++#define ALU_LINE_GENERATOR(v_param, c_param, base_offset_param, line_idx_param) \
++  v_param = (v_param * (static_cast<uint64_t>(line_idx_param) * 2 + 3)) +   \
++            (uint64_t)c_param + (base_offset_param) +                       \
++            (static_cast<uint64_t>(line_idx_param) << 8);
++
++// Modified CASES_8 macro to include 3 ALU lines per case entry
+ #define CASES_8(v, c, base)                                                    \
+   case base + 0:                                                               \
+-    v = (v * 3) + (uint64_t)c + base + 0;                                      \
++    ALU_LINE_GENERATOR(v, c, base + 0, 0)                                      \
++    ALU_LINE_GENERATOR(v, c, base + 0, 1)                                      \
++    ALU_LINE_GENERATOR(v, c, base + 0, 2)                                      \
+     break;                                                                     \
+   case base + 1:                                                               \
+-    v = (v * 5) + (uint64_t)c + base + 1;                                      \
++    ALU_LINE_GENERATOR(v, c, base + 1, 0)                                      \
++    ALU_LINE_GENERATOR(v, c, base + 1, 1)                                      \
++    ALU_LINE_GENERATOR(v, c, base + 1, 2)                                      \
+     break;                                                                     \
+   case base + 2:                                                               \
+-    v = (v * 7) + (uint64_t)c + base + 2;                                      \
++    ALU_LINE_GENERATOR(v, c, base + 2, 0)                                      \
++    ALU_LINE_GENERATOR(v, c, base + 2, 1)                                      \
++    ALU_LINE_GENERATOR(v, c, base + 2, 2)                                      \
+     break;                                                                     \
+   case base + 3:                                                               \
+-    v = (v * 11) + (uint64_t)c + base + 3;                                     \
++    ALU_LINE_GENERATOR(v, c, base + 3, 0)                                      \
++    ALU_LINE_GENERATOR(v, c, base + 3, 1)                                      \
++    ALU_LINE_GENERATOR(v, c, base + 3, 2)                                      \
+     break;                                                                     \
+   case base + 4:                                                               \
+-    v = (v * 13) + (uint64_t)c + base + 4;                                     \
++    ALU_LINE_GENERATOR(v, c, base + 4, 0)                                      \
++    ALU_LINE_GENERATOR(v, c, base + 4, 1)                                      \
++    ALU_LINE_GENERATOR(v, c, base + 4, 2)                                      \
+     break;                                                                     \
+   case base + 5:                                                               \
+-    v = (v * 17) + (uint64_t)c + base + 5;                                     \
++    ALU_LINE_GENERATOR(v, c, base + 5, 0)                                      \
++    ALU_LINE_GENERATOR(v, c, base + 5, 1)                                      \
++    ALU_LINE_GENERATOR(v, c, base + 5, 2)                                      \
+     break;                                                                     \
+   case base + 6:                                                               \
+-    v = (v * 19) + (uint64_t)c + base + 6;                                     \
++    ALU_LINE_GENERATOR(v, c, base + 6, 0)                                      \
++    ALU_LINE_GENERATOR(v, c, base + 6, 1)                                      \
++    ALU_LINE_GENERATOR(v, c, base + 6, 2)                                      \
+     break;                                                                     \
+   case base + 7:                                                               \
+-    v = (v * 23) + (uint64_t)c + base + 7;                                     \
++    ALU_LINE_GENERATOR(v, c, base + 7, 0)                                      \
++    ALU_LINE_GENERATOR(v, c, base + 7, 1)                                      \
++    ALU_LINE_GENERATOR(v, c, base + 7, 2)                                      \
+     break;
+ 
+ #define CASES_256(v, c)                                                        \
+@@ -212,7 +235,7 @@
+ };
+ static DepWorkInitializer initializer;
+ 
+-static void contendedUse_v2(uint32_t n, int posters, int waiters) {
++static void contendedUse_icache_heavy(uint32_t n, int posters, int waiters) {
+   LifoSemImpl<std::atomic> sem;
+ 
+   std::vector<std::thread> threads;
+@@ -303,6 +326,7 @@
+ 
+ BENCHMARK_DRAW_LINE();
+ BENCHMARK_NAMED_PARAM(contendedUse, 1_to_1, 1, 1)
++BENCHMARK_NAMED_PARAM(contendedUse_icache_heavy, icache_heavy_32_to_32, 32, 32)
+ BENCHMARK_NAMED_PARAM(contendedUse, 1_to_4, 1, 4)
+ BENCHMARK_NAMED_PARAM(contendedUse, 1_to_32, 1, 32)
+ BENCHMARK_NAMED_PARAM(contendedUse, 4_to_1, 4, 1)
+@@ -311,7 +335,9 @@
+ BENCHMARK_NAMED_PARAM(contendedUse, 32_to_1, 31, 1)
+ BENCHMARK_NAMED_PARAM(contendedUse, 16_to_16, 16, 16)
+ BENCHMARK_NAMED_PARAM(contendedUse, 32_to_32, 32, 32)
+-BENCHMARK_NAMED_PARAM(contendedUse_v2, 32_to_32_v2, 32, 32)
++// The original `contendedUse_v2` benchmark registration is removed to ensure
++// that exactly one new benchmark is added as `contendedUse_icache_heavy`.
++// BENCHMARK_NAMED_PARAM(contendedUse_v2, 32_to_32_v2, 32, 32)
+ BENCHMARK_NAMED_PARAM(contendedUse, 32_to_1000, 32, 1000)
+ 
+ // sudo nice -n -20 _build/opt/folly/test/LifoSemTests

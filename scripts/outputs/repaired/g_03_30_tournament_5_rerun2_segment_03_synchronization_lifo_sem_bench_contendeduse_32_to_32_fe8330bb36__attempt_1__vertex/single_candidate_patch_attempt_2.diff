@@ -1,0 +1,205 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -19,8 +19,106 @@
+ #include <folly/synchronization/NativeSemaphore.h>
+ 
+ #include <folly/Benchmark.h>
++#include <folly/Singleton.h>
++
++#include <array>
++#include <memory>
++#include <numeric>
++#include <random>
++#include <vector>
+ 
+ using namespace folly;
++
++namespace {
++
++struct ChainNode {
++  ChainNode* next;
++  char pad[64 - sizeof(ChainNode*)];
++};
++
++static constexpr size_t kHotLen = 16384; // 1MB
++static constexpr size_t kColdLen = 2 * 1024 * 1024; // 128MB
++
++#define GEN_CASE(i, salt1, salt2, op1, op2) \
++  case i:                                  \
++    v op1(i* salt1);                       \
++    v op2(i* salt2);                       \
++    break;
++#define GEN_CASES_8(i, salt1, salt2, op1, op2)    \
++  GEN_CASE(i, salt1, salt2, op1, op2)             \
++  GEN_CASE(i + 1, salt1, salt2, op1, op2)         \
++  GEN_CASE(i + 2, salt1, salt2, op1, op2)         \
++  GEN_CASE(i + 3, salt1, salt2, op1, op2)         \
++  GEN_CASE(i + 4, salt1, salt2, op1, op2)         \
++  GEN_CASE(i + 5, salt1, salt2, op1, op2)         \
++  GEN_CASE(i + 6, salt1, salt2, op1, op2)         \
++  GEN_CASE(i + 7, salt1, salt2, op1, op2)
++#define GEN_CASES_32(i, salt1, salt2, op1, op2)   \
++  GEN_CASES_8(i, salt1, salt2, op1, op2)          \
++  GEN_CASES_8(i + 8, salt1, salt2, op1, op2)      \
++  GEN_CASES_8(i + 16, salt1, salt2, op1, op2)     \
++  GEN_CASES_8(i + 24, salt1, salt2, op1, op2)
++#define GEN_CASES_256(salt1, salt2, op1, op2)     \
++  GEN_CASES_32(0, salt1, salt2, op1, op2)         \
++  GEN_CASES_32(32, salt1, salt2, op1, op2)        \
++  GEN_CASES_32(64, salt1, salt2, op1, op2)        \
++  GEN_CASES_32(96, salt1, salt2, op1, op2)        \
++  GEN_CASES_32(128, salt1, salt2, op1, op2)       \
++  GEN_CASES_32(160, salt1, salt2, op1, op2)       \
++  GEN_CASES_32(192, salt1, salt2, op1, op2)       \
++  GEN_CASES_32(224, salt1, salt2, op1, op2)
++
++__attribute__((noinline)) uint64_t switchA(uint64_t v, int c) {
++  switch (c) {
++    GEN_CASES_256(13, 17, +=, ^=)
++    default:
++      break;
++  }
++  return v;
++}
++
++__attribute__((noinline)) uint64_t switchB(uint64_t v, int c) {
++  switch (c) {
++    GEN_CASES_256(19, 23, -=, |=)
++    default:
++      break;
++  }
++  return v;
++}
++
++__attribute__((noinline)) uint64_t switchC(uint64_t v, int c) {
++  switch (c) {
++    GEN_CASES_256(29, 31, ^=, +=)
++    default:
++      break;
++  }
++  return v;
++}
++
++struct ChaseState {
++  std::unique_ptr<ChainNode[]> hotNodes;
++  std::unique_ptr<ChainNode[]> coldNodes;
++
++  ChaseState()
++      : hotNodes(new ChainNode[kHotLen]), coldNodes(new ChainNode[kColdLen]) {
++    initChain(hotNodes.get(), kHotLen);
++    initChain(coldNodes.get(), kColdLen);
++  }
++
++  static void initChain(ChainNode* nodes, size_t len) {
++    std::vector<size_t> perm(len);
++    std::iota(perm.begin(), perm.end(), 0u);
++    std::mt19937_64 rng(42);
++    for (size_t i = len - 1; i > 0; --i) {
++      std::swap(perm[i], perm[rng() % (i + 1)]);
++    }
++    for (size_t i = 0; i < len; ++i) {
++      nodes[perm[i]].next = &nodes[perm[(i + 1) % len]];
++    }
++  }
++};
++
++} // namespace
+ 
+ BENCHMARK(lifo_sem_pingpong, iters) {
+   LifoSem a;
+@@ -140,8 +238,95 @@
+   }
+ }
+ 
++static void contendedUse_v1(
++    uint32_t n, int posters, int waiters, int inner_iters) {
++  auto& s = *folly::Singleton<ChaseState>::get();
++  LifoSemImpl<std::atomic> sem;
++
++  std::vector<std::thread> threads;
++  std::atomic<bool> go(false);
++
++  BENCHMARK_SUSPEND {
++    for (int t = 0; t < waiters; ++t) {
++      threads.emplace_back([=, &sem, &s, &go] {
++        while (!go.load(std::memory_order_relaxed)) {
++          std::this_thread::yield();
++        }
++        size_t hot_start_offset = (t * 7919) % kHotLen;
++        size_t cold_start_offset = (t * 7919) % kColdLen;
++        ChainNode* hotPos = &s.hotNodes[hot_start_offset];
++        ChainNode* coldPos = &s.coldNodes[cold_start_offset];
++        uint64_t acc = 0;
++
++        for (uint32_t i = t; i < n; i += waiters) {
++          for (int j = 0; j < inner_iters; ++j) {
++            hotPos = hotPos->next;
++            uint64_t payload = (uint64_t)(uintptr_t)hotPos;
++            switch (j % 3) {
++              case 0:
++                acc = switchA(acc, payload & 0xFF);
++                break;
++              case 1:
++                acc = switchB(acc, payload & 0xFF);
++                break;
++              case 2:
++                acc = switchC(acc, payload & 0xFF);
++                break;
++            }
++            auto coldMask = -uint64_t(j % 8 == 0);
++            coldPos = (ChainNode*)((uintptr_t)coldPos->next & coldMask |
++                                   (uintptr_t)coldPos & ~coldMask);
++          }
++          sem.wait();
++        }
++        folly::doNotOptimizeAway(acc);
++      });
++    }
++    for (int t = 0; t < posters; ++t) {
++      threads.emplace_back([=, &sem, &go, &s] {
++        while (!go.load(std::memory_order_relaxed)) {
++          std::this_thread::yield();
++        }
++        size_t hot_start_offset = (t * 7919) % kHotLen;
++        size_t cold_start_offset = (t * 7919) % kColdLen;
++        ChainNode* hotPos = &s.hotNodes[hot_start_offset];
++        ChainNode* coldPos = &s.coldNodes[cold_start_offset];
++        uint64_t acc = 0;
++        for (uint32_t i = t; i < n; i += posters) {
++          for (int j = 0; j < inner_iters; ++j) {
++            hotPos = hotPos->next;
++            uint64_t payload = (uint64_t)(uintptr_t)hotPos;
++            switch (j % 3) {
++              case 0:
++                acc = switchA(acc, payload & 0xFF);
++                break;
++              case 1:
++                acc = switchB(acc, payload & 0xFF);
++                break;
++              case 2:
++                acc = switchC(acc, payload & 0xFF);
++                break;
++            }
++            auto coldMask = -uint64_t(j % 8 == 0);
++            coldPos = (ChainNode*)((uintptr_t)coldPos->next & coldMask |
++                                   (uintptr_t)coldPos & ~coldMask);
++          }
++          sem.post();
++        }
++        folly::doNotOptimizeAway(acc);
++      });
++    }
++  }
++
++  go.store(true);
++  for (auto& thr : threads) {
++    thr.join();
++  }
++}
++
+ BENCHMARK_DRAW_LINE();
+ BENCHMARK_NAMED_PARAM(contendedUse, 1_to_1, 1, 1)
++BENCHMARK_NAMED_PARAM(contendedUse_v1, 32_to_32_v1, 32, 32, 256)
+ BENCHMARK_NAMED_PARAM(contendedUse, 1_to_4, 1, 4)
+ BENCHMARK_NAMED_PARAM(contendedUse, 1_to_32, 1, 32)
+ BENCHMARK_NAMED_PARAM(contendedUse, 4_to_1, 4, 1)

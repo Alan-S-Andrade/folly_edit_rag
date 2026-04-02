@@ -1,0 +1,443 @@
+--- a/thrift/lib/cpp2/test/ProtocolBench.cpp
++++ b/thrift/lib/cpp2/test/ProtocolBench.cpp
+@@ -9,6 +9,7 @@
+  *
+  * Unless required by applicable law or agreed to in writing, software
+  * distributed under the License is distributed on an "AS IS" BASIS,
++
+  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  * See the License for the specific language governing permissions and
+  * limitations under the License.
+@@ -26,8 +27,355 @@
+ #include <folly/init/Init.h>
+ #include <folly/portability/GFlags.h>
+ 
++#include <algorithm>
++#include <numeric>
++#include <random>
++#include <vector>
++
+ using namespace apache::thrift;
+ using namespace thrift::benchmark;
++
++namespace {
++
++constexpr int C(int n, int offset) {
++  return (n + offset) * 13 + 7;
++}
++
++#define ALU_OPS(acc, i, offset)                                                \
++  acc = (acc + C(i * 27 + 0, offset)) * C(i * 27 + 1, offset) ^                 \
++      C(i * 27 + 2, offset);                                                   \
++  acc = (acc + C(i * 27 + 3, offset)) * C(i * 27 + 4, offset) ^                 \
++      C(i * 27 + 5, offset);                                                   \
++  acc = (acc + C(i * 27 + 6, offset)) * C(i * 27 + 7, offset) ^                 \
++      C(i * 27 + 8, offset);                                                   \
++  acc = (acc + C(i * 27 + 9, offset)) * C(i * 27 + 10, offset) ^                \
++      C(i * 27 + 11, offset);                                                  \
++  acc = (acc + C(i * 27 + 12, offset)) * C(i * 27 + 13, offset) ^               \
++      C(i * 27 + 14, offset);                                                  \
++  acc = (acc + C(i * 27 + 15, offset)) * C(i * 27 + 16, offset) ^               \
++      C(i * 27 + 17, offset);                                                  \
++  acc = (acc + C(i * 27 + 18, offset)) * C(i * 27 + 19, offset) ^               \
++      C(i * 27 + 20, offset);                                                  \
++  acc = (acc + C(i * 27 + 21, offset)) * C(i * 27 + 22, offset) ^               \
++      C(i * 27 + 23, offset);                                                  \
++  acc = (acc + C(i * 27 + 24, offset)) * C(i * 27 + 25, offset) ^               \
++      C(i * 27 + 26, offset);
++
++#define CASE_BODY(i, offset) \
++  case i:                    \
++    ALU_OPS(acc, i, offset); \
++    break;
++
++#define CASES_0_15(offset) \
++  CASE_BODY(0, offset)     \
++  CASE_BODY(1, offset)     \
++  CASE_BODY(2, offset)     \
++  CASE_BODY(3, offset)     \
++  CASE_BODY(4, offset)     \
++  CASE_BODY(5, offset)     \
++  CASE_BODY(6, offset)     \
++  CASE_BODY(7, offset)     \
++  CASE_BODY(8, offset)     \
++  CASE_BODY(9, offset)     \
++  CASE_BODY(10, offset)    \
++  CASE_BODY(11, offset)    \
++  CASE_BODY(12, offset)    \
++  CASE_BODY(13, offset)    \
++  CASE_BODY(14, offset)    \
++  CASE_BODY(15, offset)
++#define CASES_16_31(offset) \
++  CASE_BODY(16, offset)     \
++  CASE_BODY(17, offset)     \
++  CASE_BODY(18, offset)     \
++  CASE_BODY(19, offset)     \
++  CASE_BODY(20, offset)     \
++  CASE_BODY(21, offset)     \
++  CASE_BODY(22, offset)     \
++  CASE_BODY(23, offset)     \
++  CASE_BODY(24, offset)     \
++  CASE_BODY(25, offset)     \
++  CASE_BODY(26, offset)     \
++  CASE_BODY(27, offset)     \
++  CASE_BODY(28, offset)     \
++  CASE_BODY(29, offset)     \
++  CASE_BODY(30, offset)     \
++  CASE_BODY(31, offset)
++#define CASES_32_47(offset) \
++  CASE_BODY(32, offset)     \
++  CASE_BODY(33, offset)     \
++  CASE_BODY(34, offset)     \
++  CASE_BODY(35, offset)     \
++  CASE_BODY(36, offset)     \
++  CASE_BODY(37, offset)     \
++  CASE_BODY(38, offset)     \
++  CASE_BODY(39, offset)     \
++  CASE_BODY(40, offset)     \
++  CASE_BODY(41, offset)     \
++  CASE_BODY(42, offset)     \
++  CASE_BODY(43, offset)     \
++  CASE_BODY(44, offset)     \
++  CASE_BODY(45, offset)     \
++  CASE_BODY(46, offset)     \
++  CASE_BODY(47, offset)
++#define CASES_48_63(offset) \
++  CASE_BODY(48, offset)     \
++  CASE_BODY(49, offset)     \
++  CASE_BODY(50, offset)     \
++  CASE_BODY(51, offset)     \
++  CASE_BODY(52, offset)     \
++  CASE_BODY(53, offset)     \
++  CASE_BODY(54, offset)     \
++  CASE_BODY(55, offset)     \
++  CASE_BODY(56, offset)     \
++  CASE_BODY(57, offset)     \
++  CASE_BODY(58, offset)     \
++  CASE_BODY(59, offset)     \
++  CASE_BODY(60, offset)     \
++  CASE_BODY(61, offset)     \
++  CASE_BODY(62, offset)     \
++  CASE_BODY(63, offset)
++#define CASES_64_79(offset) \
++  CASE_BODY(64, offset)     \
++  CASE_BODY(65, offset)     \
++  CASE_BODY(66, offset)     \
++  CASE_BODY(67, offset)     \
++  CASE_BODY(68, offset)     \
++  CASE_BODY(69, offset)     \
++  CASE_BODY(70, offset)     \
++  CASE_BODY(71, offset)     \
++  CASE_BODY(72, offset)     \
++  CASE_BODY(73, offset)     \
++  CASE_BODY(74, offset)     \
++  CASE_BODY(75, offset)     \
++  CASE_BODY(76, offset)     \
++  CASE_BODY(77, offset)     \
++  CASE_BODY(78, offset)     \
++  CASE_BODY(79, offset)
++#define CASES_80_95(offset) \
++  CASE_BODY(80, offset)     \
++  CASE_BODY(81, offset)     \
++  CASE_BODY(82, offset)     \
++  CASE_BODY(83, offset)     \
++  CASE_BODY(84, offset)     \
++  CASE_BODY(85, offset)     \
++  CASE_BODY(86, offset)     \
++  CASE_BODY(87, offset)     \
++  CASE_BODY(88, offset)     \
++  CASE_BODY(89, offset)     \
++  CASE_BODY(90, offset)     \
++  CASE_BODY(91, offset)     \
++  CASE_BODY(92, offset)     \
++  CASE_BODY(93, offset)     \
++  CASE_BODY(94, offset)     \
++  CASE_BODY(95, offset)
++#define CASES_96_111(offset) \
++  CASE_BODY(96, offset)      \
++  CASE_BODY(97, offset)      \
++  CASE_BODY(98, offset)      \
++  CASE_BODY(99, offset)      \
++  CASE_BODY(100, offset)     \
++  CASE_BODY(101, offset)     \
++  CASE_BODY(102, offset)     \
++  CASE_BODY(103, offset)     \
++  CASE_BODY(104, offset)     \
++  CASE_BODY(105, offset)     \
++  CASE_BODY(106, offset)     \
++  CASE_BODY(107, offset)     \
++  CASE_BODY(108, offset)     \
++  CASE_BODY(109, offset)     \
++  CASE_BODY(110, offset)     \
++  CASE_BODY(111, offset)
++#define CASES_112_127(offset) \
++  CASE_BODY(112, offset)      \
++  CASE_BODY(113, offset)      \
++  CASE_BODY(114, offset)      \
++  CASE_BODY(115, offset)      \
++  CASE_BODY(116, offset)      \
++  CASE_BODY(117, offset)      \
++  CASE_BODY(118, offset)      \
++  CASE_BODY(119, offset)      \
++  CASE_BODY(120, offset)      \
++  CASE_BODY(121, offset)      \
++  CASE_BODY(122, offset)      \
++  CASE_BODY(123, offset)      \
++  CASE_BODY(124, offset)      \
++  CASE_BODY(125, offset)      \
++  CASE_BODY(126, offset)      \
++  CASE_BODY(127, offset)
++#define CASES_128_143(offset) \
++  CASE_BODY(128, offset)      \
++  CASE_BODY(129, offset)      \
++  CASE_BODY(130, offset)      \
++  CASE_BODY(131, offset)      \
++  CASE_BODY(132, offset)      \
++  CASE_BODY(133, offset)      \
++  CASE_BODY(134, offset)      \
++  CASE_BODY(135, offset)      \
++  CASE_BODY(136, offset)      \
++  CASE_BODY(137, offset)      \
++  CASE_BODY(138, offset)      \
++  CASE_BODY(139, offset)      \
++  CASE_BODY(140, offset)      \
++  CASE_BODY(141, offset)      \
++  CASE_BODY(142, offset)      \
++  CASE_BODY(143, offset)
++#define CASES_144_159(offset) \
++  CASE_BODY(144, offset)      \
++  CASE_BODY(145, offset)      \
++  CASE_BODY(146, offset)      \
++  CASE_BODY(147, offset)      \
++  CASE_BODY(148, offset)      \
++  CASE_BODY(149, offset)      \
++  CASE_BODY(150, offset)      \
++  CASE_BODY(151, offset)      \
++  CASE_BODY(152, offset)      \
++  CASE_BODY(153, offset)      \
++  CASE_BODY(154, offset)      \
++  CASE_BODY(155, offset)      \
++  CASE_BODY(156, offset)      \
++  CASE_BODY(157, offset)      \
++  CASE_BODY(158, offset)      \
++  CASE_BODY(159, offset)
++#define CASES_160_175(offset) \
++  CASE_BODY(160, offset)      \
++  CASE_BODY(161, offset)      \
++  CASE_BODY(162, offset)      \
++  CASE_BODY(163, offset)      \
++  CASE_BODY(164, offset)      \
++  CASE_BODY(165, offset)      \
++  CASE_BODY(166, offset)      \
++  CASE_BODY(167, offset)      \
++  CASE_BODY(168, offset)      \
++  CASE_BODY(169, offset)      \
++  CASE_BODY(170, offset)      \
++  CASE_BODY(171, offset)      \
++  CASE_BODY(172, offset)      \
++  CASE_BODY(173, offset)      \
++  CASE_BODY(174, offset)      \
++  CASE_BODY(175, offset)
++#define CASES_176_191(offset) \
++  CASE_BODY(176, offset)      \
++  CASE_BODY(177, offset)      \
++  CASE_BODY(178, offset)      \
++  CASE_BODY(179, offset)      \
++  CASE_BODY(180, offset)      \
++  CASE_BODY(181, offset)      \
++  CASE_BODY(182, offset)      \
++  CASE_BODY(183, offset)      \
++  CASE_BODY(184, offset)      \
++  CASE_BODY(185, offset)      \
++  CASE_BODY(186, offset)      \
++  CASE_BODY(187, offset)      \
++  CASE_BODY(188, offset)      \
++  CASE_BODY(189, offset)      \
++  CASE_BODY(190, offset)      \
++  CASE_BODY(191, offset)
++#define CASES_192_207(offset) \
++  CASE_BODY(192, offset)      \
++  CASE_BODY(193, offset)      \
++  CASE_BODY(194, offset)      \
++  CASE_BODY(195, offset)      \
++  CASE_BODY(196, offset)      \
++  CASE_BODY(197, offset)      \
++  CASE_BODY(198, offset)      \
++  CASE_BODY(199, offset)      \
++  CASE_BODY(200, offset)      \
++  CASE_BODY(201, offset)      \
++  CASE_BODY(202, offset)      \
++  CASE_BODY(203, offset)      \
++  CASE_BODY(204, offset)      \
++  CASE_BODY(205, offset)      \
++  CASE_BODY(206, offset)      \
++  CASE_BODY(207, offset)
++#define CASES_208_223(offset) \
++  CASE_BODY(208, offset)      \
++  CASE_BODY(209, offset)      \
++  CASE_BODY(210, offset)      \
++  CASE_BODY(211, offset)      \
++  CASE_BODY(212, offset)      \
++  CASE_BODY(213, offset)      \
++  CASE_BODY(214, offset)      \
++  CASE_BODY(215, offset)      \
++  CASE_BODY(216, offset)      \
++  CASE_BODY(217, offset)      \
++  CASE_BODY(218, offset)      \
++  CASE_BODY(219, offset)      \
++  CASE_BODY(220, offset)      \
++  CASE_BODY(221, offset)      \
++  CASE_BODY(222, offset)      \
++  CASE_BODY(223, offset)
++#define CASES_224_239(offset) \
++  CASE_BODY(224, offset)      \
++  CASE_BODY(225, offset)      \
++  CASE_BODY(226, offset)      \
++  CASE_BODY(227, offset)      \
++  CASE_BODY(228, offset)      \
++  CASE_BODY(229, offset)      \
++  CASE_BODY(230, offset)      \
++  CASE_BODY(231, offset)      \
++  CASE_BODY(232, offset)      \
++  CASE_BODY(233, offset)      \
++  CASE_BODY(234, offset)      \
++  CASE_BODY(235, offset)      \
++  CASE_BODY(236, offset)      \
++  CASE_BODY(237, offset)      \
++  CASE_BODY(238, offset)      \
++  CASE_BODY(239, offset)
++#define CASES_240_255(offset) \
++  CASE_BODY(240, offset)      \
++  CASE_BODY(241, offset)      \
++  CASE_BODY(242, offset)      \
++  CASE_BODY(243, offset)      \
++  CASE_BODY(244, offset)      \
++  CASE_BODY(245, offset)      \
++  CASE_BODY(246, offset)      \
++  CASE_BODY(247, offset)      \
++  CASE_BODY(248, offset)      \
++  CASE_BODY(249, offset)      \
++  CASE_BODY(250, offset)      \
++  CASE_BODY(251, offset)      \
++  CASE_BODY(252, offset)      \
++  CASE_BODY(253, offset)      \
++  CASE_BODY(254, offset)      \
++  CASE_BODY(255, offset)
++
++#define ALL_CASES(offset) \
++  CASES_0_15(offset)      \
++  CASES_16_31(offset)     \
++  CASES_32_47(offset)     \
++  CASES_48_63(offset)     \
++  CASES_64_79(offset)     \
++  CASES_80_95(offset)     \
++  CASES_96_111(offset)    \
++  CASES_112_127(offset)   \
++  CASES_128_143(offset)   \
++  CASES_144_159(offset)   \
++  CASES_160_175(offset)   \
++  CASES_176_191(offset)   \
++  CASES_192_207(offset)   \
++  CASES_208_223(offset)   \
++  CASES_224_239(offset)   \
++  CASES_240_255(offset)
++
++__attribute__((noinline)) void cpu_work_func1(int input, int& acc) {
++  switch (input & 0xFF) {
++    ALL_CASES(0)
++  }
++}
++
++__attribute__((noinline)) void cpu_work_func2(int input, int& acc) {
++  switch (input & 0xFF) {
++    ALL_CASES(256 * 27)
++  }
++}
++
++__attribute__((noinline)) void cpu_work_func3(int input, int& acc) {
++  switch (input & 0xFF) {
++    ALL_CASES(2 * 256 * 27)
++  }
++}
++
++} // namespace
+ 
+ template <class>
+ struct SerializerTraits;
+@@ -186,9 +534,9 @@
+   M(Prefix, proto, ComplexStruct)      \
+   M(Prefix, proto, ComplexUnion)
+ 
+-#define X(Prefix, proto) APPLY(X2, Prefix, proto)              
+-
+-#define OpEncodeX(Prefix, proto) APPLY(OpEncodeX2, Prefix, proto)              
++#define X(Prefix, proto) APPLY(X2, Prefix, proto)
++
++#define OpEncodeX(Prefix, proto) APPLY(OpEncodeX2, Prefix, proto)
+ 
+ X(, Binary)
+ X(, Compact)
+@@ -200,6 +548,63 @@
+ OpEncodeX(OpEncode, Binary)
+ OpEncodeX(OpEncode, Compact)
+ 
++BENCHMARK(ObjectCompactProtocol_read_LargeSetInt_ipc_v1, iters) {
++  folly::BenchmarkSuspender susp;
++  auto strct = create<LargeSetInt>();
++  folly::IOBufQueue q;
++  CompactSerializer::serialize(strct, &q);
++  auto buf = q.move();
++  buf->coalesce();
++
++  constexpr size_t chase_array_size = 16 * 1024;
++  std::vector<int> chase_values(chase_array_size);
++  std::vector<size_t> chase_indices(chase_array_size);
++  std::iota(chase_indices.begin(), chase_indices.end(), 0);
++
++  std::random_device rd;
++  std::mt19937 g(rd());
++  std::shuffle(chase_indices.begin(), chase_indices.end(), g);
++
++  std::vector<size_t> chase_next_idx(chase_array_size);
++  for (size_t i = 0; i < chase_array_size; ++i) {
++    chase_values[i] = (i * 2654435761u);
++    if (i < chase_array_size - 1) {
++      chase_next_idx[chase_indices[i]] = chase_indices[i + 1];
++    } else {
++      chase_next_idx[chase_indices[i]] = chase_indices[0];
++    }
++  }
++
++  size_t current_idx = 0;
++  int acc = 0;
++
++  susp.dismiss();
++
++  for (size_t i = 0; i < iters; ++i) {
++    auto obj = protocol::parseObject<GetReader<CompactSerializer>>(*buf);
++    folly::doNotOptimizeAway(obj);
++
++    for (int j = 0; j < 30; ++j) {
++      current_idx = chase_next_idx[current_idx];
++      int input = chase_values[current_idx];
++      switch (j % 3) {
++        case 0:
++          cpu_work_func1(input, acc);
++          break;
++        case 1:
++          cpu_work_func2(input, acc);
++          break;
++        case 2:
++          cpu_work_func3(input, acc);
++          break;
++      }
++    }
++  }
++
++  susp.rehire();
++  folly::doNotOptimizeAway(acc);
++}
++
+ int main(int argc, char** argv) {
+   folly::Init init(&argc, &argv);
+   folly::runBenchmarks();

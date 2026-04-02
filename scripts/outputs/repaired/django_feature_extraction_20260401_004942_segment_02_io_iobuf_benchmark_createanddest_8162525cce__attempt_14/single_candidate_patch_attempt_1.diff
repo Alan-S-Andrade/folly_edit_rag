@@ -1,0 +1,58 @@
+--- a/folly/io/test/IOBufBenchmark.cpp
++++ b/folly/io/test/IOBufBenchmark.cpp
+@@ -147,11 +147,12 @@
+ }
+ 
+ // Helper functions for createAndDestroyMulti_LargeAlloc to increase I-cache footprint.
+-// Each function has a 256-case switch with 12 ALU ops per case.
++// Each function has a 256-case switch with N ALU ops per case.
+ // The `__attribute__((noinline))` ensures they are not optimized away or merged.
+ // Unique literal constants are used in each case to prevent compiler deduplication.
+ __attribute__((noinline)) static int switch_case_1(const std::vector<uint64_t>& vec, uint64_t& current, uint64_t offset) {
+   int result = 0;
++  // Using 12 ALU ops per case as suggested.
+   for (int i = 0; i < 12; ++i) {
+     result = (result * 17) ^ vec[(current + offset + i) & 0xFF];
+   }
+@@ -160,6 +161,7 @@
+ 
+ __attribute__((noinline)) static int switch_case_2(const std::vector<uint64_t>& vec, uint64_t& current, uint64_t offset) {
+   int result = 0;
++  // Using 12 ALU ops per case as suggested.
+   for (int i = 0; i < 12; ++i) {
+     result = (result + 23) ^ vec[(current - offset - i) & 0xFF];
+   }
+@@ -168,6 +170,7 @@
+ 
+ __attribute__((noinline)) static int switch_case_3(const std::vector<uint64_t>& vec, uint64_t& current, uint64_t offset) {
+   int result = 0;
++  // Using 12 ALU ops per case as suggested.
+   for (int i = 0; i < 12; ++i) {
+     result = (result ^ 29) + vec[(current + offset * 2 + i) & 0xFF];
+   }
+@@ -240,11 +243,20 @@
+       buffers[i] = IOBuf::create(size);
+     }
+     // Introduce indirection and ALU ops to increase I-cache footprint.
+-    for (int j = 0; j < 512; ++j) { // Reduced loop count for better focus on I-cache
+-      current ^= indirect_data[(current + j) & 0xFF];
+-      current ^= indirect_data[switch_case_1(indirect_data, current, j)];
+-      current ^= indirect_data[switch_case_2(indirect_data, current, j)];
+-      current ^= indirect_data[switch_case_3(indirect_data, current, j)];
++    // Loop count reduced for focus on I-cache. Rotate among 3 switch functions.
++    for (int j = 0; j < 512; ++j) {
++      int func_idx = j % 3;
++      switch (func_idx) {
++        case 0:
++          current ^= indirect_data[switch_case_1(indirect_data, current, j)];
++          break;
++        case 1:
++          current ^= indirect_data[switch_case_2(indirect_data, current, j)];
++          break;
++        case 2:
++          current ^= indirect_data[switch_case_3(indirect_data, current, j)];
++          break;
++      }
+     }
+     folly::doNotOptimizeAway(current);
+   }

@@ -1,0 +1,31 @@
+--- a/thrift/lib/cpp2/test/ProtocolBench.cpp
++++ b/thrift/lib/cpp2/test/ProtocolBench.cpp
+@@ -200,6 +200,28 @@
+ OpEncodeX(OpEncode, Binary)
+ OpEncodeX(OpEncode, Compact)
+ 
++BENCHMARK_RELATIVE(SimpleJSONProtocol_read_UnorderedSetInt_cached, iters) {
++  folly::BenchmarkSuspender susp;
++  auto strct = create<UnorderedSetInt>();
++  folly::IOBufQueue q;
++  SimpleJSONSerializer::serialize(strct, &q);
++  auto buf = q.move();
++  buf->coalesce();
++  // Pre-reserve the result to reduce allocation overhead during reads
++  UnorderedSetInt data;
++  SimpleJSONSerializer::deserialize(buf.get(), data);
++  data.ints_ref()->reserve(data.ints_ref()->size());
++  susp.dismiss();
++
++  while (iters--) {
++    UnorderedSetInt result;
++    result.ints_ref()->reserve(data.ints_ref()->size());
++    SimpleJSONSerializer::deserialize(buf.get(), result);
++    folly::doNotOptimizeAway(result);
++  }
++  susp.rehire();
++}
++
+ int main(int argc, char** argv) {
+   folly::Init init(&argc, &argv);
+   folly::runBenchmarks();

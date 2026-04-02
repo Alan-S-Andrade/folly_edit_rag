@@ -1,0 +1,188 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -20,6 +20,11 @@
+ 
+ #include <folly/Benchmark.h>
+ 
++#include <mutex>
++#include <numeric>
++#include <random>
++#include <vector>
++
+ using namespace folly;
+ 
+ BENCHMARK(lifo_sem_pingpong, iters) {
+@@ -108,7 +113,91 @@
+   }
+ }
+ 
+-static void contendedUse(uint32_t n, int posters, int waiters) {
++namespace { // For benchmark with dependent loads and branches
++
++struct ChainNode {
++  ChainNode* next;
++  char pad[64 - sizeof(ChainNode*)];
++};
++
++static constexpr size_t kHotLen = 16384; // 1MB
++static constexpr size_t kColdLen = 2 * 1024 * 1024; // 128MB
++
++static ChainNode hotNodes_g[kHotLen];
++static ChainNode* coldNodes_g = new ChainNode[kColdLen];
++
++void initChain(ChainNode* nodes, size_t len) {
++  std::vector<size_t> perm(len);
++  std::iota(perm.begin(), perm.end(), 0u);
++  std::mt19937_64 rng(42);
++  for (size_t i = len - 1; i > 0; --i) {
++    std::swap(perm[i], perm[rng() % (i + 1)]);
++  }
++  for (size_t i = 0; i < len; ++i) {
++    nodes[perm[i]].next = &nodes[perm[(i + 1) % len]];
++  }
++}
++
++static std::once_flag chains_initialized_g;
++void initialize_chains_g() {
++  std::call_once(chains_initialized_g, [] {
++    initChain(hotNodes_g, kHotLen);
++    initChain(coldNodes_g, kColdLen);
++  });
++}
++
++#define GEN_CASES_16(base)                                       \
++  C(base + 0) C(base + 1) C(base + 2) C(base + 3) C(base + 4)    \
++      C(base + 5) C(base + 6) C(base + 7) C(base + 8) C(base + 9) \
++      C(base + 10) C(base + 11) C(base + 12) C(base + 13) C(base + 14) C(base + 15)
++#define GEN_CASES_256()                                                         \
++  GEN_CASES_16(0) GEN_CASES_16(16) GEN_CASES_16(32) GEN_CASES_16(48)             \
++      GEN_CASES_16(64) GEN_CASES_16(80) GEN_CASES_16(96) GEN_CASES_16(112)       \
++      GEN_CASES_16(128) GEN_CASES_16(144) GEN_CASES_16(160) GEN_CASES_16(176)    \
++      GEN_CASES_16(192) GEN_CASES_16(208) GEN_CASES_16(224) GEN_CASES_16(240)
++
++__attribute__((noinline)) uint64_t switchA(uint64_t v, int c) {
++#define C(n)        \
++  case n:           \
++    v ^= (n * 0xbadf00d); \
++    break;
++  switch (c & 0xff) {
++    GEN_CASES_256()
++  }
++#undef C
++  return v;
++}
++
++__attribute__((noinline)) uint64_t switchB(uint64_t v, int c) {
++#define C(n)        \
++  case n:           \
++    v += (n * 0xcafebabe); \
++    break;
++  switch (c & 0xff) {
++    GEN_CASES_256()
++  }
++#undef C
++  return v;
++}
++
++__attribute__((noinline)) uint64_t switchC(uint64_t v, int c) {
++#define C(n)                             \
++  case n:                                \
++    v = (v << 3) | (v >> 61); \
++    v *= (n + 1);                        \
++    break;
++  switch (c & 0xff) {
++    GEN_CASES_256()
++  }
++#undef C
++  return v;
++}
++
++} // namespace
++
++static void contendedUseWithWork(uint32_t n, int posters, int waiters) {
++  initialize_chains_g();
++
+   LifoSemImpl<std::atomic> sem;
+ 
+   std::vector<std::thread> threads;
+@@ -124,12 +213,37 @@
+     }
+     for (int t = 0; t < posters; ++t) {
+       threads.emplace_back([=, &sem, &go] {
++        ChainNode* hotPos = &hotNodes_g[t % kHotLen];
++        ChainNode* coldPos = &coldNodes_g[t % kColdLen];
++        uint64_t acc = 0;
++
+         while (!go.load()) {
+           std::this_thread::yield();
+         }
++
++        uint32_t j = 0;
+         for (uint32_t i = t; i < n; i += posters) {
++          hotPos = hotPos->next;
++          uint64_t payload = (uint64_t)(uintptr_t)hotPos;
++          switch (j % 3) {
++            case 0:
++              acc = switchA(acc, payload & 0xFF);
++              break;
++            case 1:
++              acc = switchB(acc, payload & 0xFF);
++              break;
++            case 2:
++              acc = switchC(acc, payload & 0xFF);
++              break;
++          }
++          auto coldMask = -uint64_t(j % 8 == 0);
++          coldPos = (ChainNode*)((uintptr_t)coldPos->next & coldMask |
++                                (uintptr_t)coldPos & ~coldMask);
++
+           sem.post();
+-        }
++          j++;
++        }
++        folly::doNotOptimizeAway(acc);
+       });
+     }
+   }
+@@ -140,8 +254,41 @@
+   }
+ }
+ 
++static void contendedUse(uint32_t n, int posters, int waiters) {
++  LifoSemImpl<std::atomic> sem;
++
++  std::vector<std::thread> threads;
++  std::atomic<bool> go(false);
++
++  BENCHMARK_SUSPEND {
++    for (int t = 0; t < waiters; ++t) {
++      threads.emplace_back([=, &sem] {
++        for (uint32_t i = t; i < n; i += waiters) {
++          sem.wait();
++        }
++      });
++    }
++    for (int t = 0; t < posters; ++t) {
++      threads.emplace_back([=, &sem, &go] {
++        while (!go.load()) {
++          std::this_thread::yield();
++        }
++        for (uint32_t i = t; i < n; i += posters) {
++          sem.post();
++        }
++      });
++    }
++  }
++
++  go.store(true);
++  for (auto& thr : threads) {
++    thr.join();
++  }
++}
++
+ BENCHMARK_DRAW_LINE();
+ BENCHMARK_NAMED_PARAM(contendedUse, 1_to_1, 1, 1)
++BENCHMARK_NAMED_PARAM(contendedUseWithWork, dep_32_to_32, 32, 32)
+ BENCHMARK_NAMED_PARAM(contendedUse, 1_to_4, 1, 4)
+ BENCHMARK_NAMED_PARAM(contendedUse, 1_to_32, 1, 32)
+ BENCHMARK_NAMED_PARAM(contendedUse, 4_to_1, 4, 1)

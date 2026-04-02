@@ -1,0 +1,66 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -202,10 +202,43 @@
+   return v;
+ }
+ 
+-// New benchmark variant for synchronization_lifo_sem_bench
+-__attribute__((noinline)) uint64_t switchD(uint64_t v, int c) {
++// The following function is a refined version of switchC,
++// adjusted to introduce more instruction diversity and potentially
++// increase L1i MPKI.
++__attribute__((noinline)) uint64_t switchC_refined(uint64_t v, int c) {
+   switch (c) {
+-    CASES_256(v, c * 7); // Use a different multiplier
++    // Use a different set of multipliers and operations
++    CASES_8(v, c * 5 + 1, 0)
++    CASES_8(v, c * 7 + 2, 8)
++    CASES_8(v, c * 11 + 3, 16)
++    CASES_8(v, c * 13 + 4, 24)
++    CASES_8(v, c * 17 + 5, 32)
++    CASES_8(v, c * 19 + 6, 40)
++    CASES_8(v, c * 23 + 7, 48)
++    CASES_8(v, c * 29 + 8, 56)
++    CASES_8(v, c * 31 + 9, 64)
++    CASES_8(v, c * 37 + 10, 72)
++    CASES_8(v, c * 41 + 11, 80)
++    CASES_8(v, c * 43 + 12, 88)
++    CASES_8(v, c * 47 + 13, 96)
++    CASES_8(v, c * 53 + 14, 104)
++    CASES_8(v, c * 59 + 15, 112)
++    CASES_8(v, c * 61 + 16, 120)
++    CASES_8(v, c * 67 + 17, 128)
++    CASES_8(v, c * 71 + 18, 136)
++    CASES_8(v, c * 73 + 19, 144)
++    CASES_8(v, c * 79 + 20, 152)
++    CASES_8(v, c * 83 + 21, 160)
++    CASES_8(v, c * 89 + 22, 168)
++    CASES_8(v, c * 97 + 23, 176)
++    CASES_8(v, c * 101 + 24, 184)
++    CASES_8(v, c * 103 + 25, 192)
++    CASES_8(v, c * 107 + 26, 200)
++    CASES_8(v, c * 109 + 27, 208)
++    CASES_8(v, c * 113 + 28, 216)
++    CASES_8(v, c * 127 + 29, 224)
++    CASES_8(v, c * 131 + 30, 232)
++    CASES_8(v, c * 137 + 31, 240)
+     default:;
+   }
+   return v;
+@@ -255,7 +288,7 @@
+               acc = switchB(acc, payload & 0xFF);
+               break;
+             case 2:
+-              acc = switchC(acc, payload & 0xFF);
++              acc = switchC_refined(acc, payload & 0xFF); // Use the refined function
+               break;
+           }
+ 
+@@ -348,6 +381,7 @@
+ // contendedUse(32_to_1)                                      165.06ns    6.06M
+ // contendedUse(16_to_16)                                     238.57ns    4.19M
+ // contendedUse(32_to_32)                                     219.82ns    4.55M
++// contendedUse_v2(32_to_32_local_variant)                    <-- This is the target for refinement
+ // contendedUse_v2(32_to_32_v2)                                1.27us    788.52K // Example baseline for v2
+ // contendedUse(32_to_1000)                                   777.42ns    1.29M
+ // ============================================================================

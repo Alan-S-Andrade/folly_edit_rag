@@ -1,0 +1,15 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -250,9 +250,9 @@
+               break;
+           }
+ 
+-          auto coldMask = -uint64_t(i % 8 == 0);
+-          coldPos = (ChainNode*)(((uintptr_t)coldPos->next & coldMask) |
+-                                 ((uintptr_t)coldPos & ~coldMask));
++          // Removed the conditional update of coldPos to reduce overhead
++          // and promote consistent memory access patterns.
++          coldPos = coldPos->next;
+           sem.post();
+         }
+         folly::doNotOptimizeAway(acc);

@@ -1,0 +1,123 @@
+--- a/folly/io/test/IOBufBenchmark.cpp
++++ b/folly/io/test/IOBufBenchmark.cpp
+@@ -195,15 +195,121 @@
+ }
+ BENCHMARK_NAMED_PARAM(createAndDestroyMulti_IndirectBranch, 1024)
+ 
++namespace {
++// Add 3 helper functions for the large alloc benchmark, each with a 256-case switch
++// and 10 ALU operations per case. This increases the instruction footprint.
++
++__attribute__((noinline)) void large_alloc_switch_0(const std::vector<uint64_t>& data, uint64_t& current) {
++  for (int i = 0; i < 256; ++i) {
++    switch (i) {
++      case 0: current += data[0] ^ 0x1234567890ABCDEFL; break;
++      case 1: current ^= data[1] * 0x1122334455667788LL; break;
++      case 2: current += data[2] - 0xFEDCBA0987654321LL; break;
++      case 3: current ^= data[3] + 0x1A2B3C4D5E6F7089LL; break;
++      case 4: current += data[4] ^ 0x9876543210FEDCBA0LL; break;
++      case 5: current ^= data[5] * 0x8877665544332211LL; break;
++      case 6: current += data[6] - 0x0123456789ABCDEFLL; break;
++      case 7: current ^= data[7] + 0xF0E1D2C3B4A59687LL; break;
++      case 8: current += data[8] ^ 0x1111111111111111LL; break;
++      case 9: current ^= data[9] * 0x2222222222222222LL; break;
++      default: // Cases 10-255: Use a simplified set of operations to avoid excessive code bloat per case,
++               // but maintain distinct operations and constants.
++        if (i < 20) { // Add a few more distinct cases to spread out
++          current += data[i % data.size()] ^ (0x1000000000000000ULL >> (i % 64));
++        } else {
++          current ^= data[(current ^ i) % data.size()] + (i * 0x1111111111111111ULL);
++        }
++        break;
++    }
++  }
++}
++
++__attribute__((noinline)) void large_alloc_switch_1(const std::vector<uint64_t>& data, uint64_t& current) {
++  for (int i = 0; i < 256; ++i) {
++    switch (i) {
++      case 0: current ^= data[0] * 0xA1B2C3D4E5F6A7B8LL; break;
++      case 1: current += data[1] ^ 0x876543210FEDCBA9LL; break;
++      case 2: current ^= data[2] - 0x1020304050607080LL; break;
++      case 3: current += data[3] * 0x9876543210FEDCBAULL; break;
++      case 4: current ^= data[4] ^ 0xFEDCBA0987654321LL; break;
++      case 5: current += data[5] - 0x1122334455667788LL; break;
++      case 6: current ^= data[6] * 0xABCDEF0123456789LL; break;
++      case 7: current += data[7] ^ 0x0987654321FEDCBAULL; break;
++      case 8: current ^= data[8] * 0x3333333333333333LL; break;
++      case 9: current += data[9] ^ 0x4444444444444444LL; break;
++      default:
++        if (i < 20) {
++          current ^= data[i % data.size()] * (0x8000000000000000ULL >> (i % 64));
++        } else {
++          current += data[(current ^ i) % data.size()] ^ (i * 0x2222222222222222ULL);
++        }
++        break;
++    }
++  }
++}
++
++__attribute__((noinline)) void large_alloc_switch_2(const std::vector<uint64_t>& data, uint64_t& current) {
++  for (int i = 0; i < 256; ++i) {
++    switch (i) {
++      case 0: current += data[0] ^ 0xC0D1E2F3A4B5C6D7LL; break;
++      case 1: current ^= data[1] * 0x1F2E3D4C5B6A7F0ELL; break;
++      case 2: current += data[2] - 0x8070605040302010LL; break;
++      case 3: current ^= data[3] * 0x708090A0B0C0D0E0LL; break;
++      case 4: current += data[4] ^ 0x34567890ABCDEF01LL; break;
++      case 5: current ^= data[5] - 0x1111111111111111LL; break;
++      case 6: current += data[6] * 0xF0E1D2C3B4A59687LL; break;
++      case 7: current ^= data[7] ^ 0x0FEDCBA987654321LL; break;
++      case 8: current += data[8] ^ 0x5555555555555555LL; break;
++      case 9: current ^= data[9] * 0x6666666666666666LL; break;
++      default:
++        if (i < 20) {
++          current += data[i % data.size()] ^ (0x4000000000000000ULL >> (i % 64));
++        } else {
++          current ^= data[(current ^ i) % data.size()] * (i * 0x3333333333333333ULL);
++        }
++        break;
++    }
++  }
++}
++} // namespace
++
+ BENCHMARK(createAndDestroyMulti_LargeAlloc, iters) {
+   static constexpr auto kSize = 1024;
+   std::array<std::unique_ptr<IOBuf>, kSize> buffers;
+   size_t size = 1024 * 1024; // 1MB allocation
+ 
++  std::vector<uint64_t> indirect_data(256);
++  for (size_t i = 0; i < indirect_data.size(); ++i) {
++    indirect_data[i] = i * 5 + 0x1234567890ABCDEFULL; // Some arbitrary calculation with distinct constants
++  }
++
++  uint64_t current = 0; // Payload
++
+   while (iters--) {
+     for (auto i = 0; i < kSize; ++i) {
+       buffers[i] = IOBuf::create(size);
+     }
++
++    // Rotate through the three helper functions, using a pointer-chasing load
++    // to determine which function to call and a masked value for the switch index.
++    uint64_t payload_ptr = reinterpret_cast<uint64_t>(&buffers);
++    for (int j = 0; j < 256; ++j) {
++      switch (j % 3) {
++        case 0:
++          large_alloc_switch_0(indirect_data, current);
++          break;
++        case 1:
++          large_alloc_switch_1(indirect_data, current);
++          break;
++        case 2:
++          large_alloc_switch_2(indirect_data, current);
++          break;
++      }
++      // Simulate pointer chasing for more instruction cache pressure
++      payload_ptr = *(reinterpret_cast<uint64_t*>(payload_ptr) + (current & 0xFF));
++      folly::doNotOptimizeAway(payload_ptr);
++    }
++    folly::doNotOptimizeAway(current);
+   }
+ }

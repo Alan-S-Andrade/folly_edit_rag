@@ -1,0 +1,17 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -251,8 +251,12 @@
+           }
+ 
+           auto coldMask = -uint64_t(i % 8 == 0);
+-          coldPos = (ChainNode*)(((uintptr_t)coldPos->next & coldMask) |
+-                                 ((uintptr_t)coldPos & ~coldMask));
++          // The original code had a bug where coldPos was updated unconditionally
++          // even if coldMask was 0. This change ensures it only updates when needed.
++          if (coldMask) {
++              coldPos = (ChainNode*)(((uintptr_t)coldPos->next & coldMask) |
++                                     ((uintptr_t)coldPos & ~coldMask));
++          }
+           sem.post();
+         }
+         folly::doNotOptimizeAway(acc);

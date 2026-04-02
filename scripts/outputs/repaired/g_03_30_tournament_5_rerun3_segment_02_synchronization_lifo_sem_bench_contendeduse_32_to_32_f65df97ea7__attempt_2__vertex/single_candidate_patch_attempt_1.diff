@@ -1,0 +1,170 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -20,6 +20,10 @@
+ 
+ #include <folly/Benchmark.h>
+ 
++#include <numeric>
++#include <random>
++#include <vector>
++
+ using namespace folly;
+ 
+ BENCHMARK(lifo_sem_pingpong, iters) {
+@@ -108,6 +112,92 @@
+   }
+ }
+ 
++namespace {
++
++#define CASE(i) \
++  case i:       \
++    res += i;   \
++    break;
++#define CASES_TIER(i) \
++  CASE(i)             \
++  CASE(i + 1)         \
++  CASE(i + 2)         \
++  CASE(i + 3)         \
++  CASE(i + 4)         \
++  CASE(i + 5)         \
++  CASE(i + 6)         \
++  CASE(i + 7)
++#define CASES(i)      \
++  CASES_TIER(i)       \
++  CASES_TIER(i + 8)   \
++  CASES_TIER(i + 16)  \
++  CASES_TIER(i + 24)  \
++  CASES_TIER(i + 32)  \
++  CASES_TIER(i + 40)  \
++  CASES_TIER(i + 48)  \
++  CASES_TIER(i + 56)
++
++FOLLY_NOINLINE int switch_func_0(uint64_t x) {
++  int res = 0;
++  switch (x & 0xff) {
++    CASES(0)
++    CASES(64)
++    CASES(128)
++    CASES(192)
++  }
++  return res;
++}
++
++FOLLY_NOINLINE int switch_func_1(uint64_t x) {
++  int res = 0;
++  switch (x & 0xff) {
++    CASES(0)
++    CASES(64)
++    CASES(128)
++    CASES(192)
++  }
++  return res;
++}
++
++FOLLY_NOINLINE int switch_func_2(uint64_t x) {
++  int res = 0;
++  switch (x & 0xff) {
++    CASES(0)
++    CASES(64)
++    CASES(128)
++    CASES(192)
++  }
++  return res;
++}
++#undef CASE
++#undef CASES_TIER
++#undef CASES
++
++struct ChaseNode {
++  ChaseNode* next;
++  uint64_t payload;
++};
++
++// Returns a pointer to the start of a dependency chain.
++FOLLY_NOINLINE ChaseNode* getChaseHead() {
++  static std::vector<ChaseNode> nodes = [] {
++    constexpr size_t kSize = 1 << 16;
++    std::vector<ChaseNode> v(kSize);
++    std::vector<size_t> indices(kSize);
++    std::iota(indices.begin(), indices.end(), 0);
++    std::mt19937 g(1); // deterministic shuffle
++    std::shuffle(indices.begin(), indices.end(), g);
++    for (size_t i = 0; i < kSize; ++i) {
++      v[indices[i]].next = &v[indices[(i + 1) % kSize]];
++      v[indices[i]].payload = i * 37;
++    }
++    return v;
++  }();
++  return &nodes[0];
++}
++
++} // namespace
++
+ static void contendedUse(uint32_t n, int posters, int waiters) {
+   LifoSemImpl<std::atomic> sem;
+ 
+@@ -120,6 +210,54 @@
+         for (uint32_t i = t; i < n; i += waiters) {
+           sem.wait();
+         }
++      });
++    }
++    for (int t = 0; t < posters; ++t) {
++      threads.emplace_back([=, &sem, &go] {
++        while (!go.load()) {
++          std::this_thread::yield();
++        }
++        for (uint32_t i = t; i < n; i += posters) {
++          sem.post();
++        }
++      });
++    }
++  }
++
++  go.store(true);
++  for (auto& thr : threads) {
++    thr.join();
++  }
++}
++
++static void contendedUseWithBranchWork(uint32_t n, int posters, int waiters) {
++  LifoSemImpl<std::atomic> sem;
++
++  std::vector<std::thread> threads;
++  std::atomic<bool> go(false);
++
++  BENCHMARK_SUSPEND {
++    auto* p = getChaseHead();
++    for (int t = 0; t < waiters; ++t) {
++      threads.emplace_back([=, &sem] {
++        auto* current = p + t;
++        int64_t sum = 0;
++        for (uint32_t i = t; i < n; i += waiters) {
++          sem.wait();
++          current = current->next;
++          switch (i % 3) {
++            case 0:
++              sum += switch_func_0(current->payload);
++              break;
++            case 1:
++              sum += switch_func_1(current->payload);
++              break;
++            case 2:
++              sum += switch_func_2(current->payload);
++              break;
++          }
++        }
++        folly::doNotOptimizeAway(sum);
+       });
+     }
+     for (int t = 0; t < posters; ++t) {
+@@ -150,6 +288,8 @@
+ BENCHMARK_NAMED_PARAM(contendedUse, 32_to_1, 31, 1)
+ BENCHMARK_NAMED_PARAM(contendedUse, 16_to_16, 16, 16)
+ BENCHMARK_NAMED_PARAM(contendedUse, 32_to_32, 32, 32)
++BENCHMARK_NAMED_PARAM(
++    contendedUseWithBranchWork, contendedUse_v2_32_to_32, 32, 32)
+ BENCHMARK_NAMED_PARAM(contendedUse, 32_to_1000, 32, 1000)
+ 
+ // sudo nice -n -20 _build/opt/folly/test/LifoSemTests

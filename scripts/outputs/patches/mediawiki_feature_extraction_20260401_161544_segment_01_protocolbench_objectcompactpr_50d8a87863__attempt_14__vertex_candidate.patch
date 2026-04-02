@@ -1,0 +1,176 @@
+--- a/thrift/lib/cpp2/test/ProtocolBench.cpp
++++ b/thrift/lib/cpp2/test/ProtocolBench.cpp
+@@ -18,6 +18,11 @@
+ #include <thrift/lib/cpp2/protocol/Object.h>
+ #include <thrift/lib/cpp2/protocol/Serializer.h>
+ #include <thrift/lib/cpp2/test/Structs.h>
++
++#include <algorithm>
++#include <numeric>
++#include <random>
++#include <vector>
+ 
+ #include <glog/logging.h>
+ #include <folly/Benchmark.h>
+@@ -186,9 +191,9 @@
+   M(Prefix, proto, ComplexStruct)      \
+   M(Prefix, proto, ComplexUnion)
+ 
+-#define X(Prefix, proto) APPLY(X2, Prefix, proto)              
+-
+-#define OpEncodeX(Prefix, proto) APPLY(OpEncodeX2, Prefix, proto)              
++#define X(Prefix, proto) APPLY(X2, Prefix, proto)
++
++#define OpEncodeX(Prefix, proto) APPLY(OpEncodeX2, Prefix, proto)
+ 
+ X(, Binary)
+ X(, Compact)
+@@ -200,6 +205,148 @@
+ OpEncodeX(OpEncode, Binary)
+ OpEncodeX(OpEncode, Compact)
+ 
++#define ALU_CASE(val, base)                                                      \
++  case val: {                                                                    \
++    auto& a = *acc;                                                              \
++    a += (base) + 1;                                                             \
++    a ^= (base) + 2;                                                             \
++    a += (base) + 3;                                                             \
++    a ^= (base) + 4;                                                             \
++    a += (base) + 5;                                                             \
++    a ^= (base) + 6;                                                             \
++    a += (base) + 7;                                                             \
++    a *= (base) + 8;                                                             \
++    a += (base) + 9;                                                             \
++    a ^= (base) + 10;                                                            \
++    a += (base) + 11;                                                            \
++    a ^= (base) + 12;                                                            \
++    a += (base) + 13;                                                            \
++    a ^= (base) + 14;                                                            \
++    a *= (base) + 15;                                                            \
++    a += (base) + 16;                                                            \
++    a += (base) + 17;                                                            \
++    a ^= (base) + 18;                                                            \
++    a += (base) + 19;                                                            \
++    a ^= (base) + 20;                                                            \
++    a += (base) + 21;                                                            \
++    a ^= (base) + 22;                                                            \
++    a *= (base) + 23;                                                            \
++    a += (base) + 24;                                                            \
++    a += (base) + 25;                                                            \
++    a ^= (base) + 26;                                                            \
++    a += (base) + 27;                                                            \
++    a ^= (base) + 28;                                                            \
++    break;                                                                       \
++  }
++
++#define GEN_SWITCH_CASES_16(val_base, const_base)                                \
++  ALU_CASE(val_base + 0, const_base + (val_base + 0) * 28)                       \
++  ALU_CASE(val_base + 1, const_base + (val_base + 1) * 28)                       \
++  ALU_CASE(val_base + 2, const_base + (val_base + 2) * 28)                       \
++  ALU_CASE(val_base + 3, const_base + (val_base + 3) * 28)                       \
++  ALU_CASE(val_base + 4, const_base + (val_base + 4) * 28)                       \
++  ALU_CASE(val_base + 5, const_base + (val_base + 5) * 28)                       \
++  ALU_CASE(val_base + 6, const_base + (val_base + 6) * 28)                       \
++  ALU_CASE(val_base + 7, const_base + (val_base + 7) * 28)                       \
++  ALU_CASE(val_base + 8, const_base + (val_base + 8) * 28)                       \
++  ALU_CASE(val_base + 9, const_base + (val_base + 9) * 28)                       \
++  ALU_CASE(val_base + 10, const_base + (val_base + 10) * 28)                     \
++  ALU_CASE(val_base + 11, const_base + (val_base + 11) * 28)                     \
++  ALU_CASE(val_base + 12, const_base + (val_base + 12) * 28)                     \
++  ALU_CASE(val_base + 13, const_base + (val_base + 13) * 28)                     \
++  ALU_CASE(val_base + 14, const_base + (val_base + 14) * 28)                     \
++  ALU_CASE(val_base + 15, const_base + (val_base + 15) * 28)
++
++#define GEN_SWITCH_CASES_256(const_base)                                         \
++  GEN_SWITCH_CASES_16(0, const_base)                                             \
++  GEN_SWITCH_CASES_16(16, const_base)                                            \
++  GEN_SWITCH_CASES_16(32, const_base)                                            \
++  GEN_SWITCH_CASES_16(48, const_base)                                            \
++  GEN_SWITCH_CASES_16(64, const_base)                                            \
++  GEN_SWITCH_CASES_16(80, const_base)                                            \
++  GEN_SWITCH_CASES_16(96, const_base)                                            \
++  GEN_SWITCH_CASES_16(112, const_base)                                           \
++  GEN_SWITCH_CASES_16(128, const_base)                                           \
++  GEN_SWITCH_CASES_16(144, const_base)                                           \
++  GEN_SWITCH_CASES_16(160, const_base)                                           \
++  GEN_SWITCH_CASES_16(176, const_base)                                           \
++  GEN_SWITCH_CASES_16(192, const_base)                                           \
++  GEN_SWITCH_CASES_16(208, const_base)                                           \
++  GEN_SWITCH_CASES_16(224, const_base)                                           \
++  GEN_SWITCH_CASES_16(240, const_base)
++
++namespace {
++__attribute__((noinline)) void
++generated_switch_func_0(uint8_t val, volatile int* acc) {
++  switch (val) {
++    GEN_SWITCH_CASES_256(10000)
++  }
++}
++__attribute__((noinline)) void
++generated_switch_func_1(uint8_t val, volatile int* acc) {
++  switch (val) {
++    GEN_SWITCH_CASES_256(20000)
++  }
++}
++__attribute__((noinline)) void
++generated_switch_func_2(uint8_t val, volatile int* acc) {
++  switch (val) {
++    GEN_SWITCH_CASES_256(30000)
++  }
++}
++
++using switch_func_t = void (*)(uint8_t, volatile int*);
++switch_func_t funcs[] = {
++    &generated_switch_func_0,
++    &generated_switch_func_1,
++    &generated_switch_func_2};
++
++struct alignas(64) Node {
++  Node* next;
++  uint8_t payload;
++};
++
++constexpr size_t kNumNodes = 65536;
++std::vector<Node> nodes;
++Node* start_node = nullptr;
++
++void setup_pointer_chase() {
++  if (start_node) {
++    return;
++  }
++  nodes.resize(kNumNodes);
++  std::vector<size_t> indices(kNumNodes);
++  std::iota(indices.begin(), indices.end(), 0);
++  std::mt19937 g(1); // deterministic for benchmark
++  std::shuffle(indices.begin(), indices.end(), g);
++
++  for (size_t i = 0; i < kNumNodes; ++i) {
++    nodes[indices[i]].next = &nodes[indices[(i + 1) % kNumNodes]];
++    nodes[indices[i]].payload = (indices[i] * 37) & 0xFF;
++  }
++  start_node = &nodes[indices[0]];
++}
++} // namespace
++
++BENCHMARK(ObjectCompactProtocol_read_LargeSetInt_icache_v1, iters) {
++  folly::BenchmarkSuspender susp;
++  setup_pointer_chase();
++  Node* p = start_node;
++  volatile int accumulator = 0;
++
++  susp.dismiss();
++
++  for (size_t i = 0; i < iters; ++i) {
++    p = p->next;
++    uint8_t payload = p->payload;
++    funcs[i % 3](payload, &accumulator);
++  }
++
++  susp.rehire();
++  folly::doNotOptimizeAway(p);
++  folly::doNotOptimizeAway(accumulator);
++}
++
+ int main(int argc, char** argv) {
+   folly::Init init(&argc, &argv);
+   folly::runBenchmarks();

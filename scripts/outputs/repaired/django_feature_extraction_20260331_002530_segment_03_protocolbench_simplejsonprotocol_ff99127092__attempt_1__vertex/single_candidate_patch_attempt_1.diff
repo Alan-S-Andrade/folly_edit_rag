@@ -1,0 +1,87 @@
+--- a/thrift/lib/cpp2/test/ProtocolBench.cpp
++++ b/thrift/lib/cpp2/test/ProtocolBench.cpp
+@@ -193,6 +193,84 @@
+ X(, Binary)
+ X(, Compact)
+ X(, SimpleJSON)
++
++namespace {
++FOLLY_NOINLINE int process_data_for_ipc_v1(int count) {
++    int res = 0;
++    // Make this loop body non-trivial to increase instruction footprint
++    // and hopefully branch misses within the function.
++    for (int i=0; i < count; ++i) {
++        if (i & 1) {
++          res = (res + i * 3) ^ 0x5a5a;
++        } else {
++          res = (res - i * 5) ^ 0xa5a5;
++        }
++    }
++    return res;
++}
++FOLLY_NOINLINE int process_data_for_ipc_v2(int count) {
++    int res = 1;
++    for (int i=1; i <= count; ++i) {
++        res = (res * i + 1);
++        if (res > (1<<20)) {
++          res &= 0xfffff;
++        }
++    }
++    return res;
++}
++FOLLY_NOINLINE int process_data_for_ipc_v3(int count) {
++    int res = count;
++    if (res <= 0) return 1;
++    while(res > 1) {
++        if (res % 2 == 0) {
++            res /= 2;
++        } else {
++            res = (3 * res + 1) / 2;
++        }
++    }
++    return res;
++}
++} // namespace
++
++BENCHMARK(SimpleJSONProtocol_read_UnorderedSetInt_WithIPCWork, iters) {
++  folly::BenchmarkSuspender susp;
++  auto strct = create<thrift::benchmark::UnorderedSetInt>();
++  folly::IOBufQueue q;
++  apache::thrift::SimpleJSONSerializer::serialize(strct, &q);
++  auto buf = q.move();
++  buf->coalesce();
++
++  int extra_work_result = 0;
++
++  susp.dismiss();
++
++  auto loop_iters = iters;
++  while (loop_iters--) {
++    // Main work
++    thrift::benchmark::UnorderedSetInt data;
++    apache::thrift::SimpleJSONSerializer::deserialize(buf.get(), data);
++    folly::doNotOptimizeAway(data);
++
++    // Extra work to influence IPC, i-cache, and branch misses
++    // Input is derived from loop counter to avoid dependency on deserialize
++    int work_param = (loop_iters & 0xf) + 4; // small amount of work, 4 to 19
++    switch (loop_iters % 3) {
++      case 0:
++        extra_work_result += process_data_for_ipc_v1(work_param);
++        break;
++      case 1:
++        extra_work_result += process_data_for_ipc_v2(work_param);
++        break;
++      case 2:
++        extra_work_result += process_data_for_ipc_v3(work_param);
++        break;
++    }
++  }
++
++  susp.rehire();
++  folly::doNotOptimizeAway(extra_work_result);
++}
++
+ X(, JSON)
+ X(, Frozen)
+ X(Object, Binary)

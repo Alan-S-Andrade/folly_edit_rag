@@ -1,0 +1,309 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -20,6 +20,11 @@
+ 
+ #include <folly/Benchmark.h>
+ 
++#include <algorithm>
++#include <numeric>
++#include <random>
++#include <vector>
++
+ using namespace folly;
+ 
+ BENCHMARK(lifo_sem_pingpong, iters) {
+@@ -140,8 +145,294 @@
+   }
+ }
+ 
++// ---------------------------------------------------------------------------
++// Pointer-chase chain infrastructure for contendedUse_chasing variant
++// ---------------------------------------------------------------------------
++namespace {
++
++struct ChaseNode {
++  ChaseNode* next;
++  char pad[56]; // 64 bytes total
++};
++
++static constexpr size_t kHotLen = 16384; // 1 MB — exceeds L1d
++static ChaseNode hotNodes[kHotLen];
++
++static constexpr size_t kColdLen = 1u << 19; // 512K nodes = 32 MB
++static ChaseNode* coldNodes = nullptr;
++
++static void initChain(ChaseNode* nodes, size_t len) {
++  std::vector<size_t> perm(len);
++  std::iota(perm.begin(), perm.end(), 0u);
++  std::mt19937_64 rng(0xdeadbeefcafe1234ULL);
++  for (size_t i = len - 1; i > 0; --i) {
++    std::swap(perm[i], perm[rng() % (i + 1)]);
++  }
++  for (size_t i = 0; i < len; ++i) {
++    nodes[perm[i]].next = &nodes[perm[(i + 1) % len]];
++  }
++}
++
++static std::once_flag chainsInitFlag;
++
++static void ensureChainsInit() {
++  std::call_once(chainsInitFlag, [] {
++    initChain(hotNodes, kHotLen);
++    coldNodes = new ChaseNode[kColdLen];
++    initChain(coldNodes, kColdLen);
++  });
++}
++
++__attribute__((noinline)) uint64_t chaseSwA(uint64_t v, int c) {
++  switch (c & 0xFF) {
++    case 0: v += 0x1a2b3c4dULL; v ^= 0x5e6f7081ULL; break;
++    case 1: v *= 0x9b2c3d4eULL; v += 0xaf00b1c2ULL; break;
++    case 2: v ^= 0xc3d4e5f6ULL; v -= 0x07182930ULL; break;
++    case 3: v += 0x4a5b6c7dULL; v ^= 0x8e9fA0b1ULL; break;
++    case 4: v *= 0xB2C3d4e5ULL; v += 0xf6071829ULL; break;
++    case 5: v ^= 0x3a4b5c6dULL; v -= 0x7e8f9001ULL; break;
++    case 6: v += 0x1213141aULL; v ^= 0x2b3c4d5eULL; break;
++    case 7: v *= 0x6f708192ULL; v += 0xa3b4c5d6ULL; break;
++    case 8: v ^= 0xe7f80910ULL; v -= 0x21324354ULL; break;
++    case 9: v += 0x65768798ULL; v ^= 0xa9bAcBdCULL; break;
++    case 10: v *= 0xedfE0f10ULL; v += 0x21324344ULL; break;
++    case 11: v ^= 0x55667788ULL; v -= 0x99aAbBcCULL; break;
++    case 12: v += 0xdDeEfF00ULL; v ^= 0x11223344ULL; break;
++    case 13: v *= 0x55667788ULL; v += 0x99aAbBcCULL; break;
++    case 14: v ^= 0xdDeEfF00ULL; v -= 0x11223344ULL; break;
++    case 15: v += 0x55667700ULL; v ^= 0xaabbccddULL; break;
++    case 16: v *= 0xeeff0011ULL; v += 0x22334455ULL; break;
++    case 17: v ^= 0x66778899ULL; v -= 0xaabbccddULL; break;
++    case 18: v += 0xeeff0011ULL; v ^= 0x22334455ULL; break;
++    case 19: v *= 0x66778800ULL; v += 0x11223300ULL; break;
++    case 20: v ^= 0x44556677ULL; v -= 0x8899aabbULL; break;
++    case 21: v += 0xccddeeffULL; v ^= 0x00112233ULL; break;
++    case 22: v *= 0x44556600ULL; v += 0x77889900ULL; break;
++    case 23: v ^= 0xaabbccddULL; v -= 0xeeff0011ULL; break;
++    case 24: v += 0x22334455ULL; v ^= 0x66778899ULL; break;
++    case 25: v *= 0xaabbcc00ULL; v += 0xddeeff00ULL; break;
++    case 26: v ^= 0x11223344ULL; v -= 0x55667788ULL; break;
++    case 27: v += 0x99aabbccULL; v ^= 0xddeeff00ULL; break;
++    case 28: v *= 0x11220033ULL; v += 0x44556677ULL; break;
++    case 29: v ^= 0x8899aabbULL; v -= 0xccddeeffULL; break;
++    case 30: v += 0x00112233ULL; v ^= 0x44556677ULL; break;
++    case 31: v *= 0x8899aa00ULL; v += 0xbbccdd00ULL; break;
++    default: v += (uint64_t)c * 0x9e3779b97f4a7c15ULL; break;
++  }
++  return v;
++}
++
++__attribute__((noinline)) uint64_t chaseSwB(uint64_t v, int c) {
++  switch (c & 0xFF) {
++    case 0: v -= 0x1a2b3c4dULL; v ^= 0xf5e6d7c8ULL; break;
++    case 1: v += 0xb9a89786ULL; v *= 0x75645342ULL; break;
++    case 2: v ^= 0x31201f0eULL; v += 0xfdfcfbfaULL; break;
++    case 3: v -= 0xf9e8d7c6ULL; v ^= 0xb5a49382ULL; break;
++    case 4: v += 0x71605f4eULL; v *= 0x3d2c1b0aULL; break;
++    case 5: v ^= 0xf9e8d700ULL; v -= 0xc6b5a493ULL; break;
++    case 6: v -= 0x82716050ULL; v ^= 0x4f3e2d1cULL; break;
++    case 7: v += 0x0b1a2938ULL; v *= 0x4756657aULL; break;
++    case 8: v ^= 0x8990a1b2ULL; v += 0xc3d4e5f6ULL; break;
++    case 9: v -= 0x07182930ULL; v ^= 0x4a5b6c7dULL; break;
++    case 10: v += 0x8e9fa0b1ULL; v *= 0xc2d3e4f5ULL; break;
++    case 11: v ^= 0x06172839ULL; v -= 0x4a5b6c7dULL; break;
++    case 12: v -= 0x8e9fa0b0ULL; v ^= 0xc1d2e3f4ULL; break;
++    case 13: v += 0x05162738ULL; v *= 0x495a6b7cULL; break;
++    case 14: v ^= 0x8d9eafb0ULL; v += 0xc0d1e2f3ULL; break;
++    case 15: v -= 0x04152637ULL; v ^= 0x48596a7bULL; break;
++    case 16: v += 0x8c9daebfULL; v *= 0xbfd0e1f2ULL; break;
++    case 17: v ^= 0x03142536ULL; v -= 0x47586978ULL; break;
++    case 18: v -= 0x8b9cadbfULL; v ^= 0xbecfd0e1ULL; break;
++    case 19: v += 0x02132435ULL; v *= 0x46576879ULL; break;
++    case 20: v ^= 0x8a9bacbdULL; v += 0xbdcedfe0ULL; break;
++    case 21: v -= 0x01122334ULL; v ^= 0x45566778ULL; break;
++    case 22: v += 0x89aabbccULL; v *= 0xbccddeefULL; break;
++    case 23: v ^= 0x00112233ULL; v -= 0x44556677ULL; break;
++    case 24: v -= 0x8899aabbULL; v ^= 0xbbccddeaULL; break;
++    case 25: v += 0xff001122ULL; v *= 0x43546576ULL; break;
++    case 26: v ^= 0x8798a9baULL; v += 0xbacbd9e8ULL; break;
++    case 27: v -= 0xfeff0011ULL; v ^= 0x42536475ULL; break;
++    case 28: v += 0x8697a8b9ULL; v *= 0xb9cad8e7ULL; break;
++    case 29: v ^= 0xfdfeff00ULL; v -= 0x41526374ULL; break;
++    case 30: v -= 0x8596a7b8ULL; v ^= 0xb8c9d7e6ULL; break;
++    case 31: v += 0xfcfeff01ULL; v *= 0x40516273ULL; break;
++    default: v ^= (uint64_t)c * 0x6c62272e07bb0142ULL; break;
++  }
++  return v;
++}
++
++__attribute__((noinline)) uint64_t chaseSwC(uint64_t v, int c) {
++  switch (c & 0xFF) {
++    case 0: v ^= 0x0f1e2d3cULL; v += 0x4b5a6978ULL; break;
++    case 1: v -= 0x8796a5b4ULL; v ^= 0xc3d2e1f0ULL; break;
++    case 2: v *= 0x0f1e2d40ULL; v -= 0x4b5a6978ULL; break;
++    case 3: v += 0x8796a5b5ULL; v ^= 0xc3d2e1f1ULL; break;
++    case 4: v ^= 0x0f1e2d41ULL; v -= 0x4b5a6979ULL; break;
++    case 5: v *= 0x8796a5b6ULL; v += 0xc3d2e1f2ULL; break;
++    case 6: v -= 0x0f1e2d42ULL; v ^= 0x4b5a697aULL; break;
++    case 7: v += 0x8796a5b7ULL; v *= 0xc3d2e1f3ULL; break;
++    case 8: v ^= 0x0f1e2d43ULL; v += 0x4b5a697bULL; break;
++    case 9: v -= 0x8796a5b8ULL; v ^= 0xc3d2e1f4ULL; break;
++    case 10: v *= 0x0f1e2d44ULL; v -= 0x4b5a697cULL; break;
++    case 11: v += 0x8796a5b9ULL; v ^= 0xc3d2e1f5ULL; break;
++    case 12: v ^= 0x0f1e2d45ULL; v -= 0x4b5a697dULL; break;
++    case 13: v *= 0x8796a5baULL; v += 0xc3d2e1f6ULL; break;
++    case 14: v -= 0x0f1e2d46ULL; v ^= 0x4b5a697eULL; break;
++    case 15: v += 0x8796a5bbULL; v *= 0xc3d2e1f7ULL; break;
++    case 16: v ^= 0x0f1e2d47ULL; v += 0x4b5a697fULL; break;
++    case 17: v -= 0x8796a5bcULL; v ^= 0xc3d2e1f8ULL; break;
++    case 18: v *= 0x0f1e2d48ULL; v -= 0x4b5a6980ULL; break;
++    case 19: v += 0x8796a5bdULL; v ^= 0xc3d2e1f9ULL; break;
++    case 20: v ^= 0x0f1e2d49ULL; v -= 0x4b5a6981ULL; break;
++    case 21: v *= 0x8796a5beULL; v += 0xc3d2e1faULL; break;
++    case 22: v -= 0x0f1e2d4aULL; v ^= 0x4b5a6982ULL; break;
++    case 23: v += 0x8796a5bfULL; v *= 0xc3d2e1fbULL; break;
++    case 24: v ^= 0x0f1e2d4bULL; v += 0x4b5a6983ULL; break;
++    case 25: v -= 0x8796a5c0ULL; v ^= 0xc3d2e1fcULL; break;
++    case 26: v *= 0x0f1e2d4cULL; v -= 0x4b5a6984ULL; break;
++    case 27: v += 0x8796a5c1ULL; v ^= 0xc3d2e1fdULL; break;
++    case 28: v ^= 0x0f1e2d4dULL; v -= 0x4b5a6985ULL; break;
++    case 29: v *= 0x8796a5c2ULL; v += 0xc3d2e1feULL; break;
++    case 30: v -= 0x0f1e2d4eULL; v ^= 0x4b5a6986ULL; break;
++    case 31: v += 0x8796a5c3ULL; v *= 0xc3d2e1ffULL; break;
++    default: v -= (uint64_t)c * 0xbf58476d1ce4e5b9ULL; break;
++  }
++  return v;
++}
++
++static void contendedUse_chasing_impl(uint32_t n, int posters, int waiters) {
++  ensureChainsInit();
++
++  LifoSemImpl<std::atomic> sem;
++  std::vector<std::thread> threads;
++  std::atomic<bool> go(false);
++
++  static constexpr size_t kInnerIters = 512 * 1024;
++
++  BENCHMARK_SUSPEND {
++    for (int t = 0; t < waiters; ++t) {
++      threads.emplace_back([=, &sem] {
++        for (uint32_t i = t; i < n; i += waiters) {
++          sem.wait();
++        }
++      });
++    }
++    for (int t = 0; t < posters; ++t) {
++      threads.emplace_back([=, &sem, &go] {
++        while (!go.load()) {
++          std::this_thread::yield();
++        }
++        for (uint32_t i = t; i < n; i += posters) {
++          sem.post();
++        }
++      });
++    }
++  }
++
++  // Timed hot path: pointer-chase through hot chain + 3-way switch on payload
++  ChaseNode* hotPos0 = &hotNodes[0];
++  ChaseNode* hotPos1 = &hotNodes[kHotLen / 3];
++  ChaseNode* hotPos2 = &hotNodes[2 * kHotLen / 3];
++  ChaseNode* coldPos = &coldNodes[0];
++  uint64_t acc = 0;
++
++  for (size_t j = 0; j < kInnerIters; ++j) {
++    hotPos0 = hotPos0->next;
++    hotPos1 = hotPos1->next;
++    hotPos2 = hotPos2->next;
++
++    uint64_t payload0 = (uint64_t)(uintptr_t)hotPos0;
++    uint64_t payload1 = (uint64_t)(uintptr_t)hotPos1;
++    uint64_t payload2 = (uint64_t)(uintptr_t)hotPos2;
++
++    switch (j % 3) {
++      case 0: acc = chaseSwA(acc ^ payload0, (int)(payload1 & 0xFF)); break;
++      case 1: acc = chaseSwB(acc ^ payload1, (int)(payload2 & 0xFF)); break;
++      case 2: acc = chaseSwC(acc ^ payload2, (int)(payload0 & 0xFF)); break;
++    }
++
++    // Branchless cold chain access every 8 steps for LLC pressure
++    uint64_t coldMask = -(uint64_t)((j & 7) == 0);
++    coldPos = (ChaseNode*)(
++        ((uintptr_t)coldPos->next & coldMask) |
++        ((uintptr_t)coldPos & ~coldMask));
++  }
++
++  folly::doNotOptimizeAway(acc);
++  folly::doNotOptimizeAway(coldPos);
++
++  go.store(true);
++  for (auto& thr : threads) {
++    thr.join();
++  }
++}
++
++// ---------------------------------------------------------------------------
++// Two-semaphore ping-pong variant for contended use with 32 posters/32 waiters
++// Uses two LifoSem instances so each poster signals sem_b and each waiter
++// alternates between sem_a and sem_b, materially changing the hot path
++// relative to the single-sem contendedUse baseline.
++// ---------------------------------------------------------------------------
++static void contendedUse_dual_sem(uint32_t n, int posters, int waiters) {
++  LifoSemImpl<std::atomic> sem_a;
++  LifoSemImpl<std::atomic> sem_b;
++
++  std::vector<std::thread> threads;
++  std::atomic<bool> go(false);
++
++  BENCHMARK_SUSPEND {
++    // Half the waiters drain sem_a, the other half drain sem_b
++    for (int t = 0; t < waiters; ++t) {
++      if (t % 2 == 0) {
++        threads.emplace_back([=, &sem_a] {
++          for (uint32_t i = t; i < n; i += waiters) {
++            sem_a.wait();
++          }
++        });
++      } else {
++        threads.emplace_back([=, &sem_b] {
++          for (uint32_t i = t; i < n; i += waiters) {
++            sem_b.wait();
++          }
++        });
++      }
++    }
++    // Half the posters post to sem_a, the other half to sem_b
++    for (int t = 0; t < posters; ++t) {
++      if (t % 2 == 0) {
++        threads.emplace_back([=, &sem_a, &go] {
++          while (!go.load()) {
++            std::this_thread::yield();
++          }
++          for (uint32_t i = t; i < n; i += posters) {
++            sem_a.post();
++          }
++        });
++      } else {
++        threads.emplace_back([=, &sem_b, &go] {
++          while (!go.load()) {
++            std::this_thread::yield();
++          }
++          for (uint32_t i = t; i < n; i += posters) {
++            sem_b.post();
++          }
++        });
++      }
++    }
++  }
++
++  go.store(true);
++  for (auto& thr : threads) {
++    thr.join();
++  }
++}
++
++} // namespace
++
+ BENCHMARK_DRAW_LINE();
+ BENCHMARK_NAMED_PARAM(contendedUse, 1_to_1, 1, 1)
++BENCHMARK_NAMED_PARAM(contendedUse_dual_sem, 32_to_32_dual_sem, 32, 32)
++BENCHMARK_NAMED_PARAM(contendedUse_chasing_impl, 1_to_1_chasing, 1, 1)
+ BENCHMARK_NAMED_PARAM(contendedUse, 1_to_4, 1, 4)
+ BENCHMARK_NAMED_PARAM(contendedUse, 1_to_32, 1, 32)
+ BENCHMARK_NAMED_PARAM(contendedUse, 4_to_1, 4, 1)

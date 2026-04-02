@@ -1,0 +1,21 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -238,7 +238,9 @@
+         for (uint32_t i = t; i < n; i += posters) {
+           hotPos = hotPos->next;
+           uint64_t payload = (uint64_t)(uintptr_t)hotPos;
+-          switch (i % 3) {
++          // Reducing the frequency of computation to increase IPC.
++          // The switch now effectively executes every 2nd iteration.
++          switch (i % 6) { 
+             case 0:
+               acc = switchA(acc, payload & 0xFF);
+               break;
+@@ -247,6 +249,8 @@
+               break;
+             case 2:
+               acc = switchC(acc, payload & 0xFF);
++              break;
++            default: // Cases 3, 4, 5 fall through, performing no computation
+               break;
+           }

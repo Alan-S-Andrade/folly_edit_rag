@@ -1,0 +1,156 @@
+--- a/thrift/lib/cpp2/test/ProtocolBench.cpp
++++ b/thrift/lib/cpp2/test/ProtocolBench.cpp
+@@ -3,7 +3,7 @@
+  *
+  * Licensed under the Apache License, Version 2.0 (the "License");
+  * you may not use this file except in compliance with the License.
+- * You may obtain a copy of the License at
++ * You may a copy of the License at
+  *
+  *     http://www.apache.org/licenses/LICENSE-2.0
+  *
+@@ -25,6 +25,98 @@
+ #include <folly/Optional.h>
+ #include <folly/init/Init.h>
+ #include <folly/portability/GFlags.h>
++
++namespace { // Anonymous namespace for benchmark-specific helpers
++
++// From diagnostics: PROVEN PATTERN to increase i-cache pressure.
++// 3 noinline functions, each with a large switch, called in rotation.
++// The switch index is derived from a pointer-chase to be unpredictable.
++#define OPS_PER_CASE(v, c)             \
++  v = (v + (c)) * (c + 1);             \
++  v = (v ^ (c + 2)) - (c + 3);         \
++  v = (v + (c + 4)) * (c + 5);         \
++  v = (v ^ (c + 6)) - (c + 7);         \
++  v = (v + (c + 8)) * (c + 9);         \
++  v = (v ^ (c + 10)) - (c + 11);       \
++  v = (v + (c + 12)) * (c + 13);       \
++  v = (v ^ (c + 14)) - (c + 15);
++
++#define MAKE_CASE(i, base) \
++  case i: { OPS_PER_CASE(val, (i * 16) + base); break; }
++
++#define MAKE_CASES_16(i, base)                                                 \
++  MAKE_CASE(i + 0, base) MAKE_CASE(i + 1, base) MAKE_CASE(i + 2, base)         \
++      MAKE_CASE(i + 3, base) MAKE_CASE(i + 4, base) MAKE_CASE(i + 5, base)     \
++          MAKE_CASE(i + 6, base) MAKE_CASE(i + 7, base) MAKE_CASE(i + 8, base) \
++              MAKE_CASE(i + 9, base) MAKE_CASE(i + 10, base)                   \
++                  MAKE_CASE(i + 11, base) MAKE_CASE(i + 12, base)              \
++                      MAKE_CASE(i + 13, base) MAKE_CASE(i + 14, base)          \
++                          MAKE_CASE(i + 15, base)
++
++#define MAKE_CASES_256(base)                                                   \
++  MAKE_CASES_16(0, base) MAKE_CASES_16(16, base) MAKE_CASES_16(32, base)       \
++      MAKE_CASES_16(48, base) MAKE_CASES_16(64, base) MAKE_CASES_16(80, base) \
++          MAKE_CASES_16(96, base) MAKE_CASES_16(112, base)                     \
++              MAKE_CASES_16(128, base) MAKE_CASES_16(144, base)               \
++                  MAKE_CASES_16(160, base) MAKE_CASES_16(176, base)           \
++                      MAKE_CASES_16(192, base) MAKE_CASES_16(208, base)       \
++                          MAKE_CASES_16(224, base) MAKE_CASES_16(240, base)
++
++__attribute__((noinline)) int icache_churn_func_0(int val, int idx) {
++  switch (idx & 0xff) {
++    MAKE_CASES_256(100)
++    default:
++      break;
++  }
++  return val;
++}
++
++__attribute__((noinline)) int icache_churn_func_1(int val, int idx) {
++  switch (idx & 0xff) {
++    MAKE_CASES_256(20000)
++    default:
++      break;
++  }
++  return val;
++}
++
++__attribute__((noinline)) int icache_churn_func_2(int val, int idx) {
++  switch (idx & 0xff) {
++    MAKE_CASES_256(40000)
++    default:
++      break;
++  }
++  return val;
++}
++
++#undef OPS_PER_CASE
++#undef MAKE_CASE
++#undef MAKE_CASES_16
++#undef MAKE_CASES_256
++
++struct PtrChaseNode {
++  PtrChaseNode* next;
++  uint64_t payload;
++};
++
++std::vector<PtrChaseNode> chase_nodes;
++PtrChaseNode* chase_head = nullptr;
++
++void setup_chase_data() {
++  if (chase_head != nullptr) {
++    return;
++  }
++  const size_t kNumNodes = 256;
++  chase_nodes.resize(kNumNodes);
++  for (size_t i = 0; i < kNumNodes; ++i) {
++    chase_nodes[i].next =
++        &chase_nodes[(i + 17) % kNumNodes]; // Stride to defeat prefetcher
++    chase_nodes[i].payload = i * 13;
++  }
++  chase_head = &chase_nodes[0];
++}
++
++} // namespace
+ 
+ using namespace apache::thrift;
+ using namespace thrift::benchmark;
+@@ -200,6 +292,45 @@
+ OpEncodeX(OpEncode, Binary)
+ OpEncodeX(OpEncode, Compact)
+ 
++BENCHMARK(ObjectCompactProtocol_read_LargeSetInt_iCache_v1, iters) {
++  folly::BenchmarkSuspender susp;
++  auto strct = create<LargeSetInt>();
++  folly::IOBufQueue q;
++  CompactSerializer::serialize(strct, &q);
++  auto buf = q.move();
++  buf->coalesce();
++
++  setup_chase_data();
++  PtrChaseNode* current_node = chase_head;
++  int churn_val = 0;
++  size_t j = 0;
++
++  susp.dismiss();
++
++  while (iters--) {
++    // Original work
++    auto obj = protocol::parseObject<GetReader<CompactSerializer>>(*buf);
++    folly::doNotOptimizeAway(obj);
++
++    // Added work to increase i-cache misses and lower IPC
++    current_node = current_node->next;
++    uint64_t payload = current_node->payload;
++    switch ((j++) % 3) {
++      case 0:
++        churn_val = icache_churn_func_0(churn_val, payload);
++        break;
++      case 1:
++        churn_val = icache_churn_func_1(churn_val, payload);
++        break;
++      case 2:
++        churn_val = icache_churn_func_2(churn_val, payload);
++        break;
++    }
++  }
++  folly::doNotOptimizeAway(churn_val);
++  susp.rehire();
++}
++
+ int main(int argc, char** argv) {
+   folly::Init init(&argc, &argv);
+   folly::runBenchmarks();

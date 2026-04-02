@@ -1,0 +1,90 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -136,6 +136,23 @@
+   }
+ }
+ 
++#define CASES_8_ADDITIONAL_13_OPS(v, c, base_val) \
++  v = (v * 29) + (uint64_t)c + (base_val + 108); \
++  v = (v ^ (109 + (base_val + 108))) + ((uint64_t)c * (113 + (base_val + 108))); \
++  v = (v + (117 + (base_val + 108))) * (((uint64_t)c | (121 + (base_val + 108))) + 1); \
++  v = (v - (123 + (base_val + 108))) ^ ((uint64_t)c + (127 * (base_val + 108) + 1)); \
++  v = (v << ((base_val + 108) % 7 + 1)) | (v >> ((base_val + 108) % 5 + 1)) + ((uint64_t)c * (131 + (base_val + 108))); \
++  v = (v & (137 + (base_val + 108))) * ((uint64_t)c + (139 + (base_val + 108))) - (149 + (base_val + 108)); \
++  v = (v % (151 + (base_val + 108))) + (v | (157 + (base_val + 108))) * ((uint64_t)c - (163 + (base_val + 108))); \
++  v = (v * 37) + (uint64_t)c + (base_val + 164); \
++  v = (v ^ (165 + (base_val + 164))) + ((uint64_t)c * (167 + (base_val + 164))); \
++  v = (v + (171 + (base_val + 164))) * (((uint64_t)c | (173 + (base_val + 164))) + 1); \
++  v = (v - (177 + (base_val + 164))) ^ ((uint64_t)c + (179 * (base_val + 164) + 1)); \
++  v = (v << ((base_val + 164) % 7 + 1)) | (v >> ((base_val + 164) % 5 + 1)) + ((uint64_t)c * (181 + (base_val + 164))); \
++  v = (v & (191 + (base_val + 164))) * ((uint64_t)c + (193 + (base_val + 164))) - (197 + (base_val + 164)); \
++  v = (v + (199 + (base_val + 164))) / ((v % 200) + 1) + ((uint64_t)c ^ (201 + (base_val + 164)));
++
++#undef CASES_8
+ #define CASES_8(v, c, base)                                                    \
+   case base + 0:                                                               \
+     v = (v * 3) + (uint64_t)c + (base + 0);                                    \
+@@ -146,6 +163,7 @@
+     v = (v & (71 + (base + 0))) * ((uint64_t)c + (73 + (base + 0))) - (79 + (base + 0)); \
+     v = (v + (83 + (base + 0))) / ((v % 97) + 1) + ((uint64_t)c ^ (89 + (base + 0))); \
+     v = (v % (101 + (base + 0))) + (v | (103 + (base + 0))) * ((uint64_t)c - (107 + (base + 0))); \
++    CASES_8_ADDITIONAL_13_OPS(v, c, base + 0) \
+     break;                                                                     \
+   case base + 1:                                                               \
+     v = (v * 5) + (uint64_t)c + (base + 1);                                    \
+@@ -156,6 +174,7 @@
+     v = (v & (71 + (base + 1))) * ((uint64_t)c + (73 + (base + 1))) - (79 + (base + 1)); \
+     v = (v + (83 + (base + 1))) / ((v % 97) + 1) + ((uint64_t)c ^ (89 + (base + 1))); \
+     v = (v % (101 + (base + 1))) + (v | (103 + (base + 1))) * ((uint64_t)c - (107 + (base + 1))); \
++    CASES_8_ADDITIONAL_13_OPS(v, c, base + 1) \
+     break;                                                                     \
+   case base + 2:                                                               \
+     v = (v * 7) + (uint64_t)c + (base + 2);                                    \
+@@ -166,6 +185,7 @@
+     v = (v & (71 + (base + 2))) * ((uint64_t)c + (73 + (base + 2))) - (79 + (base + 2)); \
+     v = (v + (83 + (base + 2))) / ((v % 97) + 1) + ((uint64_t)c ^ (89 + (base + 2))); \
+     v = (v % (101 + (base + 2))) + (v | (103 + (base + 2))) * ((uint64_t)c - (107 + (base + 2))); \
++    CASES_8_ADDITIONAL_13_OPS(v, c, base + 2) \
+     break;                                                                     \
+   case base + 3:                                                               \
+     v = (v * 11) + (uint64_t)c + (base + 3);                                   \
+@@ -176,6 +196,7 @@
+     v = (v & (71 + (base + 3))) * ((uint64_t)c + (73 + (base + 3))) - (79 + (base + 3)); \
+     v = (v + (83 + (base + 3))) / ((v % 97) + 1) + ((uint64_t)c ^ (89 + (base + 3))); \
+     v = (v % (101 + (base + 3))) + (v | (103 + (base + 3))) * ((uint64_t)c - (107 + (base + 3))); \
++    CASES_8_ADDITIONAL_13_OPS(v, c, base + 3) \
+     break;                                                                     \
+   case base + 4:                                                               \
+     v = (v * 13) + (uint64_t)c + (base + 4);                                   \
+@@ -186,6 +207,7 @@
+     v = (v & (71 + (base + 4))) * ((uint64_t)c + (73 + (base + 4))) - (79 + (base + 4)); \
+     v = (v + (83 + (base + 4))) / ((v % 97) + 1) + ((uint64_t)c ^ (89 + (base + 4))); \
+     v = (v % (101 + (base + 4))) + (v | (103 + (base + 4))) * ((uint64_t)c - (107 + (base + 4))); \
++    CASES_8_ADDITIONAL_13_OPS(v, c, base + 4) \
+     break;                                                                     \
+   case base + 5:                                                               \
+     v = (v * 17) + (uint64_t)c + (base + 5);                                   \
+@@ -196,6 +218,7 @@
+     v = (v & (71 + (base + 5))) * ((uint64_t)c + (73 + (base + 5))) - (79 + (base + 5)); \
+     v = (v + (83 + (base + 5))) / ((v % 97) + 1) + ((uint64_t)c ^ (89 + (base + 5))); \
+     v = (v % (101 + (base + 5))) + (v | (103 + (base + 5))) * ((uint64_t)c - (107 + (base + 5))); \
++    CASES_8_ADDITIONAL_13_OPS(v, c, base + 5) \
+     break;                                                                     \
+   case base + 6:                                                               \
+     v = (v * 19) + (uint64_t)c + (base + 6);                                   \
+@@ -206,6 +229,7 @@
+     v = (v & (71 + (base + 6))) * ((uint64_t)c + (73 + (base + 6))) - (79 + (base + 6)); \
+     v = (v + (83 + (base + 6))) / ((v % 97) + 1) + ((uint64_t)c ^ (89 + (base + 6))); \
+     v = (v % (101 + (base + 6))) + (v | (103 + (base + 6))) * ((uint64_t)c - (107 + (base + 6))); \
++    CASES_8_ADDITIONAL_13_OPS(v, c, base + 6) \
+     break;                                                                     \
+   case base + 7:                                                               \
+     v = (v * 23) + (uint64_t)c + (base + 7);                                   \
+@@ -216,6 +240,7 @@
+     v = (v & (71 + (base + 7))) * ((uint64_t)c + (73 + (base + 7))) - (79 + (base + 7)); \
+     v = (v + (83 + (base + 7))) / ((v % 97) + 1) + ((uint64_t)c ^ (89 + (base + 7))); \
+     v = (v % (101 + (base + 7))) + (v | (103 + (base + 7))) * ((uint64_t)c - (107 + (base + 7))); \
++    CASES_8_ADDITIONAL_13_OPS(v, c, base + 7) \
+     break;
+ 
+ #define CASES_256(v, c)                                                        \

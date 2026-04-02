@@ -1,0 +1,62 @@
+--- a/thrift/lib/cpp2/test/ProtocolBench.cpp
++++ b/thrift/lib/cpp2/test/ProtocolBench.cpp
+@@ -121,6 +121,44 @@
+       Struct data;
+       Serializer::deserialize(buf.get(), data);
+       folly::doNotOptimizeAway(data);
++    }
++  }
++  susp.rehire();
++}
++
++// Variant of readBench that parses multiple independent serialized copies of
++// the struct per iteration, increasing the instruction footprint per
++// benchmark tick and introducing more branch sites to raise
++// L1-icache-load-misses and branch-misses while lowering IPC.
++template <
++    SerializerMethod kSerializerMethod,
++    typename Serializer,
++    typename Struct,
++    int kFanout>
++FOLLY_NOINLINE void readBenchMulti(size_t iters) {
++  folly::BenchmarkSuspender susp;
++  auto strct = create<Struct>();
++
++  // Build kFanout independent serialized buffers.
++  std::array<std::unique_ptr<folly::IOBuf>, kFanout> bufs;
++  for (int i = 0; i < kFanout; ++i) {
++    folly::IOBufQueue q;
++    Serializer::serialize(strct, &q);
++    bufs[i] = q.move();
++    bufs[i]->coalesce();
++  }
++  susp.dismiss();
++
++  while (iters--) {
++    for (int i = 0; i < kFanout; ++i) {
++      if constexpr (kSerializerMethod == SerializerMethod::Object) {
++        auto obj = protocol::parseObject<GetReader<Serializer>>(*bufs[i]);
++        folly::doNotOptimizeAway(obj);
++      } else {
++        Struct data;
++        Serializer::deserialize(bufs[i].get(), data);
++        folly::doNotOptimizeAway(data);
++      }
+     }
+   }
+   susp.rehire();
+@@ -200,6 +238,14 @@
+ OpEncodeX(OpEncode, Binary)
+ OpEncodeX(OpEncode, Compact)
+ 
++BENCHMARK(ObjectCompactProtocol_read_LargeSetIntMulti, iters) {
++  readBenchMulti<
++      SerializerMethod::Object,
++      CompactSerializer,
++      LargeSetInt,
++      4>(iters);
++}
++
+ int main(int argc, char** argv) {
+   folly::Init init(&argc, &argv);
+   folly::runBenchmarks();

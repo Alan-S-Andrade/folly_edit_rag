@@ -1,0 +1,19 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -237,6 +237,7 @@
+         }
+         for (uint32_t i = t; i < n; i += posters) {
+           hotPos = hotPos->next;
++          sem.post(); // Moved `sem.post()` earlier to potentially overlap with `coldPos` memory access latency.
+           coldPos = coldPos->next; // Always advance coldPos to ensure regular cache misses
+           uint64_t payload = (uint64_t)(uintptr_t)coldPos; // Derive payload from the cold, cache-missing pointer chase
+           switch (i % 3) {
+@@ -252,7 +253,7 @@
+           }
+ 
+           // The conditional coldPos update is removed as coldPos is always advanced above.
+-          sem.post();
++          // sem.post(); // Original position
+         }
+         folly::doNotOptimizeAway(acc);
+         folly::doNotOptimizeAway(hotPos);

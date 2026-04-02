@@ -1,0 +1,139 @@
+--- a/thrift/lib/cpp2/test/ProtocolBench.cpp
++++ b/thrift/lib/cpp2/test/ProtocolBench.cpp
+@@ -25,6 +25,10 @@
+ #include <folly/Optional.h>
+ #include <folly/init/Init.h>
+ #include <folly/portability/GFlags.h>
++
++#include <algorithm>
++#include <random>
++#include <vector>
+ 
+ using namespace apache::thrift;
+ using namespace thrift::benchmark;
+@@ -200,6 +204,125 @@
+ OpEncodeX(OpEncode, Binary)
+ OpEncodeX(OpEncode, Compact)
+ 
++namespace {
++
++#define OPS_PER_CASE(i, acc, salt) \
++  acc += (i * 3 + salt) * (acc | (0x123 + salt)); \
++  acc ^= (i * 5 + salt) * (acc | (0x456 + salt)); \
++  acc += (i * 7 + salt) * (acc | (0x789 + salt)); \
++  acc ^= (i * 11 + salt) * (acc | (0xABC + salt)); \
++  acc += (i * 13 + salt) * (acc | (0xDEF + salt)); \
++  acc ^= (i * 17 + salt) * (acc | (0x135 + salt)); \
++  acc += (i * 19 + salt) * (acc | (0x246 + salt)); \
++  acc ^= (i * 23 + salt) * (acc | (0x79B + salt)); \
++  acc += (i * 29 + salt) * (acc | (0x8AD + salt)); \
++  acc ^= (i * 31 + salt) * (acc | (0xCEF + salt)); \
++  acc += (i * 37 + salt) * (acc | (0x1234 + salt)); \
++  acc ^= (i * 41 + salt) * (acc | (0x5678 + salt)); \
++  acc += (i * 43 + salt) * (acc | (0x9ABC + salt)); \
++  acc ^= (i * 47 + salt) * (acc | (0xDEF0 + salt)); \
++  acc += (i * 53 + salt) * (acc | (0x1357 + salt)); \
++  acc ^= (i * 59 + salt) * (acc | (0x2468 + salt)); \
++  acc += (i * 61 + salt) * (acc | (0x9BDF + salt)); \
++  acc ^= (i * 67 + salt) * (acc | (0xACE0 + salt)); \
++  acc += (i * 71 + salt) * (acc | (0x1122 + salt)); \
++  acc ^= (i * 73 + salt) * (acc | (0x3344 + salt));
++
++#define CASE_STMT(i, salt) \
++    case i: \
++        OPS_PER_CASE(i, acc, salt) \
++        break;
++
++#define R1(i, salt) CASE_STMT(i, salt)
++#define R4(i, salt) R1(i, salt) R1(i+1, salt) R1(i+2, salt) R1(i+3, salt)
++#define R16(i, salt) R4(i, salt) R4(i+4, salt) R4(i+8, salt) R4(i+12, salt)
++#define R64(i, salt) R16(i, salt) R16(i+16, salt) R16(i+32, salt) R16(i+48, salt)
++#define R256(i, salt) R64(i, salt) R64(i+64, salt) R64(i+128, salt) R64(i+192, salt)
++
++__attribute__((noinline))
++int64_t large_switch_func_1(int64_t acc, int val) {
++    switch (val) {
++        R256(0, 1)
++    }
++    return acc;
++}
++
++__attribute__((noinline))
++int64_t large_switch_func_2(int64_t acc, int val) {
++    switch (val) {
++        R256(0, 2)
++    }
++    return acc;
++}
++
++__attribute__((noinline))
++int64_t large_switch_func_3(int64_t acc, int val) {
++    switch (val) {
++        R256(0, 3)
++    }
++    return acc;
++}
++
++#undef R256
++#undef R64
++#undef R16
++#undef R4
++#undef R1
++#undef CASE_STMT
++#undef OPS_PER_CASE
++
++} // namespace
++
++BENCHMARK(ObjectCompactProtocol_read_LargeSetInt_icache_v3, iters) {
++    folly::BenchmarkSuspender susp;
++    using Serializer = CompactSerializer;
++    using Struct = LargeSetInt;
++    using Reader = GetReader<Serializer>;
++    auto strct = create<Struct>();
++    folly::IOBufQueue q;
++    Serializer::serialize(strct, &q);
++    auto buf = q.move();
++    buf->coalesce();
++
++    constexpr size_t kChaseArraySize = 256;
++    std::vector<uint8_t> chase_array(kChaseArraySize);
++    for (size_t i = 0; i < kChaseArraySize; ++i) {
++        chase_array[i] = i;
++    }
++    std::random_device rd;
++    std::mt19937 g(rd());
++    std::shuffle(chase_array.begin(), chase_array.end(), g);
++
++    susp.dismiss();
++
++    uint8_t chase_idx = 0;
++    int64_t acc = 0;
++
++    for (size_t i = 0; i < iters; ++i) {
++        auto obj = protocol::parseObject<Reader>(*buf);
++        folly::doNotOptimizeAway(obj);
++
++        chase_idx = chase_array[chase_idx];
++        uint8_t switch_val = chase_idx;
++
++        switch (i % 3) {
++            case 0:
++                acc = large_switch_func_1(acc, switch_val);
++                break;
++            case 1:
++                acc = large_switch_func_2(acc, switch_val);
++                break;
++            case 2:
++                acc = large_switch_func_3(acc, switch_val);
++                break;
++        }
++    }
++
++    folly::doNotOptimizeAway(acc);
++    susp.rehire();
++}
++
++
+ int main(int argc, char** argv) {
+   folly::Init init(&argc, &argv);
+   folly::runBenchmarks();

@@ -1,0 +1,37 @@
+--- a/thrift/lib/cpp2/test/ProtocolBench.cpp
++++ b/thrift/lib/cpp2/test/ProtocolBench.cpp
+@@ -200,6 +200,34 @@
+ OpEncodeX(OpEncode, Binary)
+ OpEncodeX(OpEncode, Compact)
+ 
++BENCHMARK(ObjectCompactProtocol_read_LargeSetInt_lowIPC, iters) {
++  folly::BenchmarkSuspender susp;
++  auto strct = create<LargeSetInt>();
++  folly::IOBufQueue q;
++  CompactSerializer::serialize(strct, &q);
++  auto buf = q.move();
++  buf->coalesce();
++  // Build a vector of shuffled buffers to defeat prefetcher and branch predictor
++  constexpr size_t kNumBufs = 64;
++  std::vector<std::unique_ptr<folly::IOBuf>> bufs;
++  bufs.reserve(kNumBufs);
++  for (size_t i = 0; i < kNumBufs; ++i) {
++    bufs.push_back(buf->clone());
++  }
++  // Shuffle to increase cache misses
++  std::mt19937 rng(42);
++  std::shuffle(bufs.begin(), bufs.end(), rng);
++  susp.dismiss();
++
++  size_t idx = 0;
++  while (iters--) {
++    auto obj = protocol::parseObject<CompactProtocolReader>(*bufs[idx % kNumBufs]);
++    folly::doNotOptimizeAway(obj);
++    ++idx;
++  }
++  susp.rehire();
++}
++
+ int main(int argc, char** argv) {
+   folly::Init init(&argc, &argv);
+   folly::runBenchmarks();

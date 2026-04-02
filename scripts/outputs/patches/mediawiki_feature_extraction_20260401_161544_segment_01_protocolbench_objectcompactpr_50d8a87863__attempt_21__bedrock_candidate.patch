@@ -1,0 +1,11 @@
+--- a/thrift/lib/cpp2/test/ProtocolBench.cpp
++++ b/thrift/lib/cpp2/test/ProtocolBench.cpp
+@@ -263,7 +263,7 @@
+         switch (i % 3) {
+             case 0: acc = process_data<1>(acc, p); break;
+             case 1: acc = process_data<2>(acc, p); break;
+-            case 2: acc = process_data<3>(acc, p); break;
++            default: acc = process_data<3>(acc, p); break;
+         }
+ 
+         current_offset += (1 + (p[1] % 32));

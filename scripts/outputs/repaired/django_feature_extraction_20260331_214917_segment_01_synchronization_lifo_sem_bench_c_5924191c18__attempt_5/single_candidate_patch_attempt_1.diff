@@ -1,0 +1,59 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -180,6 +180,8 @@
+                                                       CASES_8(v, c, 240)       \
+                                                           CASES_8(v, c, 248)
+ 
++// These functions are marked noinline in the original context, implying call overhead.
++// For contendedUse_v2, we will inline their logic directly to reduce call overhead.
+ __attribute__((noinline)) uint64_t switchA(uint64_t v, int c) {
+   switch (c) {
+     CASES_256(v, c);
+@@ -238,16 +240,41 @@
+         for (uint32_t i = t; i < n; i += posters) {
+           hotPos = hotPos->next;
+           uint64_t payload = (uint64_t)(uintptr_t)hotPos;
++          uint64_t c_arg = payload & 0xFF; // Extract c_arg once
++
+           switch (i % 3) {
+-            case 0:
+-              acc = switchA(acc, payload & 0xFF);
++            case 0: {
++              // Inlined switchA logic
++              uint64_t v_temp = acc;
++              switch (c_arg) { // Use c_arg to select the specific case
++                CASES_256(v_temp, c_arg); // Use c_arg directly for arithmetic in macro
++                default:;
++              }
++              acc = v_temp;
+               break;
+-            case 1:
+-              acc = switchB(acc, payload & 0xFF);
++            }
++            case 1: {
++              // Inlined switchB logic
++              uint64_t v_temp = acc;
++              int c_val_b = c_arg * 3; // Calculate the effective c_val for the arithmetic
++              switch (c_arg) { // Use c_arg to select the specific case
++                CASES_256(v_temp, c_val_b); // Pass the modified value to the arithmetic in macro
++                default:;
++              }
++              acc = v_temp;
+               break;
+-            case 2:
+-              acc = switchC(acc, payload & 0xFF);
++            }
++            case 2: {
++              // Inlined switchC logic
++              uint64_t v_temp = acc;
++              int c_val_c = c_arg * 5; // Calculate the effective c_val for the arithmetic
++              switch (c_arg) { // Use c_arg to select the specific case
++                CASES_256(v_temp, c_val_c); // Pass the modified value to the arithmetic in macro
++                default:;
++              }
++              acc = v_temp;
+               break;
++            }
+           }
+ 
+           // Previous logic: auto coldMask = -uint64_t(i % 8 == 0);

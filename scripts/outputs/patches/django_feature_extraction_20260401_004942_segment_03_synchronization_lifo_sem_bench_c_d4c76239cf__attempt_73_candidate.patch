@@ -1,0 +1,15 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -250,8 +250,11 @@
+               break;
+           }
+ 
+-          auto coldMask = -uint64_t(i % 8 == 0);
+           // Removed the redundant coldPos update which was only conditionally used.
++          // The diagnostic indicates to keep the current shape and tune down stalls.
++          // The original code did not always update `coldPos` and this was a deliberate choice.
++          // To maintain the current shape, we ensure `coldPos` is NOT updated here.
++          // The line below was the one that could conditionally update `coldPos`.
+           // coldPos = (ChainNode*)(((uintptr_t)coldPos->next & coldMask) |
+           //                        ((uintptr_t)coldPos & ~coldMask));
+           sem.post();

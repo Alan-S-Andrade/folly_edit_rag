@@ -1,0 +1,42 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -136,20 +136,26 @@
+   }
+ }
+ 
++#define EXPANDED_ALU_OPS_INTERNAL(v_acc, c_val, base_val, case_id, block_offset, \
++                                  mul1, add1, mul2, xor1, sub1, mod1, add2, mul3, xor2, sub2, add3, mul4, mod2, add4, mul5) \
++  v_acc = ((v_acc * mul1) ^ ((uint64_t)c_val + base_val + case_id + block_offset + 0)); \
++  v_acc = ((v_acc + add1) & ((uint64_t)c_val - base_val + case_id + block_offset + 1)); \
++  v_acc = ((v_acc * mul2) + ((uint64_t)c_val | (base_val + case_id + block_offset + 2))); \
++  v_acc = ((v_acc ^ xor1) * ((uint64_t)c_val + base_val + case_id + block_offset + 3)); \
++  v_acc = ((v_acc - sub1) >> (((uint64_t)c_val % mod1) + 1)); /* avoid zero shift */ \
++  v_acc = ((v_acc + add2) ^ ((uint64_t)c_val * base_val + case_id + block_offset + 4)); \
++  v_acc = ((v_acc * mul3) + ((uint64_t)c_val & (base_val + case_id + block_offset + 5))); \
++  v_acc = ((v_acc ^ xor2) - ((uint64_t)c_val + base_val + case_id + block_offset + 6)); \
++  v_acc = ((v_acc + add3) * ((uint64_t)c_val | (base_val + case_id + block_offset + 7))); \
++  v_acc = ((v_acc - sub2) & ((uint64_t)c_val + base_val + case_id + block_offset + 8)); \
++  v_acc = ((v_acc * mul4) ^ ((uint64_t)c_val - base_val + case_id + block_offset + 9)); \
++  v_acc = ((v_acc + add4) >> (((uint64_t)c_val % mod2) + 1)); \
++  v_acc = ((v_acc * mul5) + ((uint64_t)c_val ^ (base_val + case_id + block_offset + 10)));
++
+ #define EXPANDED_ALU_OPS_BODY(v_acc, c_val, base_val, case_id)                 \
+-  v_acc = ((v_acc * 3) ^ ((uint64_t)c_val + base_val + case_id + 0));         \
+-  v_acc = ((v_acc + 5) & ((uint64_t)c_val - base_val + case_id + 1));         \
+-  v_acc = ((v_acc * 7) + ((uint64_t)c_val | (base_val + case_id + 2)));       \
+-  v_acc = ((v_acc ^ 11) * ((uint64_t)c_val + base_val + case_id + 3));        \
+-  v_acc = ((v_acc - 13) >> (((uint64_t)c_val % 31) + 1)); /* avoid zero shift */ \
+-  v_acc = ((v_acc + 17) ^ ((uint64_t)c_val * base_val + case_id + 4));        \
+-  v_acc = ((v_acc * 19) + ((uint64_t)c_val & (base_val + case_id + 5)));      \
+-  v_acc = ((v_acc ^ 23) - ((uint64_t)c_val + base_val + case_id + 6));        \
+-  v_acc = ((v_acc + 29) * ((uint64_t)c_val | (base_val + case_id + 7)));      \
+-  v_acc = ((v_acc - 31) & ((uint64_t)c_val + base_val + case_id + 8));        \
+-  v_acc = ((v_acc * 37) ^ ((uint64_t)c_val - base_val + case_id + 9));        \
+-  v_acc = ((v_acc + 41) >> (((uint64_t)c_val % 31) + 1));                     \
+-  v_acc = ((v_acc * 43) + ((uint64_t)c_val ^ (base_val + case_id + 10)));
++  EXPANDED_ALU_OPS_INTERNAL(v_acc, c_val, base_val, case_id, 0, 3, 5, 7, 11, 13, 31, 17, 19, 23, 29, 31, 37, 31, 41, 43) \
++  EXPANDED_ALU_OPS_INTERNAL(v_acc, c_val, base_val, case_id, 12, 53, 59, 61, 67, 71, 37, 73, 79, 83, 89, 97, 101, 37, 103, 107) \
++  EXPANDED_ALU_OPS_INTERNAL(v_acc, c_val, base_val, case_id, 24, 109, 113, 127, 131, 137, 41, 139, 149, 151, 157, 163, 167, 41, 173, 179)
+ 
+ #define CASES_8(v, c, base)                                                    \
+   case base + 0:                                                               \

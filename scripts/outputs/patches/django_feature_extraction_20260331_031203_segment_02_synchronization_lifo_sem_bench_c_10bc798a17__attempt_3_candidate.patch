@@ -1,0 +1,219 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -136,6 +136,7 @@
+   }
+ }
+ 
++// Original 3 ALU ops per case
+ #define CASES_8(v, c, base)                                                    \
+   case base + 0:                                                               \
+     v = (v * 3) + (uint64_t)c + base + 0;                                      \
+@@ -202,6 +203,113 @@
+   return v;
+ }
+ 
++// NEW: 14 ALU ops per case (6 lines, each ~2-3 ops)
++#define CASES_8_SUPER_HEAVY(v, c, base)                                         \
++  case base + 0:                                                             \
++    v = (v * 3) + (uint64_t)c + base + 0;                                    \
++    v = (v ^ 5) - (uint64_t)c + base + 1;                                    \
++    v = (v + 7) * ((uint64_t)c + base + 2);                                  \
++    v = (v - 11) & ((uint64_t)c + base + 3);                                 \
++    v = (v | 13) + ((uint64_t)c + base + 4);                                 \
++    v = (v << (base % 5 + 1)) ^ ((uint64_t)c + base + 5);                     \
++    break;                                                                   \
++  case base + 1:                                                             \
++    v = (v * 5) + (uint64_t)c + base + 6;                                    \
++    v = (v ^ 7) - (uint64_t)c + base + 7;                                    \
++    v = (v + 11) * ((uint64_t)c + base + 8);                                 \
++    v = (v - 13) & ((uint64_t)c + base + 9);                                 \
++    v = (v | 17) + ((uint64_t)c + base + 10);                                \
++    v = (v << (base % 5 + 2)) ^ ((uint64_t)c + base + 11);                    \
++    break;                                                                   \
++  case base + 2:                                                             \
++    v = (v * 7) + (uint64_t)c + base + 12;                                   \
++    v = (v ^ 11) - (uint64_t)c + base + 13;                                  \
++    v = (v + 13) * ((uint64_t)c + base + 14);                                \
++    v = (v - 17) & ((uint64_t)c + base + 15);                                \
++    v = (v | 19) + ((uint64_t)c + base + 16);                                \
++    v = (v << (base % 5 + 3)) ^ ((uint64_t)c + base + 17);                    \
++    break;                                                                   \
++  case base + 3:                                                             \
++    v = (v * 11) + (uint64_t)c + base + 18;                                  \
++    v = (v ^ 13) - (uint64_t)c + base + 19;                                  \
++    v = (v + 17) * ((uint64_t)c + base + 20);                                \
++    v = (v - 19) & ((uint64_t)c + base + 21);                                \
++    v = (v | 23) + ((uint64_t)c + base + 22);                                \
++    v = (v << (base % 5 + 4)) ^ ((uint64_t)c + base + 23);                    \
++    break;                                                                   \
++  case base + 4:                                                             \
++    v = (v * 13) + (uint64_t)c + base + 24;                                  \
++    v = (v ^ 17) - (uint64_t)c + base + 25;                                  \
++    v = (v + 19) * ((uint64_t)c + base + 26);                                \
++    v = (v - 23) & ((uint64_t)c + base + 27);                                \
++    v = (v | 29) + ((uint64_t)c + base + 28);                                \
++    v = (v << (base % 5 + 1)) ^ ((uint64_t)c + base + 29);                    \
++    break;                                                                   \
++  case base + 5:                                                             \
++    v = (v * 17) + (uint64_t)c + base + 30;                                  \
++    v = (v ^ 19) - (uint64_t)c + base + 31;                                  \
++    v = (v + 23) * ((uint64_t)c + base + 32);                                \
++    v = (v - 29) & ((uint64_t)c + base + 33);                                \
++    v = (v | 31) + ((uint64_t)c + base + 34);                                \
++    v = (v << (base % 5 + 2)) ^ ((uint64_t)c + base + 35);                    \
++    break;                                                                   \
++  case base + 6:                                                             \
++    v = (v * 19) + (uint64_t)c + base + 36;                                  \
++    v = (v ^ 23) - (uint64_t)c + base + 37;                                  \
++    v = (v + 29) * ((uint64_t)c + base + 38);                                \
++    v = (v - 31) & ((uint64_t)c + base + 39);                                \
++    v = (v | 37) + ((uint64_t)c + base + 40);                                \
++    v = (v << (base % 5 + 3)) ^ ((uint64_t)c + base + 41);                    \
++    break;                                                                   \
++  case base + 7:                                                             \
++    v = (v * 23) + (uint64_t)c + base + 42;                                  \
++    v = (v ^ 29) - (uint64_t)c + base + 43;                                  \
++    v = (v + 31) * ((uint64_t)c + base + 44);                                \
++    v = (v - 37) & ((uint64_t)c + base + 45);                                \
++    v = (v | 41) + ((uint64_t)c + base + 46);                                \
++    v = (v << (base % 5 + 4)) ^ ((uint64_t)c + base + 47);                    \
++    break;
++
++#define CASES_256_SUPER_HEAVY(v, c)                                            \
++  CASES_8_SUPER_HEAVY(v, c, 0)                                                 \
++  CASES_8_SUPER_HEAVY(v, c, 8) CASES_8_SUPER_HEAVY(v, c, 16) CASES_8_SUPER_HEAVY(v, c, 24) CASES_8_SUPER_HEAVY(v, c, 32) \
++      CASES_8_SUPER_HEAVY(v, c, 40) CASES_8_SUPER_HEAVY(v, c, 48) CASES_8_SUPER_HEAVY(v, c, 56)                 \
++          CASES_8_SUPER_HEAVY(v, c, 64) CASES_8_SUPER_HEAVY(v, c, 72) CASES_8_SUPER_HEAVY(v, c, 80)             \
++              CASES_8_SUPER_HEAVY(v, c, 88) CASES_8_SUPER_HEAVY(v, c, 96) CASES_8_SUPER_HEAVY(v, c, 104)        \
++                  CASES_8_SUPER_HEAVY(v, c, 112) CASES_8_SUPER_HEAVY(v, c, 120) CASES_8_SUPER_HEAVY(v, c, 128)  \
++                      CASES_8_SUPER_HEAVY(v, c, 136) CASES_8_SUPER_HEAVY(v, c, 144)                         \
++                          CASES_8_SUPER_HEAVY(v, c, 152) CASES_8_SUPER_HEAVY(v, c, 160)                     \
++                              CASES_8_SUPER_HEAVY(v, c, 168) CASES_8_SUPER_HEAVY(v, c, 176)                 \
++                                  CASES_8_SUPER_HEAVY(v, c, 184) CASES_8_SUPER_HEAVY(v, c, 192)             \
++                                      CASES_8_SUPER_HEAVY(v, c, 200) CASES_8_SUPER_HEAVY(v, c, 208)         \
++                                          CASES_8_SUPER_HEAVY(v, c, 216)                                   \
++                                              CASES_8_SUPER_HEAVY(v, c, 224)                               \
++                                                  CASES_8_SUPER_HEAVY(v, c, 232)                           \
++                                                      CASES_8_SUPER_HEAVY(v, c, 240)                       \
++                                                          CASES_8_SUPER_HEAVY(v, c, 248)
++
++__attribute__((noinline)) uint64_t switchA_super_heavy(uint64_t v, int c) {
++  switch (c) {
++    CASES_256_SUPER_HEAVY(v, c);
++    default:;
++  }
++  return v;
++}
++__attribute__((noinline)) uint64_t switchB_super_heavy(uint64_t v, int c) {
++  switch (c) {
++    CASES_256_SUPER_HEAVY(v, c * 3);
++    default:;
++  }
++  return v;
++}
++__attribute__((noinline)) uint64_t switchC_super_heavy(uint64_t v, int c) {
++  switch (c) {
++    CASES_256_SUPER_HEAVY(v, c * 5);
++    default:;
++  }
++  return v;
++}
++
+ struct DepWorkInitializer {
+   DepWorkInitializer() {
+     coldNodes = new ChainNode[kColdLen];
+@@ -267,9 +375,9 @@
+     thr.join();
+   }
+ }
+-} // namespace
+-
+-static void contendedUse(uint32_t n, int posters, int waiters) {
++
++// NEW: A new benchmark variant similar to contendedUse_v2 but with more ALU ops per switch case
++static void contendedUseHeavyIcache(uint32_t n, int posters, int waiters) {
+   LifoSemImpl<std::atomic> sem;
+ 
+   std::vector<std::thread> threads;
+@@ -285,12 +393,36 @@
+     }
+     for (int t = 0; t < posters; ++t) {
+       threads.emplace_back([=, &sem, &go] {
++        ChainNode* hotPos = &hotNodes[t % kHotLen];
++        ChainNode* coldPos = &coldNodes[t % kColdLen];
++        uint64_t acc = t;
++
+         while (!go.load()) {
+           std::this_thread::yield();
+         }
+         for (uint32_t i = t; i < n; i += posters) {
++          hotPos = hotPos->next;
++          uint64_t payload = (uint64_t)(uintptr_t)hotPos;
++          switch (i % 3) {
++            case 0:
++              acc = switchA_super_heavy(acc, payload & 0xFF); // Using new heavy switch
++              break;
++            case 1:
++              acc = switchB_super_heavy(acc, payload & 0xFF); // Using new heavy switch
++              break;
++            case 2:
++              acc = switchC_super_heavy(acc, payload & 0xFF); // Using new heavy switch
++              break;
++          }
++
++          auto coldMask = -uint64_t(i % 8 == 0);
++          coldPos = (ChainNode*)(((uintptr_t)coldPos->next & coldMask) |
++                                 ((uintptr_t)coldPos & ~coldMask));
+           sem.post();
+         }
++        folly::doNotOptimizeAway(acc);
++        folly::doNotOptimizeAway(hotPos);
++        folly::doNotOptimizeAway(coldPos);
+       });
+     }
+   }
+@@ -300,9 +432,44 @@
+     thr.join();
+   }
+ }
++} // namespace
++
++static void contendedUse(uint32_t n, int posters, int waiters) {
++  LifoSemImpl<std::atomic> sem;
++
++  std::vector<std::thread> threads;
++  std::atomic<bool> go(false);
++
++  BENCHMARK_SUSPEND {
++    for (int t = 0; t < waiters; ++t) {
++      threads.emplace_back([=, &sem] {
++        for (uint32_t i = t; i < n; i += waiters) {
++          sem.wait();
++        }
++      });
++    }
++    for (int t = 0; t < posters; ++t) {
++      threads.emplace_back([=, &sem, &go] {
++        while (!go.load()) {
++          std::this_thread::yield();
++        }
++        for (uint32_t i = t; i < n; i += posters) {
++          sem.post();
++        }
++      });
++    }
++  }
++
++  go.store(true);
++  for (auto& thr : threads) {
++    thr.join();
++  }
++}
+ 
+ BENCHMARK_DRAW_LINE();
+ BENCHMARK_NAMED_PARAM(contendedUse, 1_to_1, 1, 1)
++// NEW: Registration for the heavy icache benchmark variant
++BENCHMARK_NAMED_PARAM(contendedUseHeavyIcache, heavy_icache_32_to_32, 32, 32)
+ BENCHMARK_NAMED_PARAM(contendedUse, 1_to_4, 1, 4)
+ BENCHMARK_NAMED_PARAM(contendedUse, 1_to_32, 1, 32)
+ BENCHMARK_NAMED_PARAM(contendedUse, 4_to_1, 4, 1)

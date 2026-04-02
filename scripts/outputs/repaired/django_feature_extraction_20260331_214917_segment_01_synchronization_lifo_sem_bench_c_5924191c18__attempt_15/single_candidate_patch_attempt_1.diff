@@ -1,0 +1,61 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -139,27 +139,51 @@
+ #define CASES_8(v, c, base)                                                    \
+   case base + 0:                                                               \
+     v = (v * 3) + (uint64_t)c + base + 0;                                      \
++    v = (v * 5) + (uint64_t)c + base + 0x100 + 0;                              \
++    v = (v * 7) + (uint64_t)c + base + 0x200 + 0;                              \
++    v = (v * 11) + (uint64_t)c + base + 0x300 + 0;                             \
+     break;                                                                     \
+   case base + 1:                                                               \
+-    v = (v * 5) + (uint64_t)c + base + 1;                                      \
++    v = (v * 3) + (uint64_t)c + base + 1;                                      \
++    v = (v * 5) + (uint64_t)c + base + 0x100 + 1;                              \
++    v = (v * 7) + (uint64_t)c + base + 0x200 + 1;                              \
++    v = (v * 11) + (uint64_t)c + base + 0x300 + 1;                             \
+     break;                                                                     \
+   case base + 2:                                                               \
+-    v = (v * 7) + (uint64_t)c + base + 2;                                      \
++    v = (v * 3) + (uint64_t)c + base + 2;                                      \
++    v = (v * 5) + (uint64_t)c + base + 0x100 + 2;                              \
++    v = (v * 7) + (uint64_t)c + base + 0x200 + 2;                              \
++    v = (v * 11) + (uint64_t)c + base + 0x300 + 2;                             \
+     break;                                                                     \
+   case base + 3:                                                               \
+-    v = (v * 11) + (uint64_t)c + base + 3;                                     \
++    v = (v * 3) + (uint64_t)c + base + 3;                                      \
++    v = (v * 5) + (uint64_t)c + base + 0x100 + 3;                              \
++    v = (v * 7) + (uint64_t)c + base + 0x200 + 3;                              \
++    v = (v * 11) + (uint64_t)c + base + 0x300 + 3;                             \
+     break;                                                                     \
+   case base + 4:                                                               \
+-    v = (v * 13) + (uint64_t)c + base + 4;                                     \
++    v = (v * 3) + (uint64_t)c + base + 4;                                      \
++    v = (v * 5) + (uint64_t)c + base + 0x100 + 4;                              \
++    v = (v * 7) + (uint64_t)c + base + 0x200 + 4;                              \
++    v = (v * 11) + (uint64_t)c + base + 0x300 + 4;                             \
+     break;                                                                     \
+   case base + 5:                                                               \
+-    v = (v * 17) + (uint64_t)c + base + 5;                                     \
++    v = (v * 3) + (uint64_t)c + base + 5;                                      \
++    v = (v * 5) + (uint64_t)c + base + 0x100 + 5;                              \
++    v = (v * 7) + (uint64_t)c + base + 0x200 + 5;                              \
++    v = (v * 11) + (uint64_t)c + base + 0x300 + 5;                             \
+     break;                                                                     \
+   case base + 6:                                                               \
+-    v = (v * 19) + (uint64_t)c + base + 6;                                     \
++    v = (v * 3) + (uint64_t)c + base + 6;                                      \
++    v = (v * 5) + (uint64_t)c + base + 0x100 + 6;                              \
++    v = (v * 7) + (uint64_t)c + base + 0x200 + 6;                              \
++    v = (v * 11) + (uint64_t)c + base + 0x300 + 6;                             \
+     break;                                                                     \
+   case base + 7:                                                               \
+-    v = (v * 23) + (uint64_t)c + base + 7;                                     \
++    v = (v * 3) + (uint64_t)c + base + 7;                                      \
++    v = (v * 5) + (uint64_t)c + base + 0x100 + 7;                              \
++    v = (v * 7) + (uint64_t)c + base + 0x200 + 7;                              \
++    v = (v * 11) + (uint64_t)c + base + 0x300 + 7;                             \
+     break;
+ 
+ #define CASES_256(v, c)                                                        \

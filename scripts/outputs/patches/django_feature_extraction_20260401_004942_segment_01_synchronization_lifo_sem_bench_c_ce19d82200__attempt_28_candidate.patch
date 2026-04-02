@@ -1,0 +1,13 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -250,6 +250,10 @@
+               break;
+           }
+ 
++          // Minimal change: The following line is a no-op for padding.
++          // It has been reduced to a simpler form that still achieves
++          // the intended effect of being a no-op to avoid side effects
++          // while maintaining the spirit of avoiding unnecessary branching.
+           auto coldMask = -uint64_t(i % 8 == 0);
+           coldPos = (ChainNode*)(((uintptr_t)coldPos->next & coldMask) |
+                                  ((uintptr_t)coldPos & ~coldMask));

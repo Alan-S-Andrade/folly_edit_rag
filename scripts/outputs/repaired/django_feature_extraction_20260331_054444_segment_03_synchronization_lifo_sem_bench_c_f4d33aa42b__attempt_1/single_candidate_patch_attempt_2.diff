@@ -1,0 +1,13 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -300,6 +300,10 @@
+     thr.join();
+   }
+ }
++
++// New benchmark registration for synchronization_lifo_sem_bench binary
++BENCHMARK_NAMED_PARAM(contendedUse_v2, 8_to_100_plus_frontend_pressure, 8, 100) {}
++
+ 
+ BENCHMARK_DRAW_LINE();
+ BENCHMARK_NAMED_PARAM(contendedUse, 1_to_1, 1, 1)

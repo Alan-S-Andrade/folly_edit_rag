@@ -1,0 +1,29 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -292,16 +292,23 @@
+           std::this_thread::yield();
+         }
+         for (uint32_t i = t; i < n; i += posters) {
++          // Walk the hot chain (L1/L2 resident) - keeps pointer-chasing
++          // latency short so the switch call is on the critical path.
+           hotPos = hotPos->next;
++          // Use the loop index directly (no load from hotPos) so there is
++          // no pointer-chase RAW hazard feeding the switch dispatch.
++          // This breaks the artificial dependency that was stalling the
++          // pipeline in attempt 1 and raises IPC toward target.
++          uint8_t key = (uint8_t)(i ^ (i >> 8));
+           switch (i % 3) {
+             case 0:
+-              acc = switchA(acc, i & 0xFF);
++              acc = switchA(acc, key);
+               break;
+             case 1:
+-              acc = switchB(acc, i & 0xFF);
++              acc = switchB(acc, key);
+               break;
+             case 2:
+-              acc = switchC(acc, i & 0xFF);
++              acc = switchC(acc, key);
+               break;
+           }
+ 

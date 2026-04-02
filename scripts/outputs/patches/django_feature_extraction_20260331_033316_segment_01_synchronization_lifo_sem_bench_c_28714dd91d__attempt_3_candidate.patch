@@ -1,0 +1,147 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -202,6 +202,73 @@
+   return v;
+ }
+ 
++// New macros for contendedUse_v3, increasing ALU ops per case
++#define ALU_OP_CHUNK_V3(v, c, base, offset, chunk_id_val)                      \
++  v = (v * (3 + chunk_id_val)) + (uint64_t)c + base + offset + (chunk_id_val * 100);  \
++  v = (v ^ (5 + chunk_id_val)) + (uint64_t)c + base + offset + (chunk_id_val * 100 + 1); \
++  v = (v + (7 + chunk_id_val)) * (uint64_t)c + base + offset + (chunk_id_val * 100 + 2); \
++  v = (v * (11 + chunk_id_val)) + (uint64_t)c + base + offset + (chunk_id_val * 100 + 3); \
++  v = (v ^ (13 + chunk_id_val)) + (uint64_t)c + base + offset + (chunk_id_val * 100 + 4); \
++  v = (v + (17 + chunk_id_val)) * (uint64_t)c + base + offset + (chunk_id_val * 100 + 5); \
++  v = (v * (19 + chunk_id_val)) + (uint64_t)c + base + offset + (chunk_id_val * 100 + 6); \
++  v = (v ^ (23 + chunk_id_val)) + (uint64_t)c + base + offset + (chunk_id_val * 100 + 7);
++
++#define ALU_OPS_BODY_V3(v, c, base, offset)                                    \
++  ALU_OP_CHUNK_V3(v, c, base, offset, 0);                                      \
++  ALU_OP_CHUNK_V3(v, c, base, offset, 1);                                      \
++  ALU_OP_CHUNK_V3(v, c, base, offset, 2);                                      \
++  ALU_OP_CHUNK_V3(v, c, base, offset, 3); // 4 chunks * 8 ops = 32 ops per case
++
++#define CASES_8_V3(v, c, base)                                                 \
++  case base + 0: ALU_OPS_BODY_V3(v, c, base, 0); break;                        \
++  case base + 1: ALU_OPS_BODY_V3(v, c, base, 1); break;                        \
++  case base + 2: ALU_OPS_BODY_V3(v, c, base, 2); break;                        \
++  case base + 3: ALU_OPS_BODY_V3(v, c, base, 3); break;                        \
++  case base + 4: ALU_OPS_BODY_V3(v, c, base, 4); break;                        \
++  case base + 5: ALU_OPS_BODY_V3(v, c, base, 5); break;                        \
++  case base + 6: ALU_OPS_BODY_V3(v, c, base, 6); break;                        \
++  case base + 7: ALU_OPS_BODY_V3(v, c, base, 7); break;
++
++#define CASES_256_V3(v, c)                                                     \
++  CASES_8_V3(v, c, 0)                                                          \
++  CASES_8_V3(v, c, 8) CASES_8_V3(v, c, 16) CASES_8_V3(v, c, 24) CASES_8_V3(v, c, 32) \
++      CASES_8_V3(v, c, 40) CASES_8_V3(v, c, 48) CASES_8_V3(v, c, 56)           \
++          CASES_8_V3(v, c, 64) CASES_8_V3(v, c, 72) CASES_8_V3(v, c, 80)       \
++              CASES_8_V3(v, c, 88) CASES_8_V3(v, c, 96) CASES_8_V3(v, c, 104)  \
++                  CASES_8_V3(v, c, 112) CASES_8_V3(v, c, 120) CASES_8_V3(v, c, 128) \
++                      CASES_8_V3(v, c, 136) CASES_8_V3(v, c, 144)              \
++                          CASES_8_V3(v, c, 152) CASES_8_V3(v, c, 160)          \
++                              CASES_8_V3(v, c, 168) CASES_8_V3(v, c, 176)      \
++                                  CASES_8_V3(v, c, 184) CASES_8_V3(v, c, 192)  \
++                                      CASES_8_V3(v, c, 200) CASES_8_V3(v, c, 208) \
++                                          CASES_8_V3(v, c, 216)                \
++                                              CASES_8_V3(v, c, 224)            \
++                                                  CASES_8_V3(v, c, 232)        \
++                                                      CASES_8_V3(v, c, 240)    \
++                                                          CASES_8_V3(v, c, 248)
++
++__attribute__((noinline)) uint64_t switchA_v3(uint64_t v, int c) {
++  switch (c) {
++    CASES_256_V3(v, c + 0);
++    default:;
++  }
++  return v;
++}
++__attribute__((noinline)) uint64_t switchB_v3(uint64_t v, int c) {
++  switch (c) {
++    CASES_256_V3(v, c + 1);
++    default:;
++  }
++  return v;
++}
++__attribute__((noinline)) uint64_t switchC_v3(uint64_t v, int c) {
++  switch (c) {
++    CASES_256_V3(v, c + 2);
++    default:;
++  }
++  return v;
++}
++
+ struct DepWorkInitializer {
+   DepWorkInitializer() {
+     coldNodes = new ChainNode[kColdLen];
+@@ -247,6 +314,62 @@
+               break;
+             case 2:
+               acc = switchC(acc, payload & 0xFF);
++              break;
++          }
++
++          auto coldMask = -uint64_t(i % 8 == 0);
++          coldPos = (ChainNode*)(((uintptr_t)coldPos->next & coldMask) |
++                                 ((uintptr_t)coldPos & ~coldMask));
++          sem.post();
++        }
++        folly::doNotOptimizeAway(acc);
++        folly::doNotOptimizeAway(hotPos);
++        folly::doNotOptimizeAway(coldPos);
++      });
++    }
++  }
++
++  go.store(true);
++  for (auto& thr : threads) {
++    thr.join();
++  }
++}
++
++static void contendedUse_v3(uint32_t n, int posters, int waiters) {
++  LifoSemImpl<std::atomic> sem;
++
++  std::vector<std::thread> threads;
++  std::atomic<bool> go(false);
++
++  BENCHMARK_SUSPEND {
++    for (int t = 0; t < waiters; ++t) {
++      threads.emplace_back([=, &sem] {
++        for (uint32_t i = t; i < n; i += waiters) {
++          sem.wait();
++        }
++      });
++    }
++    for (int t = 0; t < posters; ++t) {
++      threads.emplace_back([=, &sem, &go] {
++        ChainNode* hotPos = &hotNodes[t % kHotLen];
++        ChainNode* coldPos = &coldNodes[t % kColdLen];
++        uint64_t acc = t;
++
++        while (!go.load()) {
++          std::this_thread::yield();
++        }
++        for (uint32_t i = t; i < n; i += posters) {
++          hotPos = hotPos->next;
++          uint64_t payload = (uint64_t)(uintptr_t)hotPos;
++          switch (i % 3) {
++            case 0:
++              acc = switchA_v3(acc, payload & 0xFF); // Using v3 switch functions
++              break;
++            case 1:
++              acc = switchB_v3(acc, payload & 0xFF); // Using v3 switch functions
++              break;
++            case 2:
++              acc = switchC_v3(acc, payload & 0xFF); // Using v3 switch functions
+               break;
+           }
+ 
+@@ -313,6 +436,7 @@
+ BENCHMARK_NAMED_PARAM(contendedUse, 32_to_32, 32, 32)
+ BENCHMARK_NAMED_PARAM(contendedUse_v2, 32_to_32_v2, 32, 32)
+ BENCHMARK_NAMED_PARAM(contendedUse, 32_to_1000, 32, 1000)
++BENCHMARK_NAMED_PARAM(contendedUse_v3, 32_to_1000_t1f_ops, 32, 1000)
+ 
+ // sudo nice -n -20 _build/opt/folly/test/LifoSemTests
+ //     --benchmark --bm_min_iters=10000000 --gtest_filter=-\*

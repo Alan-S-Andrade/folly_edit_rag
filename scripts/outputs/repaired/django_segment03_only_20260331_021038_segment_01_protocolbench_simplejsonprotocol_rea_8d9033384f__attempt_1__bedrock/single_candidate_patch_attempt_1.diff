@@ -1,0 +1,50 @@
+--- a/thrift/lib/cpp2/test/ProtocolBench.cpp
++++ b/thrift/lib/cpp2/test/ProtocolBench.cpp
+@@ -122,6 +122,33 @@
+       Serializer::deserialize(buf.get(), data);
+       folly::doNotOptimizeAway(data);
+     }
++  }
++  susp.rehire();
++}
++
++// Variant of readBench that performs two deserializations per iteration to
++// increase instruction-level parallelism and raise IPC relative to the
++// single-deserialize baseline.
++template <
++    SerializerMethod kSerializerMethod,
++    typename Serializer,
++    typename Struct>
++void readBenchDouble(size_t iters) {
++  folly::BenchmarkSuspender susp;
++  auto strct = create<Struct>();
++  folly::IOBufQueue q;
++  Serializer::serialize(strct, &q);
++  auto buf = q.move();
++  buf->coalesce();
++  susp.dismiss();
++
++  while (iters--) {
++    Struct data0;
++    Serializer::deserialize(buf.get(), data0);
++    folly::doNotOptimizeAway(data0);
++    Struct data1;
++    Serializer::deserialize(buf.get(), data1);
++    folly::doNotOptimizeAway(data1);
+   }
+   susp.rehire();
+ }
+@@ -200,6 +227,13 @@
+ OpEncodeX(OpEncode, Binary)
+ OpEncodeX(OpEncode, Compact)
+ 
++BENCHMARK(SimpleJSONProtocol_readDouble_UnorderedSetInt, iters) {
++  readBenchDouble<
++      SerializerMethod::Codegen,
++      SimpleJSONSerializer,
++      UnorderedSetInt>(iters);
++}
++
+ int main(int argc, char** argv) {
+   folly::Init init(&argc, &argv);
+   folly::runBenchmarks();

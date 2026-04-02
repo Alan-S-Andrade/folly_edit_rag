@@ -1,0 +1,76 @@
+--- a/folly/io/test/IOBufBenchmark.cpp
++++ b/folly/io/test/IOBufBenchmark.cpp
+@@ -147,28 +147,29 @@
+ }
+ 
+ // Helper functions for createAndDestroyMulti_LargeAlloc to increase I-cache footprint.
+-// Each function has a 256-case switch with 12 ALU ops per case.
++// Each function has a 256-case switch with N ALU ops per case.
+ // The `__attribute__((noinline))` ensures they are not optimized away or merged.
+ // Unique literal constants are used in each case to prevent compiler deduplication.
+-__attribute__((noinline)) static int switch_case_1(const std::vector<uint64_t>& vec, uint64_t& current, uint64_t offset) {
++// The number of ALU ops per case is adjusted to target L1i MPKI.
++__attribute__((noinline)) static int switch_case_helper_1(const std::vector<uint64_t>& vec, uint64_t& current, uint64_t offset, int ops_per_case) {
+   int result = 0;
+-  for (int i = 0; i < 12; ++i) {
++  for (int i = 0; i < ops_per_case; ++i) {
+     result = (result * 17) ^ vec[(current + offset + i) & 0xFF];
+   }
+   return result & 0xFF;
+ }
+ 
+-__attribute__((noinline)) static int switch_case_2(const std::vector<uint64_t>& vec, uint64_t& current, uint64_t offset) {
++__attribute__((noinline)) static int switch_case_helper_2(const std::vector<uint64_t>& vec, uint64_t& current, uint64_t offset, int ops_per_case) {
+   int result = 0;
+-  for (int i = 0; i < 12; ++i) {
++  for (int i = 0; i < ops_per_case; ++i) {
+     result = (result + 23) ^ vec[(current - offset - i) & 0xFF];
+   }
+   return result & 0xFF;
+ }
+ 
+-__attribute__((noinline)) static int switch_case_3(const std::vector<uint64_t>& vec, uint64_t& current, uint64_t offset) {
++__attribute__((noinline)) static int switch_case_helper_3(const std::vector<uint64_t>& vec, uint64_t& current, uint64_t offset, int ops_per_case) {
+   int result = 0;
+-  for (int i = 0; i < 12; ++i) {
++  for (int i = 0; i < ops_per_case; ++i) {
+     result = (result ^ 29) + vec[(current + offset * 2 + i) & 0xFF];
+   }
+   return result & 0xFF;
+@@ -234,6 +235,7 @@
+   }
+ 
+   uint64_t current = 0; // Payload
++  int ops_per_case = 12; // Number of ALU ops per switch case
+ 
+   while (iters--) {
+     for (auto i = 0; i < kSize; ++i) {
+@@ -241,10 +243,24 @@
+     }
+     // Introduce indirection and ALU ops to increase I-cache footprint.
+     for (int j = 0; j < 512; ++j) { // Reduced loop count for better focus on I-cache
+-      current ^= indirect_data[(current + j) & 0xFF];
+-      current ^= indirect_data[switch_case_1(indirect_data, current, j)];
+-      current ^= indirect_data[switch_case_2(indirect_data, current, j)];
+-      current ^= indirect_data[switch_case_3(indirect_data, current, j)];
++      // Rotate among 3 helper functions, each with a 256-case switch.
++      // The switch index is derived from `current` and the rotation is `j % 3`.
++      // Each case performs `ops_per_case` ALU operations.
++      int case_idx = j & 0xFF; // Use a portion of current as a simplified index
++      switch (j % 3) {
++        case 0:
++          current ^= indirect_data[(current + case_idx) & 0xFF];
++          current ^= indirect_data[switch_case_helper_1(indirect_data, current, j, ops_per_case)];
++          break;
++        case 1:
++          current ^= indirect_data[(current + case_idx + 1) & 0xFF];
++          current ^= indirect_data[switch_case_helper_2(indirect_data, current, j, ops_per_case)];
++          break;
++        case 2:
++          current ^= indirect_data[(current + case_idx + 2) & 0xFF];
++          current ^= indirect_data[switch_case_helper_3(indirect_data, current, j, ops_per_case)];
++          break;
++      }
+     }
+     folly::doNotOptimizeAway(current);
+   }

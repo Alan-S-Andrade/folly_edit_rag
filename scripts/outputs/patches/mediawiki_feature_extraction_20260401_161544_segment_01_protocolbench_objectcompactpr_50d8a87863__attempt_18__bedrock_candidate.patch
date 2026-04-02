@@ -1,0 +1,22 @@
+--- a/thrift/lib/cpp2/test/ProtocolBench.cpp
++++ b/thrift/lib/cpp2/test/ProtocolBench.cpp
+@@ -249,7 +249,8 @@
+     const uint8_t* data = buf->data();
+     size_t data_len = buf->length();
+ 
+-    CHECK_GE(data_len, 64);
++    // Guard: need at least 8 bytes for OPS_28 to index d[0]..d[7] safely
++    CHECK_GE(data_len, 8u);
+ 
+     size_t current_offset = 0;
+     int acc = 0;
+@@ -266,7 +267,8 @@
+         }
+ 
+         current_offset += (1 + (p[1] % 32));
+-        if (current_offset >= data_len - 64) {
++        // Ensure we always have at least 8 bytes available after current_offset
++        if (current_offset + 8 >= data_len) {
+             current_offset = 0;
+         }
+     }

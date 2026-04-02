@@ -1,0 +1,123 @@
+--- a/thrift/lib/cpp2/test/ProtocolBench.cpp
++++ b/thrift/lib/cpp2/test/ProtocolBench.cpp
+@@ -3,7 +3,7 @@
+  *
+  * Licensed under the Apache License, Version 2.0 (the "License");
+  * you may not use this file except in compliance with the License.
+- * You may obtain a copy of the License at
++ * You may in a copy of the License at
+  *
+  *     http://www.apache.org/licenses/LICENSE-2.0
+  *
+@@ -25,6 +25,9 @@
+ #include <folly/Optional.h>
+ #include <folly/init/Init.h>
+ #include <folly/portability/GFlags.h>
++
++#include <memory>
++#include <vector>
+ 
+ using namespace apache::thrift;
+ using namespace thrift::benchmark;
+@@ -200,6 +203,101 @@
+ OpEncodeX(OpEncode, Binary)
+ OpEncodeX(OpEncode, Compact)
+ 
++namespace {
++__attribute__((noinline))
++int64_t hot_code_path_0(int input) {
++  int64_t acc = input;
++  switch (input & 0xFF) {
++#define GEN_CASE(i, base) \
++    case i: { acc += base+i*0x100+0; acc ^= base+i*0x100+1; acc *= base+i*0x100+2; acc -= base+i*0x100+3; acc += base+i*0x100+4; acc ^= base+i*0x100+5; acc *= base+i*0x100+6; acc -= base+i*0x100+7; acc += base+i*0x100+8; acc ^= base+i*0x100+9; acc *= base+i*0x100+10; acc -= base+i*0x100+11; acc += base+i*0x100+12; acc ^= base+i*0x100+13; acc *= base+i*0x100+14; acc -= base+i*0x100+15; acc += base+i*0x100+16; acc ^= base+i*0x100+17; acc *= base+i*0x100+18; acc -= base+i*0x100+19; acc += base+i*0x100+20; acc ^= base+i*0x100+21; acc *= base+i*0x100+22; acc -= base+i*0x100+23; acc += base+i*0x100+24; acc ^= base+i*0x100+25; acc *= base+i*0x100+26; acc -= base+i*0x100+27; break; }
++#define GEN_16_CASES(i, base) \
++    GEN_CASE(i*16+0, base) GEN_CASE(i*16+1, base) GEN_CASE(i*16+2, base) GEN_CASE(i*16+3, base) \
++    GEN_CASE(i*16+4, base) GEN_CASE(i*16+5, base) GEN_CASE(i*16+6, base) GEN_CASE(i*16+7, base) \
++    GEN_CASE(i*16+8, base) GEN_CASE(i*16+9, base) GEN_CASE(i*16+10, base) GEN_CASE(i*16+11, base) \
++    GEN_CASE(i*16+12, base) GEN_CASE(i*16+13, base) GEN_CASE(i*16+14, base) GEN_CASE(i*16+15, base)
++GEN_16_CASES(0, 0x1000) GEN_16_CASES(1, 0x1000) GEN_16_CASES(2, 0x1000) GEN_16_CASES(3, 0x1000)
++GEN_16_CASES(4, 0x1000) GEN_16_CASES(5, 0x1000) GEN_16_CASES(6, 0x1000) GEN_16_CASES(7, 0x1000)
++GEN_16_CASES(8, 0x1000) GEN_16_CASES(9, 0x1000) GEN_16_CASES(10, 0x1000) GEN_16_CASES(11, 0x1000)
++GEN_16_CASES(12, 0x1000) GEN_16_CASES(13, 0x1000) GEN_16_CASES(14, 0x1000) GEN_16_CASES(15, 0x1000)
++#undef GEN_16_CASES
++#undef GEN_CASE
++  }
++  return acc;
++}
++__attribute__((noinline))
++int64_t hot_code_path_1(int input) {
++  int64_t acc = input;
++  switch (input & 0xFF) {
++#define GEN_CASE(i, base) \
++    case i: { acc += base+i*0x100+0; acc ^= base+i*0x100+1; acc *= base+i*0x100+2; acc -= base+i*0x100+3; acc += base+i*0x100+4; acc ^= base+i*0x100+5; acc *= base+i*0x100+6; acc -= base+i*0x100+7; acc += base+i*0x100+8; acc ^= base+i*0x100+9; acc *= base+i*0x100+10; acc -= base+i*0x100+11; acc += base+i*0x100+12; acc ^= base+i*0x100+13; acc *= base+i*0x100+14; acc -= base+i*0x100+15; acc += base+i*0x100+16; acc ^= base+i*0x100+17; acc *= base+i*0x100+18; acc -= base+i*0x100+19; acc += base+i*0x100+20; acc ^= base+i*0x100+21; acc *= base+i*0x100+22; acc -= base+i*0x100+23; acc += base+i*0x100+24; acc ^= base+i*0x100+25; acc *= base+i*0x100+26; acc -= base+i*0x100+27; break; }
++#define GEN_16_CASES(i, base) \
++    GEN_CASE(i*16+0, base) GEN_CASE(i*16+1, base) GEN_CASE(i*16+2, base) GEN_CASE(i*16+3, base) \
++    GEN_CASE(i*16+4, base) GEN_CASE(i*16+5, base) GEN_CASE(i*16+6, base) GEN_CASE(i*16+7, base) \
++    GEN_CASE(i*16+8, base) GEN_CASE(i*16+9, base) GEN_CASE(i*16+10, base) GEN_CASE(i*16+11, base) \
++    GEN_CASE(i*16+12, base) GEN_CASE(i*16+13, base) GEN_CASE(i*16+14, base) GEN_CASE(i*16+15, base)
++GEN_16_CASES(0, 0x100000) GEN_16_CASES(1, 0x100000) GEN_16_CASES(2, 0x100000) GEN_16_CASES(3, 0x100000)
++GEN_16_CASES(4, 0x100000) GEN_16_CASES(5, 0x100000) GEN_16_CASES(6, 0x100000) GEN_16_CASES(7, 0x100000)
++GEN_16_CASES(8, 0x100000) GEN_16_CASES(9, 0x100000) GEN_16_CASES(10, 0x100000) GEN_16_CASES(11, 0x100000)
++GEN_16_CASES(12, 0x100000) GEN_16_CASES(13, 0x100000) GEN_16_CASES(14, 0x100000) GEN_16_CASES(15, 0x100000)
++#undef GEN_16_CASES
++#undef GEN_CASE
++  }
++  return acc;
++}
++__attribute__((noinline))
++int64_t hot_code_path_2(int input) {
++  int64_t acc = input;
++  switch (input & 0xFF) {
++#define GEN_CASE(i, base) \
++    case i: { acc += base+i*0x100+0; acc ^= base+i*0x100+1; acc *= base+i*0x100+2; acc -= base+i*0x100+3; acc += base+i*0x100+4; acc ^= base+i*0x100+5; acc *= base+i*0x100+6; acc -= base+i*0x100+7; acc += base+i*0x100+8; acc ^= base+i*0x100+9; acc *= base+i*0x100+10; acc -= base+i*0x100+11; acc += base+i*0x100+12; acc ^= base+i*0x100+13; acc *= base+i*0x100+14; acc -= base+i*0x100+15; acc += base+i*0x100+16; acc ^= base+i*0x100+17; acc *= base+i*0x100+18; acc -= base+i*0x100+19; acc += base+i*0x100+20; acc ^= base+i*0x100+21; acc *= base+i*0x100+22; acc -= base+i*0x100+23; acc += base+i*0x100+24; acc ^= base+i*0x100+25; acc *= base+i*0x100+26; acc -= base+i*0x100+27; break; }
++#define GEN_16_CASES(i, base) \
++    GEN_CASE(i*16+0, base) GEN_CASE(i*16+1, base) GEN_CASE(i*16+2, base) GEN_CASE(i*16+3, base) \
++    GEN_CASE(i*16+4, base) GEN_CASE(i*16+5, base) GEN_CASE(i*16+6, base) GEN_CASE(i*16+7, base) \
++    GEN_CASE(i*16+8, base) GEN_CASE(i*16+9, base) GEN_CASE(i*16+10, base) GEN_CASE(i*16+11, base) \
++    GEN_CASE(i*16+12, base) GEN_CASE(i*16+13, base) GEN_CASE(i*16+14, base) GEN_CASE(i*16+15, base)
++GEN_16_CASES(0, 0x200000) GEN_16_CASES(1, 0x200000) GEN_16_CASES(2, 0x200000) GEN_16_CASES(3, 0x200000)
++GEN_16_CASES(4, 0x200000) GEN_16_CASES(5, 0x200000) GEN_16_CASES(6, 0x200000) GEN_16_CASES(7, 0x200000)
++GEN_16_CASES(8, 0x200000) GEN_16_CASES(9, 0x200000) GEN_16_CASES(10, 0x200000) GEN_16_CASES(11, 0x200000)
++GEN_16_CASES(12, 0x200000) GEN_16_CASES(13, 0x200000) GEN_16_CASES(14, 0x200000) GEN_16_CASES(15, 0x200000)
++#undef GEN_16_CASES
++#undef GEN_CASE
++  }
++  return acc;
++}
++} // namespace
++
++BENCHMARK(ObjectCompactProtocol_read_LargeSetInt_ipc_v1, iters) {
++    folly::BenchmarkSuspender susp;
++
++    constexpr size_t kDataSize = 4096;
++    struct Node {
++        Node* next;
++        int payload;
++    };
++    auto node_storage = std::make_unique<std::vector<Node>>(kDataSize);
++    std::vector<Node>& data = *node_storage;
++
++    for (size_t i = 0; i < kDataSize; ++i) {
++        data[i].next = &data[(i + 37) % kDataSize]; // small prime stride
++        data[i].payload = i * 13;
++    }
++    Node* current = &data[0];
++
++    int64_t (*funcs[])(int) = {hot_code_path_0, hot_code_path_1, hot_code_path_2};
++    int64_t total = 0;
++
++    susp.dismiss();
++
++    for (size_t i = 0; i < iters; ++i) {
++        total += funcs[i % 3](current->payload);
++        current = current->next;
++    }
++
++    folly::doNotOptimizeAway(total);
++    susp.rehire();
++}
++
++
+ int main(int argc, char** argv) {
+   folly::Init init(&argc, &argv);
+   folly::runBenchmarks();

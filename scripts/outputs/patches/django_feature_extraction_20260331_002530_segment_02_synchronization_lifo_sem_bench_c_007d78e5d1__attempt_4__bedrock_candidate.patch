@@ -1,0 +1,27 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -293,19 +293,20 @@
+         }
+         for (uint32_t i = t; i < n; i += posters) {
+           hotPos = hotPos->next;
++          uint64_t payload = (uint64_t)(uintptr_t)hotPos;
+           switch (i % 3) {
+             case 0:
+-              acc = switchA(acc, i & 0xFF);
++              acc = switchA(acc, payload & 0xFF);
+               break;
+             case 1:
+-              acc = switchB(acc, i & 0xFF);
++              acc = switchB(acc, payload & 0xFF);
+               break;
+             case 2:
+-              acc = switchC(acc, i & 0xFF);
++              acc = switchC(acc, payload & 0xFF);
+               break;
+           }
+ 
+-          auto coldMask = -uint64_t(i % 8 == 0);
++          auto coldMask = -uint64_t(i % 16 == 0);
+           coldPos = (ChainNode*)(((uintptr_t)coldPos->next & coldMask) |
+                                  ((uintptr_t)coldPos & ~coldMask));
+           sem.post();

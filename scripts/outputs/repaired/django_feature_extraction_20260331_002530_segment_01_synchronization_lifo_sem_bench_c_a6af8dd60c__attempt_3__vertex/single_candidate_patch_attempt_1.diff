@@ -1,0 +1,80 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -136,30 +136,77 @@
+   }
+ }
+ 
++#define EXTRA_WORK(v, p, k_base)                                               \
++  v = v * p + (k_base + 0);                                                    \
++  v ^= v >> 11;                                                                \
++  v = v * p + (k_base + 1);                                                    \
++  v ^= v >> 11;                                                                \
++  v = v * p + (k_base + 2);                                                    \
++  v ^= v >> 11;                                                                \
++  v = v * p + (k_base + 3);                                                    \
++  v ^= v >> 11;                                                                \
++  v = v * p + (k_base + 4);                                                    \
++  v ^= v >> 11;                                                                \
++  v = v * p + (k_base + 5);                                                    \
++  v ^= v >> 11;                                                                \
++  v = v * p + (k_base + 6);                                                    \
++  v ^= v >> 11;                                                                \
++  v = v * p + (k_base + 7);                                                    \
++  v ^= v >> 11;                                                                \
++  v = v * p + (k_base + 8);                                                    \
++  v ^= v >> 11;                                                                \
++  v = v * p + (k_base + 9);                                                    \
++  v ^= v >> 11;                                                                \
++  v = v * p + (k_base + 10);                                                   \
++  v ^= v >> 11;                                                                \
++  v = v * p + (k_base + 11);                                                   \
++  v ^= v >> 11;                                                                \
++  v = v * p + (k_base + 12);                                                   \
++  v ^= v >> 11;                                                                \
++  v = v * p + (k_base + 13);                                                   \
++  v ^= v >> 11;                                                                \
++  v = v * p + (k_base + 14);                                                   \
++  v ^= v >> 11;                                                                \
++  v = v * p + (k_base + 15);                                                   \
++  v ^= v >> 11;                                                                \
++  v = v * p + (k_base + 16);                                                   \
++  v ^= v >> 11;                                                                \
++  v = v * p + (k_base + 17);                                                   \
++  v ^= v >> 11;                                                                \
++  v = v * p + (k_base + 18)
++
+ #define CASES_8(v, c, base)                                                    \
+   case base + 0:                                                               \
+     v = (v * 3) + (uint64_t)c + base + 0;                                      \
++    EXTRA_WORK(v, 113, base * 19);                                             \
+     break;                                                                     \
+   case base + 1:                                                               \
+     v = (v * 5) + (uint64_t)c + base + 1;                                      \
++    EXTRA_WORK(v, 127, base * 19 + 20);                                        \
+     break;                                                                     \
+   case base + 2:                                                               \
+     v = (v * 7) + (uint64_t)c + base + 2;                                      \
++    EXTRA_WORK(v, 131, base * 19 + 40);                                        \
+     break;                                                                     \
+   case base + 3:                                                               \
+     v = (v * 11) + (uint64_t)c + base + 3;                                     \
++    EXTRA_WORK(v, 137, base * 19 + 60);                                        \
+     break;                                                                     \
+   case base + 4:                                                               \
+     v = (v * 13) + (uint64_t)c + base + 4;                                     \
++    EXTRA_WORK(v, 139, base * 19 + 80);                                        \
+     break;                                                                     \
+   case base + 5:                                                               \
+     v = (v * 17) + (uint64_t)c + base + 5;                                     \
++    EXTRA_WORK(v, 149, base * 19 + 100);                                       \
+     break;                                                                     \
+   case base + 6:                                                               \
+     v = (v * 19) + (uint64_t)c + base + 6;                                     \
++    EXTRA_WORK(v, 151, base * 19 + 120);                                       \
+     break;                                                                     \
+   case base + 7:                                                               \
+     v = (v * 23) + (uint64_t)c + base + 7;                                     \
++    EXTRA_WORK(v, 157, base * 19 + 140);                                       \
+     break;
+ 
+ #define CASES_256(v, c)                                                        \

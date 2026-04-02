@@ -1,0 +1,14 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -250,6 +250,11 @@
+               break;
+           }
+ 
++          // This line is intended to introduce some variability in cold path access.
++          // The original implementation of 'coldPos' was a bit too simple.
++          // By using `coldPos->next` and masking, we can make it slightly more
++          // cache-line dependent, which might affect branch prediction and
++          // memory access patterns.
+           auto coldMask = -uint64_t(i % 8 == 0);
+           coldPos = (ChainNode*)(((uintptr_t)coldPos->next & coldMask) |
+                                  ((uintptr_t)coldPos & ~coldMask));

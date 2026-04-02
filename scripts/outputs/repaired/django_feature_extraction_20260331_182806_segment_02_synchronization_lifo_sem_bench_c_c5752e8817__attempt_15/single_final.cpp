@@ -1,0 +1,1039 @@
+/*
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+#include <folly/portability/Asm.h>
+#include <folly/synchronization/LifoSem.h>
+#include <folly/synchronization/NativeSemaphore.h>
+
+#include <folly/Benchmark.h>
+
+#include <numeric>
+#include <random>
+#include <vector>
+
+using namespace folly;
+
+BENCHMARK(lifo_sem_pingpong, iters) {
+  LifoSem a;
+  LifoSem b;
+  auto thr = std::thread([&] {
+    for (size_t i = 0; i < iters; ++i) {
+      a.wait();
+      b.post();
+    }
+  });
+  for (size_t i = 0; i < iters; ++i) {
+    a.post();
+    b.wait();
+  }
+  thr.join();
+}
+
+BENCHMARK(lifo_sem_oneway, iters) {
+  LifoSem a;
+  auto thr = std::thread([&] {
+    for (size_t i = 0; i < iters; ++i) {
+      a.wait();
+    }
+  });
+  for (size_t i = 0; i < iters; ++i) {
+    a.post();
+  }
+  thr.join();
+}
+
+BENCHMARK(single_thread_lifo_post, iters) {
+  LifoSem sem;
+  for (size_t n = 0; n < iters; ++n) {
+    sem.post();
+    asm_volatile_memory();
+  }
+}
+
+BENCHMARK(single_thread_lifo_wait, iters) {
+  LifoSem sem(iters);
+  for (size_t n = 0; n < iters; ++n) {
+    sem.wait();
+    asm_volatile_memory();
+  }
+}
+
+BENCHMARK(single_thread_lifo_postwait, iters) {
+  LifoSem sem;
+  for (size_t n = 0; n < iters; ++n) {
+    sem.post();
+    asm_volatile_memory();
+    sem.wait();
+    asm_volatile_memory();
+  }
+}
+
+BENCHMARK(single_thread_lifo_trypost, iters) {
+  LifoSem sem;
+  for (size_t n = 0; n < iters; ++n) {
+    CHECK(!sem.tryPost());
+    asm_volatile_memory();
+  }
+}
+
+BENCHMARK(single_thread_lifo_trywait, iters) {
+  LifoSem sem;
+  for (size_t n = 0; n < iters; ++n) {
+    CHECK(!sem.tryWait());
+    asm_volatile_memory();
+  }
+}
+
+BENCHMARK(single_thread_native_postwait, iters) {
+  folly::NativeSemaphore sem;
+  for (size_t n = 0; n < iters; ++n) {
+    sem.post();
+    sem.wait();
+  }
+}
+
+BENCHMARK(single_thread_native_trywait, iters) {
+  folly::NativeSemaphore sem;
+  for (size_t n = 0; n < iters; ++n) {
+    CHECK(!sem.try_wait());
+  }
+}
+
+namespace {
+struct ChainNode {
+  ChainNode* next;
+  char pad[56];
+};
+
+constexpr size_t kHotLen = 16384;
+constexpr size_t kColdLen = 2u << 20;
+
+alignas(64) static ChainNode hotNodes[kHotLen];
+static ChainNode* coldNodes;
+
+static void initChain(ChainNode* nodes, size_t len) {
+  std::vector<size_t> perm(len);
+  std::iota(perm.begin(), perm.end(), 0u);
+  std::mt19937_64 rng(42);
+  for (size_t i = len - 1; i > 0; --i) {
+    std::swap(perm[i], perm[rng() % (i + 1)]);
+  }
+  for (size_t i = 0; i < len; ++i) {
+    nodes[perm[i]].next = &nodes[perm[(i + 1) % len]];
+  }
+}
+
+#define CASES_8(v, c, base)                                                    \
+  case base + 0:                                                               \
+    v = (v * 3) + (uint64_t)c + base + 0;                                      \
+    v = (v ^ 29) + (uint64_t)c + base + 0;                                     \
+    v = (v * 31) + (uint64_t)c + base + 0;                                     \
+    v = (v * 101) + (uint64_t)c + base + 0;                                    \
+    v = (v ^ 103) + (uint64_t)c + base + 0;                                    \
+    v = (v * 107) + (uint64_t)c + base + 0;                                    \
+    v = (v ^ 109) + (uint64_t)c + base + 0;                                    \
+    v = (v * 113) + (uint64_t)c + base + 0;                                    \
+    v = (v ^ 127) + (uint64_t)c + base + 0;                                    \
+    v = (v * 131) + (uint64_t)c + base + 0;                                    \
+    v = (v ^ 137) + (uint64_t)c + base + 0;                                    \
+    v = (v * 139) + (uint64_t)c + base + 0;                                    \
+    v = (v ^ 149) + (uint64_t)c + base + 0;                                    \
+    v = (v * 151) + (uint64_t)c + base + 0;                                    \
+    v = (v ^ 157) + (uint64_t)c + base + 0;                                    \
+    v = (v * 163) + (uint64_t)c + base + 0;                                    \
+    v = (v ^ 167) + (uint64_t)c + base + 0;                                    \
+    v = (v * 173) + (uint64_t)c + base + 0;                                    \
+    v = (v ^ 179) + (uint64_t)c + base + 0;                                    \
+    v = (v * 181) + (uint64_t)c + base + 0;                                    \
+    v = (v ^ 191) + (uint64_t)c + base + 0;                                    \
+    v = (v * 193) + (uint64_t)c + base + 0;                                    \
+    v = (v ^ 197) + (uint64_t)c + base + 0;                                    \
+    v = (v * 199) + (uint64_t)c + base + 0;                                    \
+    v = (v ^ 211) + (uint64_t)c + base + 0;                                    \
+    v = (v * 223) + (uint64_t)c + base + 0;                                    \
+    v = (v ^ 227) + (uint64_t)c + base + 0;                                    \
+    v = (v * (3 + 1024)) + (uint64_t)c + base + 0;                             \
+    v = (v ^ (29 + 1024)) + (uint64_t)c + base + 0;                            \
+    v = (v * (31 + 1024)) + (uint64_t)c + base + 0;                            \
+    v = (v * (101 + 1024)) + (uint64_t)c + base + 0;                           \
+    v = (v ^ (103 + 1024)) + (uint64_t)c + base + 0;                           \
+    v = (v * (107 + 1024)) + (uint64_t)c + base + 0;                           \
+    v = (v ^ (109 + 1024)) + (uint64_t)c + base + 0;                           \
+    v = (v * (113 + 1024)) + (uint64_t)c + base + 0;                           \
+    v = (v ^ (127 + 1024)) + (uint64_t)c + base + 0;                           \
+    v = (v * (131 + 1024)) + (uint64_t)c + base + 0;                           \
+    v = (v ^ (137 + 1024)) + (uint64_t)c + base + 0;                           \
+    v = (v * (139 + 1024)) + (uint64_t)c + base + 0;                           \
+    v = (v ^ (149 + 1024)) + (uint64_t)c + base + 0;                           \
+    v = (v * (151 + 1024)) + (uint64_t)c + base + 0;                           \
+    v = (v ^ (157 + 1024)) + (uint64_t)c + base + 0;                           \
+    v = (v * (163 + 1024)) + (uint64_t)c + base + 0;                           \
+    v = (v ^ (167 + 1024)) + (uint64_t)c + base + 0;                           \
+    v = (v * (173 + 1024)) + (uint64_t)c + base + 0;                           \
+    v = (v ^ (179 + 1024)) + (uint64_t)c + base + 0;                           \
+    v = (v * (181 + 1024)) + (uint64_t)c + base + 0;                           \
+    v = (v ^ (191 + 1024)) + (uint64_t)c + base + 0;                           \
+    v = (v * (193 + 1024)) + (uint64_t)c + base + 0;                           \
+    v = (v ^ (197 + 1024)) + (uint64_t)c + base + 0;                           \
+    v = (v * (199 + 1024)) + (uint64_t)c + base + 0;                           \
+    v = (v ^ (211 + 1024)) + (uint64_t)c + base + 0;                           \
+    v = (v * (223 + 1024)) + (uint64_t)c + base + 0;                           \
+    v = (v ^ (227 + 1024)) + (uint64_t)c + base + 0;                           \
+    v = (v * (3 + 2048)) + (uint64_t)c + base + 0;                             \
+    v = (v ^ (29 + 2048)) + (uint64_t)c + base + 0;                            \
+    v = (v * (31 + 2048)) + (uint64_t)c + base + 0;                            \
+    v = (v * (101 + 2048)) + (uint64_t)c + base + 0;                           \
+    v = (v ^ (103 + 2048)) + (uint64_t)c + base + 0;                           \
+    v = (v * (107 + 2048)) + (uint64_t)c + base + 0;                           \
+    v = (v ^ (109 + 2048)) + (uint64_t)c + base + 0;                           \
+    v = (v * (113 + 2048)) + (uint64_t)c + base + 0;                           \
+    v = (v ^ (127 + 2048)) + (uint64_t)c + base + 0;                           \
+    v = (v * (131 + 2048)) + (uint64_t)c + base + 0;                           \
+    v = (v ^ (137 + 2048)) + (uint64_t)c + base + 0;                           \
+    v = (v * (139 + 2048)) + (uint64_t)c + base + 0;                           \
+    v = (v ^ (149 + 2048)) + (uint64_t)c + base + 0;                           \
+    v = (v * (151 + 2048)) + (uint64_t)c + base + 0;                           \
+    v = (v ^ (157 + 2048)) + (uint64_t)c + base + 0;                           \
+    v = (v * (163 + 2048)) + (uint64_t)c + base + 0;                           \
+    v = (v ^ (167 + 2048)) + (uint64_t)c + base + 0;                           \
+    v = (v * (173 + 2048)) + (uint64_t)c + base + 0;                           \
+    v = (v ^ (179 + 2048)) + (uint64_t)c + base + 0;                           \
+    v = (v * (181 + 2048)) + (uint64_t)c + base + 0;                           \
+    v = (v ^ (191 + 2048)) + (uint64_t)c + base + 0;                           \
+    v = (v * (193 + 2048)) + (uint64_t)c + base + 0;                           \
+    v = (v ^ (197 + 2048)) + (uint64_t)c + base + 0;                           \
+    v = (v * (199 + 2048)) + (uint64_t)c + base + 0;                           \
+    v = (v ^ (211 + 2048)) + (uint64_t)c + base + 0;                           \
+    v = (v * (223 + 2048)) + (uint64_t)c + base + 0;                           \
+    v = (v ^ (227 + 2048)) + (uint64_t)c + base + 0;                           \
+    break;                                                                     \
+  case base + 1:                                                               \
+    v = (v * 5) + (uint64_t)c + base + 1;                                      \
+    v = (v ^ 37) + (uint64_t)c + base + 1;                                     \
+    v = (v * 41) + (uint64_t)c + base + 1;                                     \
+    v = (v * 131) + (uint64_t)c + base + 1;                                    \
+    v = (v ^ 137) + (uint64_t)c + base + 1;                                    \
+    v = (v * 139) + (uint64_t)c + base + 1;                                    \
+    v = (v ^ 149) + (uint64_t)c + base + 1;                                    \
+    v = (v * 151) + (uint64_t)c + base + 1;                                    \
+    v = (v ^ 157) + (uint64_t)c + base + 1;                                    \
+    v = (v * 229) + (uint64_t)c + base + 1;                                    \
+    v = (v ^ 233) + (uint64_t)c + base + 1;                                    \
+    v = (v * 239) + (uint64_t)c + base + 1;                                    \
+    v = (v ^ 241) + (uint64_t)c + base + 1;                                    \
+    v = (v * 251) + (uint64_t)c + base + 1;                                    \
+    v = (v ^ 257) + (uint64_t)c + base + 1;                                    \
+    v = (v * 263) + (uint64_t)c + base + 1;                                    \
+    v = (v ^ 269) + (uint64_t)c + base + 1;                                    \
+    v = (v * 271) + (uint64_t)c + base + 1;                                    \
+    v = (v ^ 277) + (uint64_t)c + base + 1;                                    \
+    v = (v * 281) + (uint64_t)c + base + 1;                                    \
+    v = (v ^ 283) + (uint64_t)c + base + 1;                                    \
+    v = (v * 293) + (uint64_t)c + base + 1;                                    \
+    v = (v ^ 307) + (uint64_t)c + base + 1;                                    \
+    v = (v * 311) + (uint64_t)c + base + 1;                                    \
+    v = (v ^ 313) + (uint64_t)c + base + 1;                                    \
+    v = (v * 317) + (uint64_t)c + base + 1;                                    \
+    v = (v ^ 331) + (uint64_t)c + base + 1;                                    \
+    v = (v * (5 + 1024)) + (uint64_t)c + base + 1;                             \
+    v = (v ^ (37 + 1024)) + (uint64_t)c + base + 1;                            \
+    v = (v * (41 + 1024)) + (uint64_t)c + base + 1;                            \
+    v = (v * (131 + 1024)) + (uint64_t)c + base + 1;                           \
+    v = (v ^ (137 + 1024)) + (uint64_t)c + base + 1;                           \
+    v = (v * (139 + 1024)) + (uint64_t)c + base + 1;                           \
+    v = (v ^ (149 + 1024)) + (uint64_t)c + base + 1;                           \
+    v = (v * (151 + 1024)) + (uint64_t)c + base + 1;                           \
+    v = (v ^ (157 + 1024)) + (uint64_t)c + base + 1;                           \
+    v = (v * (229 + 1024)) + (uint64_t)c + base + 1;                           \
+    v = (v ^ (233 + 1024)) + (uint64_t)c + base + 1;                           \
+    v = (v * (239 + 1024)) + (uint64_t)c + base + 1;                           \
+    v = (v ^ (241 + 1024)) + (uint64_t)c + base + 1;                           \
+    v = (v * (251 + 1024)) + (uint64_t)c + base + 1;                           \
+    v = (v ^ (257 + 1024)) + (uint64_t)c + base + 1;                           \
+    v = (v * (263 + 1024)) + (uint64_t)c + base + 1;                           \
+    v = (v ^ (269 + 1024)) + (uint64_t)c + base + 1;                           \
+    v = (v * (271 + 1024)) + (uint64_t)c + base + 1;                           \
+    v = (v ^ (277 + 1024)) + (uint64_t)c + base + 1;                           \
+    v = (v * (281 + 1024)) + (uint64_t)c + base + 1;                           \
+    v = (v ^ (283 + 1024)) + (uint64_t)c + base + 1;                           \
+    v = (v * (293 + 1024)) + (uint64_t)c + base + 1;                           \
+    v = (v ^ (307 + 1024)) + (uint64_t)c + base + 1;                           \
+    v = (v * (311 + 1024)) + (uint64_t)c + base + 1;                           \
+    v = (v ^ (313 + 1024)) + (uint64_t)c + base + 1;                           \
+    v = (v * (317 + 1024)) + (uint64_t)c + base + 1;                           \
+    v = (v ^ (331 + 1024)) + (uint64_t)c + base + 1;                           \
+    v = (v * (5 + 2048)) + (uint64_t)c + base + 1;                             \
+    v = (v ^ (37 + 2048)) + (uint64_t)c + base + 1;                            \
+    v = (v * (41 + 2048)) + (uint64_t)c + base + 1;                            \
+    v = (v * (131 + 2048)) + (uint64_t)c + base + 1;                           \
+    v = (v ^ (137 + 2048)) + (uint64_t)c + base + 1;                           \
+    v = (v * (139 + 2048)) + (uint64_t)c + base + 1;                           \
+    v = (v ^ (149 + 2048)) + (uint64_t)c + base + 1;                           \
+    v = (v * (151 + 2048)) + (uint64_t)c + base + 1;                           \
+    v = (v ^ (157 + 2048)) + (uint64_t)c + base + 1;                           \
+    v = (v * (229 + 2048)) + (uint64_t)c + base + 1;                           \
+    v = (v ^ (233 + 2048)) + (uint64_t)c + base + 1;                           \
+    v = (v * (239 + 2048)) + (uint64_t)c + base + 1;                           \
+    v = (v ^ (241 + 2048)) + (uint64_t)c + base + 1;                           \
+    v = (v * (251 + 2048)) + (uint64_t)c + base + 1;                           \
+    v = (v ^ (257 + 2048)) + (uint64_t)c + base + 1;                           \
+    v = (v * (263 + 2048)) + (uint64_t)c + base + 1;                           \
+    v = (v ^ (269 + 2048)) + (uint64_t)c + base + 1;                           \
+    v = (v * (271 + 2048)) + (uint64_t)c + base + 1;                           \
+    v = (v ^ (277 + 2048)) + (uint64_t)c + base + 1;                           \
+    v = (v * (281 + 2048)) + (uint64_t)c + base + 1;                           \
+    v = (v ^ (283 + 2048)) + (uint64_t)c + base + 1;                           \
+    v = (v * (293 + 2048)) + (uint64_t)c + base + 1;                           \
+    v = (v ^ (307 + 2048)) + (uint64_t)c + base + 1;                           \
+    v = (v * (311 + 2048)) + (uint64_t)c + base + 1;                           \
+    v = (v ^ (313 + 2048)) + (uint64_t)c + base + 1;                           \
+    v = (v * (317 + 2048)) + (uint64_t)c + base + 1;                           \
+    v = (v ^ (331 + 2048)) + (uint64_t)c + base + 1;                           \
+    break;                                                                     \
+  case base + 2:                                                               \
+    v = (v * 7) + (uint64_t)c + base + 2;                                      \
+    v = (v ^ 43) + (uint64_t)c + base + 2;                                     \
+    v = (v * 47) + (uint64_t)c + base + 2;                                     \
+    v = (v * 163) + (uint64_t)c + base + 2;                                    \
+    v = (v ^ 167) + (uint64_t)c + base + 2;                                    \
+    v = (v * 173) + (uint64_t)c + base + 2;                                    \
+    v = (v ^ 179) + (uint64_t)c + base + 2;                                    \
+    v = (v * 181) + (uint64_t)c + base + 2;                                    \
+    v = (v ^ 191) + (uint64_t)c + base + 2;                                    \
+    v = (v * 337) + (uint64_t)c + base + 2;                                    \
+    v = (v ^ 347) + (uint64_t)c + base + 2;                                    \
+    v = (v * 349) + (uint64_t)c + base + 2;                                    \
+    v = (v ^ 353) + (uint64_t)c + base + 2;                                    \
+    v = (v * 359) + (uint64_t)c + base + 2;                                    \
+    v = (v ^ 367) + (uint64_t)c + base + 2;                                    \
+    v = (v * 373) + (uint64_t)c + base + 2;                                    \
+    v = (v ^ 379) + (uint64_t)c + base + 2;                                    \
+    v = (v * 383) + (uint64_t)c + base + 2;                                    \
+    v = (v ^ 389) + (uint64_t)c + base + 2;                                    \
+    v = (v * 397) + (uint64_t)c + base + 2;                                    \
+    v = (v ^ 401) + (uint64_t)c + base + 2;                                    \
+    v = (v * 409) + (uint64_t)c + base + 2;                                    \
+    v = (v ^ 419) + (uint64_t)c + base + 2;                                    \
+    v = (v * 421) + (uint64_t)c + base + 2;                                    \
+    v = (v ^ 431) + (uint64_t)c + base + 2;                                    \
+    v = (v * 433) + (uint64_t)c + base + 2;                                    \
+    v = (v ^ 439) + (uint64_t)c + base + 2;                                    \
+    v = (v * (7 + 1024)) + (uint64_t)c + base + 2;                             \
+    v = (v ^ (43 + 1024)) + (uint64_t)c + base + 2;                            \
+    v = (v * (47 + 1024)) + (uint64_t)c + base + 2;                            \
+    v = (v * (163 + 1024)) + (uint64_t)c + base + 2;                           \
+    v = (v ^ (167 + 1024)) + (uint64_t)c + base + 2;                           \
+    v = (v * (173 + 1024)) + (uint64_t)c + base + 2;                           \
+    v = (v ^ (179 + 1024)) + (uint64_t)c + base + 2;                           \
+    v = (v * (181 + 1024)) + (uint64_t)c + base + 2;                           \
+    v = (v ^ (191 + 1024)) + (uint64_t)c + base + 2;                           \
+    v = (v * (337 + 1024)) + (uint64_t)c + base + 2;                           \
+    v = (v ^ (347 + 1024)) + (uint64_t)c + base + 2;                           \
+    v = (v * (349 + 1024)) + (uint64_t)c + base + 2;                           \
+    v = (v ^ (353 + 1024)) + (uint64_t)c + base + 2;                           \
+    v = (v * (359 + 1024)) + (uint64_t)c + base + 2;                           \
+    v = (v ^ (367 + 1024)) + (uint64_t)c + base + 2;                           \
+    v = (v * (373 + 1024)) + (uint64_t)c + base + 2;                           \
+    v = (v ^ (379 + 1024)) + (uint64_t)c + base + 2;                           \
+    v = (v * (383 + 1024)) + (uint64_t)c + base + 2;                           \
+    v = (v ^ (389 + 1024)) + (uint64_t)c + base + 2;                           \
+    v = (v * (397 + 1024)) + (uint64_t)c + base + 2;                           \
+    v = (v ^ (401 + 1024)) + (uint64_t)c + base + 2;                           \
+    v = (v * (409 + 1024)) + (uint64_t)c + base + 2;                           \
+    v = (v ^ (419 + 1024)) + (uint64_t)c + base + 2;                           \
+    v = (v * (421 + 1024)) + (uint64_t)c + base + 2;                           \
+    v = (v ^ (431 + 1024)) + (uint64_t)c + base + 2;                           \
+    v = (v * (433 + 1024)) + (uint64_t)c + base + 2;                           \
+    v = (v ^ (439 + 1024)) + (uint64_t)c + base + 2;                           \
+    v = (v * (7 + 2048)) + (uint64_t)c + base + 2;                             \
+    v = (v ^ (43 + 2048)) + (uint64_t)c + base + 2;                            \
+    v = (v * (47 + 2048)) + (uint64_t)c + base + 2;                            \
+    v = (v * (163 + 2048)) + (uint64_t)c + base + 2;                           \
+    v = (v ^ (167 + 2048)) + (uint64_t)c + base + 2;                           \
+    v = (v * (173 + 2048)) + (uint64_t)c + base + 2;                           \
+    v = (v ^ (179 + 2048)) + (uint64_t)c + base + 2;                           \
+    v = (v * (181 + 2048)) + (uint64_t)c + base + 2;                           \
+    v = (v ^ (191 + 2048)) + (uint64_t)c + base + 2;                           \
+    v = (v * (337 + 2048)) + (uint64_t)c + base + 2;                           \
+    v = (v ^ (347 + 2048)) + (uint64_t)c + base + 2;                           \
+    v = (v * (349 + 2048)) + (uint64_t)c + base + 2;                           \
+    v = (v ^ (353 + 2048)) + (uint64_t)c + base + 2;                           \
+    v = (v * (359 + 2048)) + (uint64_t)c + base + 2;                           \
+    v = (v ^ (367 + 2048)) + (uint64_t)c + base + 2;                           \
+    v = (v * (373 + 2048)) + (uint64_t)c + base + 2;                           \
+    v = (v ^ (379 + 2048)) + (uint64_t)c + base + 2;                           \
+    v = (v * (383 + 2048)) + (uint64_t)c + base + 2;                           \
+    v = (v ^ (389 + 2048)) + (uint64_t)c + base + 2;                           \
+    v = (v * (397 + 2048)) + (uint64_t)c + base + 2;                           \
+    v = (v ^ (401 + 2048)) + (uint64_t)c + base + 2;                           \
+    v = (v * (409 + 2048)) + (uint64_t)c + base + 2;                           \
+    v = (v ^ (419 + 2048)) + (uint64_t)c + base + 2;                           \
+    v = (v * (421 + 2048)) + (uint64_t)c + base + 2;                           \
+    v = (v ^ (431 + 2048)) + (uint64_t)c + base + 2;                           \
+    v = (v * (433 + 2048)) + (uint64_t)c + base + 2;                           \
+    v = (v ^ (439 + 2048)) + (uint64_t)c + base + 2;                           \
+    break;                                                                     \
+  case base + 3:                                                               \
+    v = (v * 11) + (uint64_t)c + base + 3;                                     \
+    v = (v ^ 53) + (uint64_t)c + base + 3;                                     \
+    v = (v * 59) + (uint64_t)c + base + 3;                                     \
+    v = (v * 193) + (uint64_t)c + base + 3;                                    \
+    v = (v ^ 197) + (uint64_t)c + base + 3;                                    \
+    v = (v * 199) + (uint64_t)c + base + 3;                                    \
+    v = (v ^ 211) + (uint64_t)c + base + 3;                                    \
+    v = (v * 223) + (uint64_t)c + base + 3;                                    \
+    v = (v ^ 227) + (uint64_t)c + base + 3;                                    \
+    v = (v * 443) + (uint64_t)c + base + 3;                                    \
+    v = (v ^ 449) + (uint64_t)c + base + 3;                                    \
+    v = (v * 457) + (uint64_t)c + base + 3;                                    \
+    v = (v ^ 461) + (uint64_t)c + base + 3;                                    \
+    v = (v * 463) + (uint64_t)c + base + 3;                                    \
+    v = (v ^ 467) + (uint64_t)c + base + 3;                                    \
+    v = (v * 479) + (uint64_t)c + base + 3;                                    \
+    v = (v ^ 487) + (uint64_t)c + base + 3;                                    \
+    v = (v * 491) + (uint64_t)c + base + 3;                                    \
+    v = (v ^ 499) + (uint64_t)c + base + 3;                                    \
+    v = (v * 503) + (uint64_t)c + base + 3;                                    \
+    v = (v ^ 509) + (uint64_t)c + base + 3;                                    \
+    v = (v * 521) + (uint64_t)c + base + 3;                                    \
+    v = (v ^ 523) + (uint64_t)c + base + 3;                                    \
+    v = (v * 541) + (uint64_t)c + base + 3;                                    \
+    v = (v ^ 547) + (uint64_t)c + base + 3;                                    \
+    v = (v * 557) + (uint64_t)c + base + 3;                                    \
+    v = (v ^ 563) + (uint64_t)c + base + 3;                                    \
+    v = (v * (11 + 1024)) + (uint64_t)c + base + 3;                            \
+    v = (v ^ (53 + 1024)) + (uint64_t)c + base + 3;                            \
+    v = (v * (59 + 1024)) + (uint64_t)c + base + 3;                            \
+    v = (v * (193 + 1024)) + (uint64_t)c + base + 3;                           \
+    v = (v ^ (197 + 1024)) + (uint64_t)c + base + 3;                           \
+    v = (v * (199 + 1024)) + (uint64_t)c + base + 3;                           \
+    v = (v ^ (211 + 1024)) + (uint64_t)c + base + 3;                           \
+    v = (v * (223 + 1024)) + (uint64_t)c + base + 3;                           \
+    v = (v ^ (227 + 1024)) + (uint64_t)c + base + 3;                           \
+    v = (v * (443 + 1024)) + (uint64_t)c + base + 3;                           \
+    v = (v ^ (449 + 1024)) + (uint64_t)c + base + 3;                           \
+    v = (v * (457 + 1024)) + (uint64_t)c + base + 3;                           \
+    v = (v ^ (461 + 1024)) + (uint64_t)c + base + 3;                           \
+    v = (v * (463 + 1024)) + (uint64_t)c + base + 3;                           \
+    v = (v ^ (467 + 1024)) + (uint64_t)c + base + 3;                           \
+    v = (v * (479 + 1024)) + (uint64_t)c + base + 3;                           \
+    v = (v ^ (487 + 1024)) + (uint64_t)c + base + 3;                           \
+    v = (v * (491 + 1024)) + (uint64_t)c + base + 3;                           \
+    v = (v ^ (499 + 1024)) + (uint64_t)c + base + 3;                           \
+    v = (v * (503 + 1024)) + (uint64_t)c + base + 3;                           \
+    v = (v ^ (509 + 1024)) + (uint64_t)c + base + 3;                           \
+    v = (v * (521 + 1024)) + (uint64_t)c + base + 3;                           \
+    v = (v ^ (523 + 1024)) + (uint64_t)c + base + 3;                           \
+    v = (v * (541 + 1024)) + (uint64_t)c + base + 3;                           \
+    v = (v ^ (547 + 1024)) + (uint64_t)c + base + 3;                           \
+    v = (v * (557 + 1024)) + (uint64_t)c + base + 3;                           \
+    v = (v ^ (563 + 1024)) + (uint64_t)c + base + 3;                           \
+    v = (v * (11 + 2048)) + (uint64_t)c + base + 3;                            \
+    v = (v ^ (53 + 2048)) + (uint64_t)c + base + 3;                            \
+    v = (v * (59 + 2048)) + (uint64_t)c + base + 3;                            \
+    v = (v * (193 + 2048)) + (uint64_t)c + base + 3;                           \
+    v = (v ^ (197 + 2048)) + (uint64_t)c + base + 3;                           \
+    v = (v * (199 + 2048)) + (uint64_t)c + base + 3;                           \
+    v = (v ^ (211 + 2048)) + (uint64_t)c + base + 3;                           \
+    v = (v * (223 + 2048)) + (uint64_t)c + base + 3;                           \
+    v = (v ^ (227 + 2048)) + (uint64_t)c + base + 3;                           \
+    v = (v * (443 + 2048)) + (uint64_t)c + base + 3;                           \
+    v = (v ^ (449 + 2048)) + (uint64_t)c + base + 3;                           \
+    v = (v * (457 + 2048)) + (uint64_t)c + base + 3;                           \
+    v = (v ^ (461 + 2048)) + (uint64_t)c + base + 3;                           \
+    v = (v * (463 + 2048)) + (uint64_t)c + base + 3;                           \
+    v = (v ^ (467 + 2048)) + (uint64_t)c + base + 3;                           \
+    v = (v * (479 + 2048)) + (uint64_t)c + base + 3;                           \
+    v = (v ^ (487 + 2048)) + (uint64_t)c + base + 3;                           \
+    v = (v * (491 + 2048)) + (uint64_t)c + base + 3;                           \
+    v = (v ^ (499 + 2048)) + (uint64_t)c + base + 3;                           \
+    v = (v * (503 + 2048)) + (uint64_t)c + base + 3;                           \
+    v = (v ^ (509 + 2048)) + (uint64_t)c + base + 3;                           \
+    v = (v * (521 + 2048)) + (uint64_t)c + base + 3;                           \
+    v = (v ^ (523 + 2048)) + (uint64_t)c + base + 3;                           \
+    v = (v * (541 + 2048)) + (uint64_t)c + base + 3;                           \
+    v = (v ^ (547 + 2048)) + (uint64_t)c + base + 3;                           \
+    v = (v * (557 + 2048)) + (uint64_t)c + base + 3;                           \
+    v = (v ^ (563 + 2048)) + (uint64_t)c + base + 3;                           \
+    break;                                                                     \
+  case base + 4:                                                               \
+    v = (v * 13) + (uint64_t)c + base + 4;                                     \
+    v = (v ^ 61) + (uint64_t)c + base + 4;                                     \
+    v = (v * 67) + (uint64_t)c + base + 4;                                     \
+    v = (v * 229) + (uint64_t)c + base + 4;                                    \
+    v = (v ^ 233) + (uint64_t)c + base + 4;                                    \
+    v = (v * 239) + (uint64_t)c + base + 4;                                    \
+    v = (v ^ 241) + (uint64_t)c + base + 4;                                    \
+    v = (v * 251) + (uint64_t)c + base + 4;                                    \
+    v = (v ^ 257) + (uint64_t)c + base + 4;                                    \
+    v = (v * 569) + (uint64_t)c + base + 4;                                    \
+    v = (v ^ 571) + (uint64_t)c + base + 4;                                    \
+    v = (v * 577) + (uint64_t)c + base + 4;                                    \
+    v = (v ^ 587) + (uint64_t)c + base + 4;                                    \
+    v = (v * 593) + (uint64_t)c + base + 4;                                    \
+    v = (v ^ 599) + (uint64_t)c + base + 4;                                    \
+    v = (v * 601) + (uint64_t)c + base + 4;                                    \
+    v = (v ^ 607) + (uint64_t)c + base + 4;                                    \
+    v = (v * 613) + (uint64_t)c + base + 4;                                    \
+    v = (v ^ 617) + (uint64_t)c + base + 4;                                    \
+    v = (v * 619) + (uint64_t)c + base + 4;                                    \
+    v = (v ^ 631) + (uint64_t)c + base + 4;                                    \
+    v = (v * 641) + (uint64_t)c + base + 4;                                    \
+    v = (v ^ 643) + (uint64_t)c + base + 4;                                    \
+    v = (v * 647) + (uint64_t)c + base + 4;                                    \
+    v = (v ^ 653) + (uint64_t)c + base + 4;                                    \
+    v = (v * 659) + (uint64_t)c + base + 4;                                    \
+    v = (v ^ 661) + (uint64_t)c + base + 4;                                    \
+    v = (v * (13 + 1024)) + (uint64_t)c + base + 4;                            \
+    v = (v ^ (61 + 1024)) + (uint64_t)c + base + 4;                            \
+    v = (v * (67 + 1024)) + (uint64_t)c + base + 4;                            \
+    v = (v * (229 + 1024)) + (uint64_t)c + base + 4;                           \
+    v = (v ^ (233 + 1024)) + (uint64_t)c + base + 4;                           \
+    v = (v * (239 + 1024)) + (uint64_t)c + base + 4;                           \
+    v = (v ^ (241 + 1024)) + (uint64_t)c + base + 4;                           \
+    v = (v * (251 + 1024)) + (uint64_t)c + base + 4;                           \
+    v = (v ^ (257 + 1024)) + (uint64_t)c + base + 4;                           \
+    v = (v * (569 + 1024)) + (uint64_t)c + base + 4;                           \
+    v = (v ^ (571 + 1024)) + (uint64_t)c + base + 4;                           \
+    v = (v * (577 + 1024)) + (uint64_t)c + base + 4;                           \
+    v = (v ^ (587 + 1024)) + (uint64_t)c + base + 4;                           \
+    v = (v * (593 + 1024)) + (uint64_t)c + base + 4;                           \
+    v = (v ^ (599 + 1024)) + (uint64_t)c + base + 4;                           \
+    v = (v * (601 + 1024)) + (uint64_t)c + base + 4;                           \
+    v = (v ^ (607 + 1024)) + (uint64_t)c + base + 4;                           \
+    v = (v * (613 + 1024)) + (uint64_t)c + base + 4;                           \
+    v = (v ^ (617 + 1024)) + (uint64_t)c + base + 4;                           \
+    v = (v * (619 + 1024)) + (uint64_t)c + base + 4;                           \
+    v = (v ^ (631 + 1024)) + (uint64_t)c + base + 4;                           \
+    v = (v * (641 + 1024)) + (uint64_t)c + base + 4;                           \
+    v = (v ^ (643 + 1024)) + (uint64_t)c + base + 4;                           \
+    v = (v * (647 + 1024)) + (uint64_t)c + base + 4;                           \
+    v = (v ^ (653 + 1024)) + (uint64_t)c + base + 4;                           \
+    v = (v * (659 + 1024)) + (uint64_t)c + base + 4;                           \
+    v = (v ^ (661 + 1024)) + (uint64_t)c + base + 4;                           \
+    v = (v * (13 + 2048)) + (uint64_t)c + base + 4;                            \
+    v = (v ^ (61 + 2048)) + (uint64_t)c + base + 4;                            \
+    v = (v * (67 + 2048)) + (uint64_t)c + base + 4;                            \
+    v = (v * (229 + 2048)) + (uint64_t)c + base + 4;                           \
+    v = (v ^ (233 + 2048)) + (uint64_t)c + base + 4;                           \
+    v = (v * (239 + 2048)) + (uint64_t)c + base + 4;                           \
+    v = (v ^ (241 + 2048)) + (uint64_t)c + base + 4;                           \
+    v = (v * (251 + 2048)) + (uint64_t)c + base + 4;                           \
+    v = (v ^ (257 + 2048)) + (uint64_t)c + base + 4;                           \
+    v = (v * (569 + 2048)) + (uint64_t)c + base + 4;                           \
+    v = (v ^ (571 + 2048)) + (uint64_t)c + base + 4;                           \
+    v = (v * (577 + 2048)) + (uint64_t)c + base + 4;                           \
+    v = (v ^ (587 + 2048)) + (uint64_t)c + base + 4;                           \
+    v = (v * (593 + 2048)) + (uint64_t)c + base + 4;                           \
+    v = (v ^ (599 + 2048)) + (uint64_t)c + base + 4;                           \
+    v = (v * (601 + 2048)) + (uint64_t)c + base + 4;                           \
+    v = (v ^ (607 + 2048)) + (uint64_t)c + base + 4;                           \
+    v = (v * (613 + 2048)) + (uint64_t)c + base + 4;                           \
+    v = (v ^ (617 + 2048)) + (uint64_t)c + base + 4;                           \
+    v = (v * (619 + 2048)) + (uint64_t)c + base + 4;                           \
+    v = (v ^ (631 + 2048)) + (uint64_t)c + base + 4;                           \
+    v = (v * (641 + 2048)) + (uint64_t)c + base + 4;                           \
+    v = (v ^ (643 + 2048)) + (uint64_t)c + base + 4;                           \
+    v = (v * (647 + 2048)) + (uint64_t)c + base + 4;                           \
+    v = (v ^ (653 + 2048)) + (uint64_t)c + base + 4;                           \
+    v = (v * (659 + 2048)) + (uint64_t)c + base + 4;                           \
+    v = (v ^ (661 + 2048)) + (uint64_t)c + base + 4;                           \
+    break;                                                                     \
+  case base + 5:                                                               \
+    v = (v * 17) + (uint64_t)c + base + 5;                                     \
+    v = (v ^ 71) + (uint64_t)c + base + 5;                                     \
+    v = (v * 73) + (uint64_t)c + base + 5;                                     \
+    v = (v * 263) + (uint64_t)c + base + 5;                                    \
+    v = (v ^ 269) + (uint64_t)c + base + 5;                                    \
+    v = (v * 271) + (uint64_t)c + base + 5;                                    \
+    v = (v ^ 277) + (uint64_t)c + base + 5;                                    \
+    v = (v * 281) + (uint64_t)c + base + 5;                                    \
+    v = (v ^ 283) + (uint64_t)c + base + 5;                                    \
+    v = (v * 673) + (uint64_t)c + base + 5;                                    \
+    v = (v ^ 677) + (uint64_t)c + base + 5;                                    \
+    v = (v * 683) + (uint64_t)c + base + 5;                                    \
+    v = (v ^ 691) + (uint64_t)c + base + 5;                                    \
+    v = (v * 701) + (uint64_t)c + base + 5;                                    \
+    v = (v ^ 709) + (uint64_t)c + base + 5;                                    \
+    v = (v * 719) + (uint64_t)c + base + 5;                                    \
+    v = (v ^ 727) + (uint64_t)c + base + 5;                                    \
+    v = (v * 733) + (uint64_t)c + base + 5;                                    \
+    v = (v ^ 739) + (uint64_t)c + base + 5;                                    \
+    v = (v * 743) + (uint64_t)c + base + 5;                                    \
+    v = (v ^ 751) + (uint64_t)c + base + 5;                                    \
+    v = (v * 757) + (uint64_t)c + base + 5;                                    \
+    v = (v ^ 761) + (uint64_t)c + base + 5;                                    \
+    v = (v * 769) + (uint64_t)c + base + 5;                                    \
+    v = (v ^ 773) + (uint64_t)c + base + 5;                                    \
+    v = (v * 787) + (uint64_t)c + base + 5;                                    \
+    v = (v ^ 797) + (uint64_t)c + base + 5;                                    \
+    v = (v * (17 + 1024)) + (uint64_t)c + base + 5;                            \
+    v = (v ^ (71 + 1024)) + (uint64_t)c + base + 5;                            \
+    v = (v * (73 + 1024)) + (uint64_t)c + base + 5;                            \
+    v = (v * (263 + 1024)) + (uint64_t)c + base + 5;                           \
+    v = (v ^ (269 + 1024)) + (uint64_t)c + base + 5;                           \
+    v = (v * (271 + 1024)) + (uint64_t)c + base + 5;                           \
+    v = (v ^ (277 + 1024)) + (uint64_t)c + base + 5;                           \
+    v = (v * (281 + 1024)) + (uint64_t)c + base + 5;                           \
+    v = (v ^ (283 + 1024)) + (uint64_t)c + base + 5;                           \
+    v = (v * (673 + 1024)) + (uint64_t)c + base + 5;                           \
+    v = (v ^ (677 + 1024)) + (uint64_t)c + base + 5;                           \
+    v = (v * (683 + 1024)) + (uint64_t)c + base + 5;                           \
+    v = (v ^ (691 + 1024)) + (uint64_t)c + base + 5;                           \
+    v = (v * (701 + 1024)) + (uint64_t)c + base + 5;                           \
+    v = (v ^ (709 + 1024)) + (uint64_t)c + base + 5;                           \
+    v = (v * (719 + 1024)) + (uint64_t)c + base + 5;                           \
+    v = (v ^ (727 + 1024)) + (uint64_t)c + base + 5;                           \
+    v = (v * (733 + 1024)) + (uint64_t)c + base + 5;                           \
+    v = (v ^ (739 + 1024)) + (uint64_t)c + base + 5;                           \
+    v = (v * (743 + 1024)) + (uint64_t)c + base + 5;                           \
+    v = (v ^ (751 + 1024)) + (uint64_t)c + base + 5;                           \
+    v = (v * (757 + 1024)) + (uint64_t)c + base + 5;                           \
+    v = (v ^ (761 + 1024)) + (uint64_t)c + base + 5;                           \
+    v = (v * (769 + 1024)) + (uint64_t)c + base + 5;                           \
+    v = (v ^ (773 + 1024)) + (uint64_t)c + base + 5;                           \
+    v = (v * (787 + 1024)) + (uint64_t)c + base + 5;                           \
+    v = (v ^ (797 + 1024)) + (uint64_t)c + base + 5;                           \
+    v = (v * (17 + 2048)) + (uint64_t)c + base + 5;                            \
+    v = (v ^ (71 + 2048)) + (uint64_t)c + base + 5;                            \
+    v = (v * (73 + 2048)) + (uint64_t)c + base + 5;                            \
+    v = (v * (263 + 2048)) + (uint64_t)c + base + 5;                           \
+    v = (v ^ (269 + 2048)) + (uint64_t)c + base + 5;                           \
+    v = (v * (271 + 2048)) + (uint64_t)c + base + 5;                           \
+    v = (v ^ (277 + 2048)) + (uint64_t)c + base + 5;                           \
+    v = (v * (281 + 2048)) + (uint64_t)c + base + 5;                           \
+    v = (v ^ (283 + 2048)) + (uint64_t)c + base + 5;                           \
+    v = (v * (673 + 2048)) + (uint64_t)c + base + 5;                           \
+    v = (v ^ (677 + 2048)) + (uint64_t)c + base + 5;                           \
+    v = (v * (683 + 2048)) + (uint64_t)c + base + 5;                           \
+    v = (v ^ (691 + 2048)) + (uint64_t)c + base + 5;                           \
+    v = (v * (701 + 2048)) + (uint64_t)c + base + 5;                           \
+    v = (v ^ (709 + 2048)) + (uint64_t)c + base + 5;                           \
+    v = (v * (719 + 2048)) + (uint64_t)c + base + 5;                           \
+    v = (v ^ (727 + 2048)) + (uint64_t)c + base + 5;                           \
+    v = (v * (733 + 2048)) + (uint64_t)c + base + 5;                           \
+    v = (v ^ (739 + 2048)) + (uint64_t)c + base + 5;                           \
+    v = (v * (743 + 2048)) + (uint64_t)c + base + 5;                           \
+    v = (v ^ (751 + 2048)) + (uint64_t)c + base + 5;                           \
+    v = (v * (757 + 2048)) + (uint64_t)c + base + 5;                           \
+    v = (v ^ (761 + 2048)) + (uint64_t)c + base + 5;                           \
+    v = (v * (769 + 2048)) + (uint64_t)c + base + 5;                           \
+    v = (v ^ (773 + 2048)) + (uint64_t)c + base + 5;                           \
+    v = (v * (787 + 2048)) + (uint64_t)c + base + 5;                           \
+    v = (v ^ (797 + 2048)) + (uint64_t)c + base + 5;                           \
+    break;                                                                     \
+  case base + 6:                                                               \
+    v = (v * 19) + (uint64_t)c + base + 6;                                     \
+    v = (v ^ 79) + (uint64_t)c + base + 6;                                     \
+    v = (v * 83) + (uint64_t)c + base + 6;                                     \
+    v = (v * 293) + (uint64_t)c + base + 6;                                    \
+    v = (v ^ 307) + (uint64_t)c + base + 6;                                    \
+    v = (v * 311) + (uint64_t)c + base + 6;                                    \
+    v = (v ^ 313) + (uint64_t)c + base + 6;                                    \
+    v = (v * 317) + (uint64_t)c + base + 6;                                    \
+    v = (v ^ 331) + (uint64_t)c + base + 6;                                    \
+    v = (v * 809) + (uint64_t)c + base + 6;                                    \
+    v = (v ^ 811) + (uint64_t)c + base + 6;                                    \
+    v = (v * 821) + (uint64_t)c + base + 6;                                    \
+    v = (v ^ 823) + (uint64_t)c + base + 6;                                    \
+    v = (v * 827) + (uint64_t)c + base + 6;                                    \
+    v = (v ^ 829) + (uint64_t)c + base + 6;                                    \
+    v = (v * 839) + (uint64_t)c + base + 6;                                    \
+    v = (v ^ 853) + (uint64_t)c + base + 6;                                    \
+    v = (v * 857) + (uint64_t)c + base + 6;                                    \
+    v = (v ^ 859) + (uint64_t)c + base + 6;                                    \
+    v = (v * 863) + (uint64_t)c + base + 6;                                    \
+    v = (v ^ 877) + (uint64_t)c + base + 6;                                    \
+    v = (v * 881) + (uint64_t)c + base + 6;                                    \
+    v = (v ^ 883) + (uint64_t)c + base + 6;                                    \
+    v = (v * 887) + (uint64_t)c + base + 6;                                    \
+    v = (v ^ 907) + (uint64_t)c + base + 6;                                    \
+    v = (v * 911) + (uint64_t)c + base + 6;                                    \
+    v = (v ^ 919) + (uint64_t)c + base + 6;                                    \
+    v = (v * (19 + 1024)) + (uint64_t)c + base + 6;                            \
+    v = (v ^ (79 + 1024)) + (uint64_t)c + base + 6;                            \
+    v = (v * (83 + 1024)) + (uint64_t)c + base + 6;                            \
+    v = (v * (293 + 1024)) + (uint64_t)c + base + 6;                           \
+    v = (v ^ (307 + 1024)) + (uint64_t)c + base + 6;                           \
+    v = (v * (311 + 1024)) + (uint64_t)c + base + 6;                           \
+    v = (v ^ (313 + 1024)) + (uint64_t)c + base + 6;                           \
+    v = (v * (317 + 1024)) + (uint64_t)c + base + 6;                           \
+    v = (v ^ (331 + 1024)) + (uint64_t)c + base + 6;                           \
+    v = (v * (809 + 1024)) + (uint64_t)c + base + 6;                           \
+    v = (v ^ (811 + 1024)) + (uint64_t)c + base + 6;                           \
+    v = (v * (821 + 1024)) + (uint64_t)c + base + 6;                           \
+    v = (v ^ (823 + 1024)) + (uint64_t)c + base + 6;                           \
+    v = (v * (827 + 1024)) + (uint64_t)c + base + 6;                           \
+    v = (v ^ (829 + 1024)) + (uint64_t)c + base + 6;                           \
+    v = (v * (839 + 1024)) + (uint64_t)c + base + 6;                           \
+    v = (v ^ (853 + 1024)) + (uint64_t)c + base + 6;                           \
+    v = (v * (857 + 1024)) + (uint64_t)c + base + 6;                           \
+    v = (v ^ (859 + 1024)) + (uint64_t)c + base + 6;                           \
+    v = (v * (863 + 1024)) + (uint64_t)c + base + 6;                           \
+    v = (v ^ (877 + 1024)) + (uint64_t)c + base + 6;                           \
+    v = (v * (881 + 1024)) + (uint64_t)c + base + 6;                           \
+    v = (v ^ (883 + 1024)) + (uint64_t)c + base + 6;                           \
+    v = (v * (887 + 1024)) + (uint64_t)c + base + 6;                           \
+    v = (v ^ (907 + 1024)) + (uint64_t)c + base + 6;                           \
+    v = (v * (911 + 1024)) + (uint64_t)c + base + 6;                           \
+    v = (v ^ (919 + 1024)) + (uint64_t)c + base + 6;                           \
+    v = (v * (19 + 2048)) + (uint64_t)c + base + 6;                            \
+    v = (v ^ (79 + 2048)) + (uint64_t)c + base + 6;                            \
+    v = (v * (83 + 2048)) + (uint64_t)c + base + 6;                            \
+    v = (v * (293 + 2048)) + (uint64_t)c + base + 6;                           \
+    v = (v ^ (307 + 2048)) + (uint64_t)c + base + 6;                           \
+    v = (v * (311 + 2048)) + (uint64_t)c + base + 6;                           \
+    v = (v ^ (313 + 2048)) + (uint64_t)c + base + 6;                           \
+    v = (v * (317 + 2048)) + (uint64_t)c + base + 6;                           \
+    v = (v ^ (331 + 2048)) + (uint64_t)c + base + 6;                           \
+    v = (v * (809 + 2048)) + (uint64_t)c + base + 6;                           \
+    v = (v ^ (811 + 2048)) + (uint64_t)c + base + 6;                           \
+    v = (v * (821 + 2048)) + (uint64_t)c + base + 6;                           \
+    v = (v ^ (823 + 2048)) + (uint64_t)c + base + 6;                           \
+    v = (v * (827 + 2048)) + (uint64_t)c + base + 6;                           \
+    v = (v ^ (829 + 2048)) + (uint64_t)c + base + 6;                           \
+    v = (v * (839 + 2048)) + (uint64_t)c + base + 6;                           \
+    v = (v ^ (853 + 2048)) + (uint64_t)c + base + 6;                           \
+    v = (v * (857 + 2048)) + (uint64_t)c + base + 6;                           \
+    v = (v ^ (859 + 2048)) + (uint64_t)c + base + 6;                           \
+    v = (v * (863 + 2048)) + (uint64_t)c + base + 6;                           \
+    v = (v ^ (877 + 2048)) + (uint64_t)c + base + 6;                           \
+    v = (v * (881 + 2048)) + (uint64_t)c + base + 6;                           \
+    v = (v ^ (883 + 2048)) + (uint64_t)c + base + 6;                           \
+    v = (v * (887 + 2048)) + (uint64_t)c + base + 6;                           \
+    v = (v ^ (907 + 2048)) + (uint64_t)c + base + 6;                           \
+    v = (v * (911 + 2048)) + (uint64_t)c + base + 6;                           \
+    v = (v ^ (919 + 2048)) + (uint64_t)c + base + 6;                           \
+    break;                                                                     \
+  case base + 7:                                                               \
+    v = (v * 23) + (uint64_t)c + base + 7;                                     \
+    v = (v ^ 89) + (uint64_t)c + base + 7;                                     \
+    v = (v * 97) + (uint64_t)c + base + 7;                                     \
+    v = (v * 337) + (uint64_t)c + base + 7;                                    \
+    v = (v ^ 347) + (uint64_t)c + base + 7;                                    \
+    v = (v * 349) + (uint64_t)c + base + 7;                                    \
+    v = (v ^ 353) + (uint64_t)c + base + 7;                                    \
+    v = (v * 359) + (uint64_t)c + base + 7;                                    \
+    v = (v ^ 367) + (uint64_t)c + base + 7;                                    \
+    v = (v * 929) + (uint64_t)c + base + 7;                                    \
+    v = (v ^ 937) + (uint64_t)c + base + 7;                                    \
+    v = (v * 941) + (uint64_t)c + base + 7;                                    \
+    v = (v ^ 947) + (uint64_t)c + base + 7;                                    \
+    v = (v * 953) + (uint64_t)c + base + 7;                                    \
+    v = (v ^ 967) + (uint64_t)c + base + 7;                                    \
+    v = (v * 971) + (uint64_t)c + base + 7;                                    \
+    v = (v ^ 977) + (uint64_t)c + base + 7;                                    \
+    v = (v * 983) + (uint64_t)c + base + 7;                                    \
+    v = (v ^ 991) + (uint64_t)c + base + 7;                                    \
+    v = (v * 997) + (uint64_t)c + base + 7;                                    \
+    v = (v ^ 1009) + (uint64_t)c + base + 7;                                   \
+    v = (v * 1013) + (uint64_t)c + base + 7;                                   \
+    v = (v ^ 1019) + (uint64_t)c + base + 7;                                   \
+    v = (v * 1021) + (uint64_t)c + base + 7;                                   \
+    v = (v ^ 1031) + (uint64_t)c + base + 7;                                   \
+    v = (v * 1033) + (uint64_t)c + base + 7;                                   \
+    v = (v ^ 1039) + (uint64_t)c + base + 7;                                   \
+    v = (v * (23 + 1024)) + (uint64_t)c + base + 7;                            \
+    v = (v ^ (89 + 1024)) + (uint64_t)c + base + 7;                            \
+    v = (v * (97 + 1024)) + (uint64_t)c + base + 7;                            \
+    v = (v * (337 + 1024)) + (uint64_t)c + base + 7;                           \
+    v = (v ^ (347 + 1024)) + (uint64_t)c + base + 7;                           \
+    v = (v * (349 + 1024)) + (uint64_t)c + base + 7;                           \
+    v = (v ^ (353 + 1024)) + (uint64_t)c + base + 7;                           \
+    v = (v * (359 + 1024)) + (uint64_t)c + base + 7;                           \
+    v = (v ^ (367 + 1024)) + (uint64_t)c + base + 7;                           \
+    v = (v * (929 + 1024)) + (uint64_t)c + base + 7;                           \
+    v = (v ^ (937 + 1024)) + (uint64_t)c + base + 7;                           \
+    v = (v * (941 + 1024)) + (uint64_t)c + base + 7;                           \
+    v = (v ^ (947 + 1024)) + (uint64_t)c + base + 7;                           \
+    v = (v * (953 + 1024)) + (uint64_t)c + base + 7;                           \
+    v = (v ^ (967 + 1024)) + (uint64_t)c + base + 7;                           \
+    v = (v * (971 + 1024)) + (uint64_t)c + base + 7;                           \
+    v = (v ^ (977 + 1024)) + (uint64_t)c + base + 7;                           \
+    v = (v * (983 + 1024)) + (uint64_t)c + base + 7;                           \
+    v = (v ^ (991 + 1024)) + (uint64_t)c + base + 7;                           \
+    v = (v * (997 + 1024)) + (uint64_t)c + base + 7;                           \
+    v = (v ^ (1009 + 1024)) + (uint64_t)c + base + 7;                          \
+    v = (v * (1013 + 1024)) + (uint64_t)c + base + 7;                          \
+    v = (v ^ (1019 + 1024)) + (uint64_t)c + base + 7;                          \
+    v = (v * (1021 + 1024)) + (uint64_t)c + base + 7;                          \
+    v = (v ^ (1031 + 1024)) + (uint64_t)c + base + 7;                          \
+    v = (v * (1033 + 1024)) + (uint64_t)c + base + 7;                          \
+    v = (v ^ (1039 + 1024)) + (uint64_t)c + base + 7;                          \
+    v = (v * (23 + 2048)) + (uint64_t)c + base + 7;                            \
+    v = (v ^ (89 + 2048)) + (uint64_t)c + base + 7;                            \
+    v = (v * (97 + 2048)) + (uint64_t)c + base + 7;                            \
+    v = (v * (337 + 2048)) + (uint64_t)c + base + 7;                           \
+    v = (v ^ (347 + 2048)) + (uint64_t)c + base + 7;                           \
+    v = (v * (349 + 2048)) + (uint64_t)c + base + 7;                           \
+    v = (v ^ (353 + 2048)) + (uint64_t)c + base + 7;                           \
+    v = (v * (359 + 2048)) + (uint64_t)c + base + 7;                           \
+    v = (v ^ (367 + 2048)) + (uint64_t)c + base + 7;                           \
+    v = (v * (929 + 2048)) + (uint64_t)c + base + 7;                           \
+    v = (v ^ (937 + 2048)) + (uint64_t)c + base + 7;                           \
+    v = (v * (941 + 2048)) + (uint64_t)c + base + 7;                           \
+    v = (v ^ (947 + 2048)) + (uint64_t)c + base + 7;                           \
+    v = (v * (953 + 2048)) + (uint64_t)c + base + 7;                           \
+    v = (v ^ (967 + 2048)) + (uint64_t)c + base + 7;                           \
+    v = (v * (971 + 2048)) + (uint64_t)c + base + 7;                           \
+    v = (v ^ (977 + 2048)) + (uint64_t)c + base + 7;                           \
+    v = (v * (983 + 2048)) + (uint64_t)c + base + 7;                           \
+    v = (v ^ (991 + 2048)) + (uint64_t)c + base + 7;                           \
+    v = (v * (997 + 2048)) + (uint64_t)c + base + 7;                           \
+    v = (v ^ (1009 + 2048)) + (uint64_t)c + base + 7;                          \
+    v = (v * (1013 + 2048)) + (uint64_t)c + base + 7;                          \
+    v = (v ^ (1019 + 2048)) + (uint64_t)c + base + 7;                          \
+    v = (v * (1021 + 2048)) + (uint64_t)c + base + 7;                          \
+    v = (v ^ (1031 + 2048)) + (uint64_t)c + base + 7;                          \
+    v = (v * (1033 + 2048)) + (uint64_t)c + base + 7;                          \
+    v = (v ^ (1039 + 2048)) + (uint64_t)c + base + 7;                          \
+    break;
+
+#define CASES_256(v, c)                                                        \
+  CASES_8(v, c, 0)                                                             \
+  CASES_8(v, c, 8) CASES_8(v, c, 16) CASES_8(v, c, 24) CASES_8(v, c, 32)       \
+      CASES_8(v, c, 40) CASES_8(v, c, 48) CASES_8(v, c, 56)                     \
+          CASES_8(v, c, 64) CASES_8(v, c, 72) CASES_8(v, c, 80)                 \
+              CASES_8(v, c, 88) CASES_8(v, c, 96) CASES_8(v, c, 104)            \
+                  CASES_8(v, c, 112) CASES_8(v, c, 120) CASES_8(v, c, 128)      \
+                      CASES_8(v, c, 136) CASES_8(v, c, 144)                     \
+                          CASES_8(v, c, 152) CASES_8(v, c, 160)                 \
+                              CASES_8(v, c, 168) CASES_8(v, c, 176)             \
+                                  CASES_8(v, c, 184) CASES_8(v, c, 192)         \
+                                      CASES_8(v, c, 200) CASES_8(v, c, 208)     \
+                                          CASES_8(v, c, 216)                   \
+                                              CASES_8(v, c, 224)               \
+                                                  CASES_8(v, c, 232)           \
+                                                      CASES_8(v, c, 240)       \
+                                                          CASES_8(v, c, 248)
+
+__attribute__((noinline)) uint64_t switchA(uint64_t v, int c) {
+  switch (c) {
+    CASES_256(v, c);
+    default:;
+  }
+  return v;
+}
+__attribute__((noinline)) uint64_t switchB(uint64_t v, int c) {
+  switch (c) {
+    CASES_256(v, c * 3);
+    default:;
+  }
+  return v;
+}
+__attribute__((noinline)) uint64_t switchC(uint64_t v, int c) {
+  switch (c) {
+    CASES_256(v, c * 5);
+    default:;
+  }
+  return v;
+}
+
+struct DepWorkInitializer {
+  DepWorkInitializer() {
+    coldNodes = new ChainNode[kColdLen];
+    initChain(hotNodes, kHotLen);
+    initChain(coldNodes, kColdLen);
+  }
+  ~DepWorkInitializer() { delete[] coldNodes; }
+};
+static DepWorkInitializer initializer;
+
+static void contendedUse_v2(uint32_t n, int posters, int waiters) {
+  LifoSemImpl<std::atomic> sem;
+
+  std::vector<std::thread> threads;
+  std::atomic<bool> go(false);
+
+  BENCHMARK_SUSPEND {
+    for (int t = 0; t < waiters; ++t) {
+      threads.emplace_back([=, &sem] {
+        for (uint32_t i = t; i < n; i += waiters) {
+          sem.wait();
+        }
+      });
+    }
+    for (int t = 0; t < posters; ++t) {
+      threads.emplace_back([=, &sem, &go] {
+        ChainNode* hotPos = &hotNodes[t % kHotLen];
+        ChainNode* coldPos = &coldNodes[t % kColdLen];
+        uint64_t acc = t;
+
+        while (!go.load()) {
+          std::this_thread::yield();
+        }
+        for (uint32_t i = t; i < n; i += posters) {
+          hotPos = hotPos->next;
+          uint64_t payload = (uint64_t)(uintptr_t)hotPos;
+          switch (i % 3) {
+            case 0:
+              acc = switchA(acc, payload & 0xFF);
+              break;
+            case 1:
+              acc = switchB(acc, payload & 0xFF);
+              break;
+            case 2:
+              acc = switchC(acc, payload & 0xFF);
+              break;
+          }
+
+          auto coldMask = -uint64_t(i % 8 == 0);
+          coldPos = (ChainNode*)(((uintptr_t)coldPos->next & coldMask) |
+                                 ((uintptr_t)coldPos & ~coldMask));
+          sem.post();
+        }
+        folly::doNotOptimizeAway(acc);
+        folly::doNotOptimizeAway(hotPos);
+        folly::doNotOptimizeAway(coldPos);
+      });
+    }
+  }
+
+  go.store(true);
+  for (auto& thr : threads) {
+    thr.join();
+  }
+}
+
+static void contendedUse_v3(uint32_t n, int posters, int waiters) {
+  LifoSemImpl<std::atomic> sem;
+
+  std::vector<std::thread> threads;
+  std::atomic<bool> go(false);
+
+  BENCHMARK_SUSPEND {
+    for (int t = 0; t < waiters; ++t) {
+      threads.emplace_back([=, &sem] {
+        for (uint32_t i = t; i < n; i += waiters) {
+          sem.wait();
+        }
+      });
+    }
+    for (int t = 0; t < posters; ++t) {
+      threads.emplace_back([=, &sem, &go] {
+        ChainNode* hotPos = &hotNodes[t % kHotLen];
+        uint64_t acc = t;
+
+        while (!go.load()) {
+          std::this_thread::yield();
+        }
+        for (uint32_t i = t; i < n; i += posters) {
+          hotPos = hotPos->next;
+          const int c_val = (int)((uintptr_t)hotPos & 0xff);
+          switch (i % 3) {
+            case 0:
+              acc = switchA(acc, c_val);
+              break;
+            case 1:
+              acc = switchB(acc, c_val);
+              break;
+            case 2:
+              acc = switchC(acc, c_val);
+              break;
+          }
+
+          sem.post();
+        }
+        folly::doNotOptimizeAway(acc);
+        folly::doNotOptimizeAway(hotPos);
+      });
+    }
+  }
+
+  go.store(true);
+  for (auto& thr : threads) {
+    thr.join();
+  }
+}
+} // namespace
+
+static void contendedUse(uint32_t n, int posters, int waiters) {
+  LifoSemImpl<std::atomic> sem;
+
+  std::vector<std::thread> threads;
+  std::atomic<bool> go(false);
+
+  BENCHMARK_SUSPEND {
+    for (int t = 0; t < waiters; ++t) {
+      threads.emplace_back([=, &sem] {
+        for (uint32_t i = t; i < n; i += waiters) {
+          sem.wait();
+        }
+      });
+    }
+    for (int t = 0; t < posters; ++t) {
+      threads.emplace_back([=, &sem, &go] {
+        while (!go.load()) {
+          std::this_thread::yield();
+        }
+        for (uint32_t i = t; i < n; i += posters) {
+          sem.post();
+        }
+      });
+    }
+  }
+
+  go.store(true);
+  for (auto& thr : threads) {
+    thr.join();
+  }
+}
+
+BENCHMARK_DRAW_LINE();
+BENCHMARK_NAMED_PARAM(contendedUse, 1_to_1, 1, 1)
+BENCHMARK_NAMED_PARAM(contendedUse_v3, contendedUse_ipc_v1, 32, 1000)
+BENCHMARK_NAMED_PARAM(contendedUse, 1_to_4, 1, 4)
+BENCHMARK_NAMED_PARAM(contendedUse, 1_to_32, 1, 32)
+BENCHMARK_NAMED_PARAM(contendedUse, 4_to_1, 4, 1)
+BENCHMARK_NAMED_PARAM(contendedUse, 4_to_24, 4, 24)
+BENCHMARK_NAMED_PARAM(contendedUse, 8_to_100, 8, 100)
+BENCHMARK_NAMED_PARAM(contendedUse, 32_to_1, 31, 1)
+BENCHMARK_NAMED_PARAM(contendedUse, 16_to_16, 16, 16)
+BENCHMARK_NAMED_PARAM(contendedUse, 32_to_32, 32, 32)
+BENCHMARK_NAMED_PARAM(contendedUse_v2, 32_to_32_v2, 32, 32)
+BENCHMARK_NAMED_PARAM(contendedUse, 32_to_1000, 32, 1000)
+
+// sudo nice -n -20 _build/opt/folly/test/LifoSemTests
+//     --benchmark --bm_min_iters=10000000 --gtest_filter=-\*
+// ============================================================================
+// folly/test/LifoSemTests.cpp                     relative  time/iter  iters/s
+// ============================================================================
+// lifo_sem_pingpong                                            1.31us  762.40K
+// lifo_sem_oneway                                            193.89ns    5.16M
+// single_thread_lifo_post                                     15.37ns   65.08M
+// single_thread_lifo_wait                                     13.60ns   73.53M
+// single_thread_lifo_postwait                                 29.43ns   33.98M
+// single_thread_lifo_trywait                                 677.69ps    1.48G
+// single_thread_native_postwait                                25.03ns   39.95M
+// single_thread_native_trywait                                  7.30ns  136.98M
+// ----------------------------------------------------------------------------
+// contendedUse(1_to_1)                                       158.22ns    6.32M
+// contendedUse(1_to_4)                                       574.73ns    1.74M
+// contendedUse(1_to_32)                                      592.94ns    1.69M
+// contendedUse(4_to_1)                                       118.28ns    8.45M
+// contendedUse(4_to_24)                                      667.62ns    1.50M
+// contendedUse(8_to_100)                                     701.46ns    1.43M
+// contendedUse(32_to_1)                                      165.06ns    6.06M
+// contendedUse(16_to_16)                                     238.57ns    4.19M
+// contendedUse(32_to_32)                                     219.82ns    4.55M
+// contendedUse(32_to_1000)                                   777.42ns    1.29M
+// ============================================================================
+
+int main(int argc, char** argv) {
+  folly::gflags::ParseCommandLineFlags(&argc, &argv, true);
+  folly::runBenchmarks();
+  return 0;
+}

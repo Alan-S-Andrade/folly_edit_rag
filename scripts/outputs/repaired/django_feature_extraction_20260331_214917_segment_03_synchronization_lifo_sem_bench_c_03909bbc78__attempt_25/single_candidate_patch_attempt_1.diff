@@ -1,0 +1,51 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -237,7 +237,8 @@
+         }
+         for (uint32_t i = t; i < n; i += posters) {
+           hotPos = hotPos->next;
+-          coldPos = coldPos->next; // Always advance coldPos to ensure regular cache misses
++          // Make coldPos access conditional to reduce stalls due to cache misses
++          if ((i % 2) == 0) { coldPos = coldPos->next; }
+           uint64_t payload = (uint64_t)(uintptr_t)coldPos; // Derive payload from the cold, cache-missing pointer chase
+           switch (i % 3) {
+             case 0:
+@@ -251,7 +252,6 @@
+               break;
+           }
+ 
+-          // The conditional coldPos update is removed as coldPos is always advanced above.
+           sem.post();
+         }
+         folly::doNotOptimizeAway(acc);
+@@ -340,6 +340,30 @@
+ // contendedUse(32_to_1000)                                   777.42ns    1.29M
+ // ============================================================================
+ 
++// ── auto-grafted tail from original file ──
++// folly/test/LifoSemTests.cpp                     relative  time/iter  iters/s
++// ============================================================================
++// lifo_sem_pingpong                                            1.31us  762.40K
++// lifo_sem_oneway                                            193.89ns    5.16M
++// single_thread_lifo_post                                     15.37ns   65.08M
++// single_thread_lifo_wait                                     13.60ns   73.53M
++// single_thread_lifo_postwait                                 29.43ns   33.98M
++// single_thread_lifo_trywait                                 677.69ps    1.48G
++// single_thread_native_postwait                                25.03ns   39.95M
++// single_thread_native_trywait                                  7.30ns  136.98M
++// ----------------------------------------------------------------------------
++// contendedUse(1_to_1)                                       158.22ns    6.32M
++// contendedUse(1_to_4)                                       574.73ns    1.74M
++// contendedUse(1_to_32)                                      592.94ns    1.69M
++// contendedUse(4_to_1)                                       118.28ns    8.45M
++// contendedUse(4_to_24)                                      667.62ns    1.50M
++// contendedUse(8_to_100)                                     701.46ns    1.43M
++// contendedUse(32_to_1)                                      165.06ns    6.06M
++// contendedUse(16_to_16)                                     238.57ns    4.19M
++// contendedUse(32_to_32)                                     219.82ns    4.55M
++// contendedUse(32_to_1000)                                   777.42ns    1.29M
++// ============================================================================
++
+ int main(int argc, char** argv) {
+   folly::gflags::ParseCommandLineFlags(&argc, &argv, true);
+   folly::runBenchmarks();

@@ -1,0 +1,252 @@
+--- a/thrift/lib/cpp2/test/ProtocolBench.cpp
++++ b/thrift/lib/cpp2/test/ProtocolBench.cpp
+@@ -123,6 +123,235 @@
+       folly::doNotOptimizeAway(data);
+     }
+   }
++  susp.rehire();
++}
++
++namespace {
++__attribute__((noinline)) int icache_churn_0(int x, int y) {
++  int acc = y;
++  switch (x) {
++#define CASE_BLOCK(i, p1, p2, p3, p4)                                     \
++  case i:                                                                \
++    acc = (acc * (i * 3 + p1)) ^ (acc + (i * 5 + p2));                    \
++    acc = (acc * (i * 7 + p1 + 2)) + (acc ^ (i * 11 + p2 + 4));           \
++    acc = (acc * (i * 13 + p1 + 6)) ^ (acc + (i * 17 + p2 + 6));          \
++    acc = (acc * (i * 19 + p1 + 8)) + (acc ^ (i * 23 + p3));              \
++    acc = (acc * (i * 29 + p1 + 10)) ^ (acc + (i * 31 + p3 + 2));         \
++    acc = (acc * (i * 37 + p1 + 12)) + (acc ^ (i * 41 + p4));             \
++    acc = (acc * (i * 43 + p1 + 14)) ^ (acc + (i * 47 + p4 + 4));         \
++    break;
++#define C1(i, ...) CASE_BLOCK(i, __VA_ARGS__)
++#define C2(i, ...) \
++  C1(i, __VA_ARGS__) \
++  C1(i + 1, __VA_ARGS__)
++#define C4(i, ...) \
++  C2(i, __VA_ARGS__) \
++  C2(i + 2, __VA_ARGS__)
++#define C8(i, ...) \
++  C4(i, __VA_ARGS__) \
++  C4(i + 4, __VA_ARGS__)
++#define C16(i, ...) \
++  C8(i, __VA_ARGS__) \
++  C8(i + 8, __VA_ARGS__)
++#define C32(i, ...) \
++  C16(i, __VA_ARGS__) \
++  C16(i + 16, __VA_ARGS__)
++#define C64(i, ...) \
++  C32(i, __VA_ARGS__) \
++  C32(i + 32, __VA_ARGS__)
++#define C128(i, ...) \
++  C64(i, __VA_ARGS__) \
++  C64(i + 64, __VA_ARGS__)
++#define C256(i, ...) \
++  C128(i, __VA_ARGS__) \
++  C128(i + 128, __VA_ARGS__)
++    C256(0, 101, 13, 19, 37)
++#undef CASE_BLOCK
++#undef C1
++#undef C2
++#undef C4
++#undef C8
++#undef C16
++#undef C32
++#undef C64
++#undef C128
++#undef C256
++  }
++  return acc;
++}
++
++__attribute__((noinline)) int icache_churn_1(int x, int y) {
++  int acc = y;
++  switch (x) {
++#define CASE_BLOCK(i, p1, p2, p3, p4)                                     \
++  case i:                                                                \
++    acc = (acc * (i * 3 + p1)) ^ (acc + (i * 5 + p2));                    \
++    acc = (acc * (i * 7 + p1 + 2)) + (acc ^ (i * 11 + p2 + 4));           \
++    acc = (acc * (i * 13 + p1 + 6)) ^ (acc + (i * 17 + p2 + 6));          \
++    acc = (acc * (i * 19 + p1 + 8)) + (acc ^ (i * 23 + p3));              \
++    acc = (acc * (i * 29 + p1 + 10)) ^ (acc + (i * 31 + p3 + 2));         \
++    acc = (acc * (i * 37 + p1 + 12)) + (acc ^ (i * 41 + p4));             \
++    acc = (acc * (i * 43 + p1 + 14)) ^ (acc + (i * 47 + p4 + 4));         \
++    break;
++#define C1(i, ...) CASE_BLOCK(i, __VA_ARGS__)
++#define C2(i, ...) \
++  C1(i, __VA_ARGS__) \
++  C1(i + 1, __VA_ARGS__)
++#define C4(i, ...) \
++  C2(i, __VA_ARGS__) \
++  C2(i + 2, __VA_ARGS__)
++#define C8(i, ...) \
++  C4(i, __VA_ARGS__) \
++  C4(i + 4, __VA_ARGS__)
++#define C16(i, ...) \
++  C8(i, __VA_ARGS__) \
++  C8(i + 8, __VA_ARGS__)
++#define C32(i, ...) \
++  C16(i, __VA_ARGS__) \
++  C16(i + 16, __VA_ARGS__)
++#define C64(i, ...) \
++  C32(i, __VA_ARGS__) \
++  C32(i + 32, __VA_ARGS__)
++#define C128(i, ...) \
++  C64(i, __VA_ARGS__) \
++  C64(i + 64, __VA_ARGS__)
++#define C256(i, ...) \
++  C128(i, __VA_ARGS__) \
++  C128(i + 128, __VA_ARGS__)
++    C256(0, 137, 43, 59, 67)
++#undef CASE_BLOCK
++#undef C1
++#undef C2
++#undef C4
++#undef C8
++#undef C16
++#undef C32
++#undef C64
++#undef C128
++#undef C256
++  }
++  return acc;
++}
++
++__attribute__((noinline)) int icache_churn_2(int x, int y) {
++  int acc = y;
++  switch (x) {
++#define CASE_BLOCK(i, p1, p2, p3, p4)                                     \
++  case i:                                                                \
++    acc = (acc * (i * 3 + p1)) ^ (acc + (i * 5 + p2));                    \
++    acc = (acc * (i * 7 + p1 + 2)) + (acc ^ (i * 11 + p2 + 4));           \
++    acc = (acc * (i * 13 + p1 + 6)) ^ (acc + (i * 17 + p2 + 6));          \
++    acc = (acc * (i * 19 + p1 + 8)) + (acc ^ (i * 23 + p3));              \
++    acc = (acc * (i * 29 + p1 + 10)) ^ (acc + (i * 31 + p3 + 2));         \
++    acc = (acc * (i * 37 + p1 + 12)) + (acc ^ (i * 41 + p4));             \
++    acc = (acc * (i * 43 + p1 + 14)) ^ (acc + (i * 47 + p4 + 4));         \
++    break;
++#define C1(i, ...) CASE_BLOCK(i, __VA_ARGS__)
++#define C2(i, ...) \
++  C1(i, __VA_ARGS__) \
++  C1(i + 1, __VA_ARGS__)
++#define C4(i, ...) \
++  C2(i, __VA_ARGS__) \
++  C2(i + 2, __VA_ARGS__)
++#define C8(i, ...) \
++  C4(i, __VA_ARGS__) \
++  C4(i + 4, __VA_ARGS__)
++#define C16(i, ...) \
++  C8(i, __VA_ARGS__) \
++  C8(i + 8, __VA_ARGS__)
++#define C32(i, ...) \
++  C16(i, __VA_ARGS__) \
++  C16(i + 16, __VA_ARGS__)
++#define C64(i, ...) \
++  C32(i, __VA_ARGS__) \
++  C32(i + 32, __VA_ARGS__)
++#define C128(i, ...) \
++  C64(i, __VA_ARGS__) \
++  C64(i + 64, __VA_ARGS__)
++#define C256(i, ...) \
++  C128(i, __VA_ARGS__) \
++  C128(i + 128, __VA_ARGS__)
++    C256(0, 173, 73, 89, 101)
++#undef CASE_BLOCK
++#undef C1
++#undef C2
++#undef C4
++#undef C8
++#undef C16
++#undef C32
++#undef C64
++#undef C128
++#undef C256
++  }
++  return acc;
++}
++
++using ChurnFunc = int (*)(int, int);
++ChurnFunc churn_funcs[] = {&icache_churn_0, &icache_churn_1, &icache_churn_2};
++
++struct ChaseNode {
++  ChaseNode* next;
++  int payload;
++};
++
++std::vector<ChaseNode> chase_nodes;
++ChaseNode* chase_head = nullptr;
++
++void setup_chase(size_t size) {
++  if (chase_head) {
++    return;
++  }
++  chase_nodes.resize(size);
++  for (size_t i = 0; i < size; ++i) {
++    chase_nodes[i].next = &chase_nodes[(i + 1) % size];
++    chase_nodes[i].payload = i * 37;
++  }
++  chase_head = &chase_nodes[0];
++}
++} // namespace
++
++template <
++    SerializerMethod kSerializerMethod,
++    typename Serializer,
++    typename Struct>
++void writeBench_IcacheSaturate(size_t iters) {
++  folly::BenchmarkSuspender susp;
++  auto strct = create<Struct>();
++  protocol::Object obj;
++  if constexpr (kSerializerMethod == SerializerMethod::Object) {
++    folly::IOBufQueue q;
++    Serializer::serialize(strct, &q);
++    obj = protocol::parseObject<GetReader<Serializer>>(*q.move());
++  }
++
++  constexpr size_t chase_size = 256;
++  setup_chase(chase_size);
++  auto* current_node = chase_head;
++  int acc = 0;
++
++  susp.dismiss();
++
++  folly::IOBufQueue q;
++  for (size_t j = 0; j < iters; j++) {
++    if constexpr (kSerializerMethod == SerializerMethod::Object) {
++      protocol::serializeObject<GetWriter<Serializer>>(obj, q);
++      folly::doNotOptimizeAway(q);
++    } else {
++      Serializer::serialize(strct, &q);
++      folly::doNotOptimizeAway(q);
++    }
++
++    current_node = current_node->next;
++    acc = churn_funcs[j % 3](current_node->payload & 0xFF, acc);
++
++    // Reuse the queue across iterations to avoid allocating a new buffer for
++    // each struct (which would dominate the measurement), but keep only the
++    // tail to avoid unbounded growth.
++    if (auto head = q.front(); head && head->isChained()) {
++      q.append(q.move()->prev()->unlink());
++    }
++  }
++  folly::doNotOptimizeAway(acc);
+   susp.rehire();
+ }
+ 
+@@ -200,6 +429,13 @@
+ OpEncodeX(OpEncode, Binary)
+ OpEncodeX(OpEncode, Compact)
+ 
++BENCHMARK(OpEncodeBinaryProtocol_write_SortedVecSetInt_IcacheSaturate, iters) {
++  writeBench_IcacheSaturate<
++      getSerializerMethod("OpEncode"),
++      BinarySerializer,
++      OpSortedVecSetInt>(iters);
++}
++
+ int main(int argc, char** argv) {
+   folly::Init init(&argc, &argv);
+   folly::runBenchmarks();

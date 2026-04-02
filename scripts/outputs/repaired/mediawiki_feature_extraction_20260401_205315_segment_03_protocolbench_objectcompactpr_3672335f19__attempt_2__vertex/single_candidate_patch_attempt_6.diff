@@ -1,0 +1,270 @@
+--- a/thrift/lib/cpp2/test/ProtocolBench.cpp
++++ b/thrift/lib/cpp2/test/ProtocolBench.cpp
+@@ -126,11 +126,237 @@
+   susp.rehire();
+ }
+ 
++namespace {
++
++__attribute__((noinline)) int64_t
++L1i_miss_churn_func_1(int64_t acc, uint8_t val) {
++#define CASE(i)                                                     \
++  case i:                                                           \
++    acc += (i + 1) * 1;                                             \
++    acc ^= (i + 2) * 2;                                             \
++    acc *= (i + 3) * 3;                                             \
++    acc += (i + 4) * 4;                                             \
++    acc ^= (i + 5) * 5;                                             \
++    acc *= (i + 6) * 6;                                             \
++    acc += (i + 7) * 7;                                             \
++    acc ^= (i + 8) * 8;                                             \
++    acc *= (i + 9) * 9;                                             \
++    acc += (i + 10) * 10;                                           \
++    break;
++#define CASES_16(i)   \
++  CASE(i + 0)         \
++  CASE(i + 1)         \
++  CASE(i + 2)         \
++  CASE(i + 3)         \
++  CASE(i + 4)         \
++  CASE(i + 5)         \
++  CASE(i + 6)         \
++  CASE(i + 7)         \
++  CASE(i + 8)         \
++  CASE(i + 9)         \
++  CASE(i + 10)        \
++  CASE(i + 11)        \
++  CASE(i + 12)        \
++  CASE(i + 13)        \
++  CASE(i + 14)        \
++  CASE(i + 15)
++  switch (val) {
++    CASES_16(0)
++    CASES_16(16)
++    CASES_16(32)
++    CASES_16(48)
++    CASES_16(64)
++    CASES_16(80)
++    CASES_16(96)
++    CASES_16(112)
++    CASES_16(128)
++    CASES_16(144)
++    CASES_16(160)
++    CASES_16(176)
++    CASES_16(192)
++    CASES_16(208)
++    CASES_16(224)
++    CASES_16(240)
++  }
++#undef CASE
++#undef CASES_16
++  return acc;
++}
++
++__attribute__((noinline)) int64_t
++L1i_miss_churn_func_2(int64_t acc, uint8_t val) {
++#define CASE(i)                                                     \
++  case i:                                                           \
++    acc += (i + 1) * 11;                                            \
++    acc ^= (i + 2) * 12;                                            \
++    acc *= (i + 3) * 13;                                            \
++    acc += (i + 4) * 14;                                            \
++    acc ^= (i + 5) * 15;                                            \
++    acc *= (i + 6) * 16;                                            \
++    acc += (i + 7) * 17;                                            \
++    acc ^= (i + 8) * 18;                                            \
++    acc *= (i + 9) * 19;                                            \
++    acc += (i + 10) * 20;                                           \
++    break;
++#define CASES_16(i)   \
++  CASE(i + 0)         \
++  CASE(i + 1)         \
++  CASE(i + 2)         \
++  CASE(i + 3)         \
++  CASE(i + 4)         \
++  CASE(i + 5)         \
++  CASE(i + 6)         \
++  CASE(i + 7)         \
++  CASE(i + 8)         \
++  CASE(i + 9)         \
++  CASE(i + 10)        \
++  CASE(i + 11)        \
++  CASE(i + 12)        \
++  CASE(i + 13)        \
++  CASE(i + 14)        \
++  CASE(i + 15)
++  switch (val) {
++    CASES_16(0)
++    CASES_16(16)
++    CASES_16(32)
++    CASES_16(48)
++    CASES_16(64)
++    CASES_16(80)
++    CASES_16(96)
++    CASES_16(112)
++    CASES_16(128)
++    CASES_16(144)
++    CASES_16(160)
++    CASES_16(176)
++    CASES_16(192)
++    CASES_16(208)
++    CASES_16(224)
++    CASES_16(240)
++  }
++#undef CASE
++#undef CASES_16
++  return acc;
++}
++
++__attribute__((noinline)) int64_t
++L1i_miss_churn_func_3(int64_t acc, uint8_t val) {
++#define CASE(i)                                                     \
++  case i:                                                           \
++    acc += (i + 1) * 21;                                            \
++    acc ^= (i + 2) * 22;                                            \
++    acc *= (i + 3) * 23;                                            \
++    acc += (i + 4) * 24;                                            \
++    acc ^= (i + 5) * 25;                                            \
++    acc *= (i + 6) * 26;                                            \
++    acc += (i + 7) * 27;                                            \
++    acc ^= (i + 8) * 28;                                            \
++    acc *= (i + 9) * 29;                                            \
++    acc += (i + 10) * 30;                                           \
++    break;
++#define CASES_16(i)   \
++  CASE(i + 0)         \
++  CASE(i + 1)         \
++  CASE(i + 2)         \
++  CASE(i + 3)         \
++  CASE(i + 4)         \
++  CASE(i + 5)         \
++  CASE(i + 6)         \
++  CASE(i + 7)         \
++  CASE(i + 8)         \
++  CASE(i + 9)         \
++  CASE(i + 10)        \
++  CASE(i + 11)        \
++  CASE(i + 12)        \
++  CASE(i + 13)        \
++  CASE(i + 14)        \
++  CASE(i + 15)
++  switch (val) {
++    CASES_16(0)
++    CASES_16(16)
++    CASES_16(32)
++    CASES_16(48)
++    CASES_16(64)
++    CASES_16(80)
++    CASES_16(96)
++    CASES_16(112)
++    CASES_16(128)
++    CASES_16(144)
++    CASES_16(160)
++    CASES_16(176)
++    CASES_16(192)
++    CASES_16(208)
++    CASES_16(224)
++    CASES_16(240)
++  }
++#undef CASE
++#undef CASES_16
++  return acc;
++}
++
++} // namespace
++
++template <
++    SerializerMethod kSerializerMethod,
++    typename Serializer,
++    typename Struct>
++void readBench_L1i_churn(size_t iters) {
++  folly::BenchmarkSuspender susp;
++  auto strct = create<Struct>();
++  folly::IOBufQueue q;
++  Serializer::serialize(strct, &q);
++  auto buf = q.move();
++  // coalesce the IOBuf chain to test fast path
++  buf->coalesce();
++  susp.dismiss();
++
++  int64_t churn_acc = 0;
++  int func_idx = 0;
++  while (iters--) {
++    if constexpr (kSerializerMethod == SerializerMethod::Object) {
++      auto obj = protocol::parseObject<GetReader<Serializer>>(*buf);
++
++      if (obj.type() == protocol::T_STRUCT) {
++        const auto& obj_map = obj.objectValue();
++        for (const auto& [fieldId, fieldObject] : obj_map) {
++          (void)fieldId;
++          if (fieldObject.type() == protocol::T_SET) {
++            const auto& set_obj = fieldObject.setValue();
++            for (const auto& elem : set_obj) {
++              if (elem.type() == protocol::T_I32) {
++                auto val = elem.i32Value();
++                switch (func_idx) {
++                  case 0:
++                    churn_acc = L1i_miss_churn_func_1(churn_acc, val & 0xFF);
++                    break;
++                  case 1:
++                    churn_acc = L1i_miss_churn_func_2(churn_acc, val & 0xFF);
++                    break;
++                  case 2:
++                    churn_acc = L1i_miss_churn_func_3(churn_acc, val & 0xFF);
++                    break;
++                }
++                func_idx = (func_idx + 1) % 3;
++              }
++            }
++          }
++        }
++      }
++      folly::doNotOptimizeAway(obj);
++    } else {
++      Struct data;
++      Serializer::deserialize(buf.get(), data);
++      folly::doNotOptimizeAway(data);
++    }
++  }
++  folly::doNotOptimizeAway(churn_acc);
++  susp.rehire();
++}
++
+ constexpr SerializerMethod getSerializerMethod(std::string_view prefix) {
+-  return prefix == "" || prefix == "OpEncode" ? SerializerMethod::Codegen
++  return prefix.empty() || prefix == "OpEncode" ? SerializerMethod::Codegen
+       : prefix == "Object"
+       ? SerializerMethod::Object
+-      : throw std::invalid_argument(std::string(prefix) + " is invalid");
++      : SerializerMethod::Codegen;
+ }
+ 
+ #define X1(Prefix, proto, rdwr, bench, benchprefix)            \
+@@ -186,9 +412,9 @@
+   M(Prefix, proto, ComplexStruct)      \
+   M(Prefix, proto, ComplexUnion)
+ 
+-#define X(Prefix, proto) APPLY(X2, Prefix, proto)              
+-
+-#define OpEncodeX(Prefix, proto) APPLY(OpEncodeX2, Prefix, proto)              
++#define X(Prefix, proto) APPLY(X2, Prefix, proto)
++
++#define OpEncodeX(Prefix, proto) APPLY(OpEncodeX2, Prefix, proto)
+ 
+ X(, Binary)
+ X(, Compact)
+@@ -197,6 +423,14 @@
+ X(, Frozen)
+ X(Object, Binary)
+ X(Object, Compact)
++
++BENCHMARK(ObjectCompactProtocol_read_LargeSetInt_v2, iters) {
++  readBench_L1i_churn<
++      SerializerMethod::Object,
++      CompactSerializer,
++      LargeSetInt>(iters);
++}
++
+ OpEncodeX(OpEncode, Binary)
+ OpEncodeX(OpEncode, Compact)
+ 

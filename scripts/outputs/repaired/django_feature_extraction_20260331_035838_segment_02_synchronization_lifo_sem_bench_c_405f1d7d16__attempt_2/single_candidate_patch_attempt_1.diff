@@ -1,0 +1,10 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -348,7 +348,7 @@
+ // contendedUse(32_to_1)                                      165.06ns    6.06M
+ // contendedUse(16_to_16)                                     238.57ns    4.19M
+ // contendedUse(32_to_32)                                     219.82ns    4.55M
+-// contendedUse_v2(32_to_32_v2)                                1.27us    788.52K // Example baseline for v2
++// contendedUse_v2(32_to_32_local_variant)                     1.27us    788.52K // Example baseline for v2
+ // contendedUse(32_to_1000)                                   777.42ns    1.29M
+ // ============================================================================

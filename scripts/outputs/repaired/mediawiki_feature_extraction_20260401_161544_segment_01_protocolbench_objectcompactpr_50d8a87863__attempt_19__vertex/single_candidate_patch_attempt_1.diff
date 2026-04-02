@@ -1,0 +1,54 @@
+--- a/thrift/lib/cpp2/test/ProtocolBench.cpp
++++ b/thrift/lib/cpp2/test/ProtocolBench.cpp
+@@ -202,7 +202,7 @@
+ 
+ namespace {
+ 
+-#define OPS_28(acc, d, c) \
++#define OPS_28_A(acc, d, c) \
+     acc = (acc * (c + 1)) + d[1];  acc = (acc ^ (c + 2)) - d[2];  acc = (acc + (c + 3)) * d[3];  acc = (acc - (c + 4)) ^ d[4]; \
+     acc = (acc * (c + 5)) + d[5];  acc = (acc ^ (c + 6)) - d[6];  acc = (acc + (c + 7)) * d[7];  acc = (acc - (c + 8)) ^ d[0]; \
+     acc = (acc * (c + 9)) + d[1];  acc = (acc ^ (c + 10)) - d[2]; acc = (acc + (c + 11)) * d[3]; acc = (acc - (c + 12)) ^ d[4]; \
+@@ -211,8 +211,41 @@
+     acc = (acc * (c + 21)) + d[5]; acc = (acc ^ (c + 22)) - d[6]; acc = (acc + (c + 23)) * d[7]; acc = (acc - (c + 24)) ^ d[0]; \
+     acc = (acc * (c + 25)) + d[1]; acc = (acc ^ (c + 26)) - d[2]; acc = (acc + (c + 27)) * d[3]; acc = (acc - (c + 28)) ^ d[4];
+ 
++#define OPS_28_B(acc, d, c) \
++    acc = (acc * (c + 29)) + d[2]; acc = (acc ^ (c + 30)) - d[3]; acc = (acc + (c + 31)) * d[4]; acc = (acc - (c + 32)) ^ d[5]; \
++    acc = (acc * (c + 33)) + d[6]; acc = (acc ^ (c + 34)) - d[7]; acc = (acc + (c + 35)) * d[0]; acc = (acc - (c + 36)) ^ d[1]; \
++    acc = (acc * (c + 37)) + d[2]; acc = (acc ^ (c + 38)) - d[3]; acc = (acc + (c + 39)) * d[4]; acc = (acc - (c + 40)) ^ d[5]; \
++    acc = (acc * (c + 41)) + d[6]; acc = (acc ^ (c + 42)) - d[7]; acc = (acc + (c + 43)) * d[0]; acc = (acc - (c + 44)) ^ d[1]; \
++    acc = (acc * (c + 45)) + d[2]; acc = (acc ^ (c + 46)) - d[3]; acc = (acc + (c + 47)) * d[4]; acc = (acc - (c + 48)) ^ d[5]; \
++    acc = (acc * (c + 49)) + d[6]; acc = (acc ^ (c + 50)) - d[7]; acc = (acc + (c + 51)) * d[0]; acc = (acc - (c + 52)) ^ d[1]; \
++    acc = (acc * (c + 53)) + d[2]; acc = (acc ^ (c + 54)) - d[3]; acc = (acc + (c + 55)) * d[4]; acc = (acc - (c + 56)) ^ d[5];
++
++#define OPS_28_C(acc, d, c) \
++    acc = (acc * (c + 57)) + d[3]; acc = (acc ^ (c + 58)) - d[4]; acc = (acc + (c + 59)) * d[5]; acc = (acc - (c + 60)) ^ d[6]; \
++    acc = (acc * (c + 61)) + d[7]; acc = (acc ^ (c + 62)) - d[0]; acc = (acc + (c + 63)) * d[1]; acc = (acc - (c + 64)) ^ d[2]; \
++    acc = (acc * (c + 65)) + d[3]; acc = (acc ^ (c + 66)) - d[4]; acc = (acc + (c + 67)) * d[5]; acc = (acc - (c + 68)) ^ d[6]; \
++    acc = (acc * (c + 69)) + d[7]; acc = (acc ^ (c + 70)) - d[0]; acc = (acc + (c + 71)) * d[1]; acc = (acc - (c + 72)) ^ d[2]; \
++    acc = (acc * (c + 73)) + d[3]; acc = (acc ^ (c + 74)) - d[4]; acc = (acc + (c + 75)) * d[5]; acc = (acc - (c + 76)) ^ d[6]; \
++    acc = (acc * (c + 77)) + d[7]; acc = (acc ^ (c + 78)) - d[0]; acc = (acc + (c + 79)) * d[1]; acc = (acc - (c + 80)) ^ d[2]; \
++    acc = (acc * (c + 81)) + d[3]; acc = (acc ^ (c + 82)) - d[4]; acc = (acc + (c + 83)) * d[5]; acc = (acc - (c + 84)) ^ d[6];
++
++#define OPS_28_D(acc, d, c) \
++    acc = (acc * (c + 85)) + d[4]; acc = (acc ^ (c + 86)) - d[5]; acc = (acc + (c + 87)) * d[6]; acc = (acc - (c + 88)) ^ d[7]; \
++    acc = (acc * (c + 89)) + d[0]; acc = (acc ^ (c + 90)) - d[1]; acc = (acc + (c + 91)) * d[2]; acc = (acc - (c + 92)) ^ d[3]; \
++    acc = (acc * (c + 93)) + d[4]; acc = (acc ^ (c + 94)) - d[5]; acc = (acc + (c + 95)) * d[6]; acc = (acc - (c + 96)) ^ d[7]; \
++    acc = (acc * (c + 97)) + d[0]; acc = (acc ^ (c + 98)) - d[1]; acc = (acc + (c + 99)) * d[2]; acc = (acc - (c + 100)) ^ d[3]; \
++    acc = (acc * (c + 101)) + d[4]; acc = (acc ^ (c + 102)) - d[5]; acc = (acc + (c + 103)) * d[6]; acc = (acc - (c + 104)) ^ d[7]; \
++    acc = (acc * (c + 105)) + d[0]; acc = (acc ^ (c + 106)) - d[1]; acc = (acc + (c + 107)) * d[2]; acc = (acc - (c + 108)) ^ d[3]; \
++    acc = (acc * (c + 109)) + d[4]; acc = (acc ^ (c + 110)) - d[5]; acc = (acc + (c + 111)) * d[6]; acc = (acc - (c + 112)) ^ d[7];
++
++#define OPS_112(acc, d, c) \
++    OPS_28_A(acc, d, c) \
++    OPS_28_B(acc, d, c) \
++    OPS_28_C(acc, d, c) \
++    OPS_28_D(acc, d, c)
++
+ #define CASE(i, C) \
+-    case i: { OPS_28(acc, data, C * 256 + i); break; }
++    case i: { OPS_112(acc, data, C * 256 + i); break; }
+ 
+ #define CASES_16(i, C) \
+     CASE(i, C) CASE(i+1, C) CASE(i+2, C) CASE(i+3, C) \

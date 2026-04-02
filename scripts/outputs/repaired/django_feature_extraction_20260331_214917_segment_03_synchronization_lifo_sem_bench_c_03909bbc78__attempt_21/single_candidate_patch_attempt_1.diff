@@ -1,0 +1,13 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -241,7 +241,9 @@
+           // The previous payload & 0xFF always evaluated to 0 due to 64-byte alignment of nodes.
+           // This modification ensures 'c' (the second argument to switchA/B/C) actually varies,
+           // making the dependent work more diverse, potentially improving IPC by better utilizing execution units.
+-          int c_val = ((uintptr_t)coldPos >> 6) & 0xFF;
++          // Corrective change: Derive c_val from hotPos (likely in L1/L2) instead of coldPos (likely L3 miss)
++          // to reduce stall time on the critical path calculation of 'acc'.
++          int c_val = ((uintptr_t)hotPos >> 6) & 0xFF;
+           switch (i % 3) {
+             case 0:
+               acc = switchA(acc, c_val);

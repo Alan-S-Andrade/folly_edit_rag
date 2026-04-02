@@ -1,0 +1,483 @@
+/*
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+#include <thrift/lib/cpp2/frozen/FrozenUtil.h>
+#include <thrift/lib/cpp2/protocol/Object.h>
+#include <thrift/lib/cpp2/protocol/Serializer.h>
+#include <thrift/lib/cpp2/test/Structs.h>
+
+#include <glog/logging.h>
+#include <folly/Benchmark.h>
+#include <folly/BenchmarkUtil.h>
+#include <folly/Optional.h>
+#include <folly/init/Init.h>
+#include <folly/portability/GFlags.h>
+
+using namespace apache::thrift;
+using namespace thrift::benchmark;
+
+template <class>
+struct SerializerTraits;
+template <class ReaderType, class WriterType>
+struct SerializerTraits<Serializer<ReaderType, WriterType>> {
+  using Reader = ReaderType;
+  using Writer = WriterType;
+};
+
+template <class T>
+using GetReader = typename SerializerTraits<T>::Reader;
+template <class T>
+using GetWriter = typename SerializerTraits<T>::Writer;
+
+struct FrozenSerializer {
+  template <class T>
+  static void serialize(const T& obj, folly::IOBufQueue* out) {
+    out->append(folly::IOBuf::fromString(frozen::freezeToString(obj)));
+  }
+  template <class T>
+  static size_t deserialize(folly::IOBuf* iobuf, T& t) {
+    auto view = frozen::mapFrozen<T>(iobuf->coalesce());
+    t = view.thaw();
+    return 0;
+  }
+};
+
+enum class SerializerMethod {
+  Codegen,
+  Object,
+};
+
+// The benckmark is to measure single struct use case, the iteration here is
+// more like a benchmark artifact, so avoid doing optimizationon iteration
+// usecase in this benchmark (e.g. move string definition out of while loop)
+
+template <
+    SerializerMethod kSerializerMethod,
+    typename Serializer,
+    typename Struct>
+void writeBench(size_t iters) {
+  folly::BenchmarkSuspender susp;
+  auto strct = create<Struct>();
+  protocol::Object obj;
+  if constexpr (kSerializerMethod == SerializerMethod::Object) {
+    folly::IOBufQueue q;
+    Serializer::serialize(strct, &q);
+    obj = protocol::parseObject<GetReader<Serializer>>(*q.move());
+  }
+  susp.dismiss();
+
+  folly::IOBufQueue q;
+  while (iters--) {
+    if constexpr (kSerializerMethod == SerializerMethod::Object) {
+      protocol::serializeObject<GetWriter<Serializer>>(obj, q);
+      folly::doNotOptimizeAway(q);
+    } else {
+      Serializer::serialize(strct, &q);
+      folly::doNotOptimizeAway(q);
+    }
+
+    // Reuse the queue across iterations to avoid allocating a new buffer for
+    // each struct (which would dominate the measurement), but keep only the
+    // tail to avoid unbounded growth.
+    if (auto head = q.front(); head && head->isChained()) {
+      q.append(q.move()->prev()->unlink());
+    }
+  }
+  susp.rehire();
+}
+
+template <
+    SerializerMethod kSerializerMethod,
+    typename Serializer,
+    typename Struct>
+void readBench(size_t iters) {
+  folly::BenchmarkSuspender susp;
+  auto strct = create<Struct>();
+  folly::IOBufQueue q;
+  Serializer::serialize(strct, &q);
+  auto buf = q.move();
+  // coalesce the IOBuf chain to test fast path
+  buf->coalesce();
+  susp.dismiss();
+
+  while (iters--) {
+    if constexpr (kSerializerMethod == SerializerMethod::Object) {
+      auto obj = protocol::parseObject<GetReader<Serializer>>(*buf);
+      folly::doNotOptimizeAway(obj);
+    } else {
+      Struct data;
+      Serializer::deserialize(buf.get(), data);
+      folly::doNotOptimizeAway(data);
+    }
+  }
+  susp.rehire();
+}
+
+constexpr SerializerMethod getSerializerMethod(std::string_view prefix) {
+  return prefix == "" || prefix == "OpEncode" ? SerializerMethod::Codegen
+      : prefix == "Object"
+      ? SerializerMethod::Object
+      : throw std::invalid_argument(std::string(prefix) + " is invalid");
+}
+
+#define X1(Prefix, proto, rdwr, bench, benchprefix)            \
+  BENCHMARK(Prefix##proto##Protocol_##rdwr##_##bench, iters) { \
+    rdwr##Bench<                                               \
+        getSerializerMethod(#Prefix),                          \
+        proto##Serializer,                                     \
+        benchprefix##bench>(iters);                            \
+  }
+
+// clang-format off
+#define X2(Prefix, proto, bench)  \
+  X1(Prefix, proto, write, bench,) \
+  X1(Prefix, proto, read, bench,)
+
+#define OpEncodeX2(Prefix, proto, bench)  \
+  X1(Prefix, proto, write, bench, Op) \
+  X1(Prefix, proto, read, bench, Op)
+
+#define APPLY(M, Prefix, proto)        \
+  M(Prefix, proto, Empty)              \
+  M(Prefix, proto, SmallInt)           \
+  M(Prefix, proto, BigInt)             \
+  M(Prefix, proto, SmallString)        \
+  M(Prefix, proto, BigString)          \
+  M(Prefix, proto, BigBinary)          \
+  M(Prefix, proto, LargeBinary)        \
+  M(Prefix, proto, Mixed)              \
+  M(Prefix, proto, MixedUnion)         \
+  M(Prefix, proto, MixedInt)           \
+  M(Prefix, proto, LargeMixed)         \
+  M(Prefix, proto, LargeMixedSparse)   \
+  M(Prefix, proto, SmallListInt)       \
+  M(Prefix, proto, BigListByte)        \
+  M(Prefix, proto, BigListShort)       \
+  M(Prefix, proto, BigListInt)         \
+  M(Prefix, proto, BigListBigInt)      \
+  M(Prefix, proto, BigListFloat)       \
+  M(Prefix, proto, BigListDouble)      \
+  M(Prefix, proto, BigListMixed)       \
+  M(Prefix, proto, BigListMixedInt)    \
+  M(Prefix, proto, LargeListMixed)     \
+  M(Prefix, proto, LargeSetInt)        \
+  M(Prefix, proto, UnorderedSetInt)    \
+  M(Prefix, proto, SortedVecSetInt)    \
+  M(Prefix, proto, LargeMapInt)        \
+  M(Prefix, proto, LargeMapMixed)      \
+  M(Prefix, proto, LargeUnorderedMapMixed)        \
+  M(Prefix, proto, LargeSortedVecMapMixed)        \
+  M(Prefix, proto, UnorderedMapInt)    \
+  M(Prefix, proto, NestedMap)          \
+  M(Prefix, proto, SortedVecNestedMap) \
+  M(Prefix, proto, ComplexStruct)      \
+  M(Prefix, proto, ComplexUnion)
+
+#define X(Prefix, proto) APPLY(X2, Prefix, proto)
+
+#define OpEncodeX(Prefix, proto) APPLY(OpEncodeX2, Prefix, proto)
+
+X(, Binary)
+X(, Compact)
+X(, SimpleJSON)
+X(, JSON)
+X(, Frozen)
+X(Object, Binary)
+X(Object, Compact)
+OpEncodeX(OpEncode, Binary)
+OpEncodeX(OpEncode, Compact)
+
+namespace {
+
+#define CHURN_OP(F, C, I) \
+    acc += (F << 24) | (C << 16) | (I); \
+    acc ^= (F << 24) | (C << 16) | (I+1)
+
+#define CHURN_CASE(F, C) \
+    case C: \
+        CHURN_OP(F, C, 0); \
+        CHURN_OP(F, C, 2); \
+        CHURN_OP(F, C, 4); \
+        CHURN_OP(F, C, 6); \
+        CHURN_OP(F, C, 8); \
+        CHURN_OP(F, C, 10); \
+        CHURN_OP(F, C, 12); \
+        CHURN_OP(F, C, 14); \
+        CHURN_OP(F, C, 16); \
+        CHURN_OP(F, C, 18); \
+        CHURN_OP(F, C, 20); \
+        CHURN_OP(F, C, 22); \
+        CHURN_OP(F, C, 24); \
+        CHURN_OP(F, C, 26); \
+        break
+
+__attribute__((noinline))
+long long churn_code_1(uint8_t val, long long acc) {
+    switch (val) {
+        CHURN_CASE(1, 0); CHURN_CASE(1, 1); CHURN_CASE(1, 2); CHURN_CASE(1, 3);
+        CHURN_CASE(1, 4); CHURN_CASE(1, 5); CHURN_CASE(1, 6); CHURN_CASE(1, 7);
+        CHURN_CASE(1, 8); CHURN_CASE(1, 9); CHURN_CASE(1, 10); CHURN_CASE(1, 11);
+        CHURN_CASE(1, 12); CHURN_CASE(1, 13); CHURN_CASE(1, 14); CHURN_CASE(1, 15);
+        CHURN_CASE(1, 16); CHURN_CASE(1, 17); CHURN_CASE(1, 18); CHURN_CASE(1, 19);
+        CHURN_CASE(1, 20); CHURN_CASE(1, 21); CHURN_CASE(1, 22); CHURN_CASE(1, 23);
+        CHURN_CASE(1, 24); CHURN_CASE(1, 25); CHURN_CASE(1, 26); CHURN_CASE(1, 27);
+        CHURN_CASE(1, 28); CHURN_CASE(1, 29); CHURN_CASE(1, 30); CHURN_CASE(1, 31);
+        CHURN_CASE(1, 32); CHURN_CASE(1, 33); CHURN_CASE(1, 34); CHURN_CASE(1, 35);
+        CHURN_CASE(1, 36); CHURN_CASE(1, 37); CHURN_CASE(1, 38); CHURN_CASE(1, 39);
+        CHURN_CASE(1, 40); CHURN_CASE(1, 41); CHURN_CASE(1, 42); CHURN_CASE(1, 43);
+        CHURN_CASE(1, 44); CHURN_CASE(1, 45); CHURN_CASE(1, 46); CHURN_CASE(1, 47);
+        CHURN_CASE(1, 48); CHURN_CASE(1, 49); CHURN_CASE(1, 50); CHURN_CASE(1, 51);
+        CHURN_CASE(1, 52); CHURN_CASE(1, 53); CHURN_CASE(1, 54); CHURN_CASE(1, 55);
+        CHURN_CASE(1, 56); CHURN_CASE(1, 57); CHURN_CASE(1, 58); CHURN_CASE(1, 59);
+        CHURN_CASE(1, 60); CHURN_CASE(1, 61); CHURN_CASE(1, 62); CHURN_CASE(1, 63);
+        CHURN_CASE(1, 64); CHURN_CASE(1, 65); CHURN_CASE(1, 66); CHURN_CASE(1, 67);
+        CHURN_CASE(1, 68); CHURN_CASE(1, 69); CHURN_CASE(1, 70); CHURN_CASE(1, 71);
+        CHURN_CASE(1, 72); CHURN_CASE(1, 73); CHURN_CASE(1, 74); CHURN_CASE(1, 75);
+        CHURN_CASE(1, 76); CHURN_CASE(1, 77); CHURN_CASE(1, 78); CHURN_CASE(1, 79);
+        CHURN_CASE(1, 80); CHURN_CASE(1, 81); CHURN_CASE(1, 82); CHURN_CASE(1, 83);
+        CHURN_CASE(1, 84); CHURN_CASE(1, 85); CHURN_CASE(1, 86); CHURN_CASE(1, 87);
+        CHURN_CASE(1, 88); CHURN_CASE(1, 89); CHURN_CASE(1, 90); CHURN_CASE(1, 91);
+        CHURN_CASE(1, 92); CHURN_CASE(1, 93); CHURN_CASE(1, 94); CHURN_CASE(1, 95);
+        CHURN_CASE(1, 96); CHURN_CASE(1, 97); CHURN_CASE(1, 98); CHURN_CASE(1, 99);
+        CHURN_CASE(1, 100); CHURN_CASE(1, 101); CHURN_CASE(1, 102); CHURN_CASE(1, 103);
+        CHURN_CASE(1, 104); CHURN_CASE(1, 105); CHURN_CASE(1, 106); CHURN_CASE(1, 107);
+        CHURN_CASE(1, 108); CHURN_CASE(1, 109); CHURN_CASE(1, 110); CHURN_CASE(1, 111);
+        CHURN_CASE(1, 112); CHURN_CASE(1, 113); CHURN_CASE(1, 114); CHURN_CASE(1, 115);
+        CHURN_CASE(1, 116); CHURN_CASE(1, 117); CHURN_CASE(1, 118); CHURN_CASE(1, 119);
+        CHURN_CASE(1, 120); CHURN_CASE(1, 121); CHURN_CASE(1, 122); CHURN_CASE(1, 123);
+        CHURN_CASE(1, 124); CHURN_CASE(1, 125); CHURN_CASE(1, 126); CHURN_CASE(1, 127);
+        CHURN_CASE(1, 128); CHURN_CASE(1, 129); CHURN_CASE(1, 130); CHURN_CASE(1, 131);
+        CHURN_CASE(1, 132); CHURN_CASE(1, 133); CHURN_CASE(1, 134); CHURN_CASE(1, 135);
+        CHURN_CASE(1, 136); CHURN_CASE(1, 137); CHURN_CASE(1, 138); CHURN_CASE(1, 139);
+        CHURN_CASE(1, 140); CHURN_CASE(1, 141); CHURN_CASE(1, 142); CHURN_CASE(1, 143);
+        CHURN_CASE(1, 144); CHURN_CASE(1, 145); CHURN_CASE(1, 146); CHURN_CASE(1, 147);
+        CHURN_CASE(1, 148); CHURN_CASE(1, 149); CHURN_CASE(1, 150); CHURN_CASE(1, 151);
+        CHURN_CASE(1, 152); CHURN_CASE(1, 153); CHURN_CASE(1, 154); CHURN_CASE(1, 155);
+        CHURN_CASE(1, 156); CHURN_CASE(1, 157); CHURN_CASE(1, 158); CHURN_CASE(1, 159);
+        CHURN_CASE(1, 160); CHURN_CASE(1, 161); CHURN_CASE(1, 162); CHURN_CASE(1, 163);
+        CHURN_CASE(1, 164); CHURN_CASE(1, 165); CHURN_CASE(1, 166); CHURN_CASE(1, 167);
+        CHURN_CASE(1, 168); CHURN_CASE(1, 169); CHURN_CASE(1, 170); CHURN_CASE(1, 171);
+        CHURN_CASE(1, 172); CHURN_CASE(1, 173); CHURN_CASE(1, 174); CHURN_CASE(1, 175);
+        CHURN_CASE(1, 176); CHURN_CASE(1, 177); CHURN_CASE(1, 178); CHURN_CASE(1, 179);
+        CHURN_CASE(1, 180); CHURN_CASE(1, 181); CHURN_CASE(1, 182); CHURN_CASE(1, 183);
+        CHURN_CASE(1, 184); CHURN_CASE(1, 185); CHURN_CASE(1, 186); CHURN_CASE(1, 187);
+        CHURN_CASE(1, 188); CHURN_CASE(1, 189); CHURN_CASE(1, 190); CHURN_CASE(1, 191);
+        CHURN_CASE(1, 192); CHURN_CASE(1, 193); CHURN_CASE(1, 194); CHURN_CASE(1, 195);
+        CHURN_CASE(1, 196); CHURN_CASE(1, 197); CHURN_CASE(1, 198); CHURN_CASE(1, 199);
+        CHURN_CASE(1, 200); CHURN_CASE(1, 201); CHURN_CASE(1, 202); CHURN_CASE(1, 203);
+        CHURN_CASE(1, 204); CHURN_CASE(1, 205); CHURN_CASE(1, 206); CHURN_CASE(1, 207);
+        CHURN_CASE(1, 208); CHURN_CASE(1, 209); CHURN_CASE(1, 210); CHURN_CASE(1, 211);
+        CHURN_CASE(1, 212); CHURN_CASE(1, 213); CHURN_CASE(1, 214); CHURN_CASE(1, 215);
+        CHURN_CASE(1, 216); CHURN_CASE(1, 217); CHURN_CASE(1, 218); CHURN_CASE(1, 219);
+        CHURN_CASE(1, 220); CHURN_CASE(1, 221); CHURN_CASE(1, 222); CHURN_CASE(1, 223);
+        CHURN_CASE(1, 224); CHURN_CASE(1, 225); CHURN_CASE(1, 226); CHURN_CASE(1, 227);
+        CHURN_CASE(1, 228); CHURN_CASE(1, 229); CHURN_CASE(1, 230); CHURN_CASE(1, 231);
+        CHURN_CASE(1, 232); CHURN_CASE(1, 233); CHURN_CASE(1, 234); CHURN_CASE(1, 235);
+        CHURN_CASE(1, 236); CHURN_CASE(1, 237); CHURN_CASE(1, 238); CHURN_CASE(1, 239);
+        CHURN_CASE(1, 240); CHURN_CASE(1, 241); CHURN_CASE(1, 242); CHURN_CASE(1, 243);
+        CHURN_CASE(1, 244); CHURN_CASE(1, 245); CHURN_CASE(1, 246); CHURN_CASE(1, 247);
+        CHURN_CASE(1, 248); CHURN_CASE(1, 249); CHURN_CASE(1, 250); CHURN_CASE(1, 251);
+        CHURN_CASE(1, 252); CHURN_CASE(1, 253); CHURN_CASE(1, 254); CHURN_CASE(1, 255);
+        default: break;
+    }
+    return acc;
+}
+
+__attribute__((noinline))
+long long churn_code_2(uint8_t val, long long acc) {
+    switch (val) {
+        CHURN_CASE(2, 0); CHURN_CASE(2, 1); CHURN_CASE(2, 2); CHURN_CASE(2, 3);
+        CHURN_CASE(2, 4); CHURN_CASE(2, 5); CHURN_CASE(2, 6); CHURN_CASE(2, 7);
+        CHURN_CASE(2, 8); CHURN_CASE(2, 9); CHURN_CASE(2, 10); CHURN_CASE(2, 11);
+        CHURN_CASE(2, 12); CHURN_CASE(2, 13); CHURN_CASE(2, 14); CHURN_CASE(2, 15);
+        CHURN_CASE(2, 16); CHURN_CASE(2, 17); CHURN_CASE(2, 18); CHURN_CASE(2, 19);
+        CHURN_CASE(2, 20); CHURN_CASE(2, 21); CHURN_CASE(2, 22); CHURN_CASE(2, 23);
+        CHURN_CASE(2, 24); CHURN_CASE(2, 25); CHURN_CASE(2, 26); CHURN_CASE(2, 27);
+        CHURN_CASE(2, 28); CHURN_CASE(2, 29); CHURN_CASE(2, 30); CHURN_CASE(2, 31);
+        CHURN_CASE(2, 32); CHURN_CASE(2, 33); CHURN_CASE(2, 34); CHURN_CASE(2, 35);
+        CHURN_CASE(2, 36); CHURN_CASE(2, 37); CHURN_CASE(2, 38); CHURN_CASE(2, 39);
+        CHURN_CASE(2, 40); CHURN_CASE(2, 41); CHURN_CASE(2, 42); CHURN_CASE(2, 43);
+        CHURN_CASE(2, 44); CHURN_CASE(2, 45); CHURN_CASE(2, 46); CHURN_CASE(2, 47);
+        CHURN_CASE(2, 48); CHURN_CASE(2, 49); CHURN_CASE(2, 50); CHURN_CASE(2, 51);
+        CHURN_CASE(2, 52); CHURN_CASE(2, 53); CHURN_CASE(2, 54); CHURN_CASE(2, 55);
+        CHURN_CASE(2, 56); CHURN_CASE(2, 57); CHURN_CASE(2, 58); CHURN_CASE(2, 59);
+        CHURN_CASE(2, 60); CHURN_CASE(2, 61); CHURN_CASE(2, 62); CHURN_CASE(2, 63);
+        CHURN_CASE(2, 64); CHURN_CASE(2, 65); CHURN_CASE(2, 66); CHURN_CASE(2, 67);
+        CHURN_CASE(2, 68); CHURN_CASE(2, 69); CHURN_CASE(2, 70); CHURN_CASE(2, 71);
+        CHURN_CASE(2, 72); CHURN_CASE(2, 73); CHURN_CASE(2, 74); CHURN_CASE(2, 75);
+        CHURN_CASE(2, 76); CHURN_CASE(2, 77); CHURN_CASE(2, 78); CHURN_CASE(2, 79);
+        CHURN_CASE(2, 80); CHURN_CASE(2, 81); CHURN_CASE(2, 82); CHURN_CASE(2, 83);
+        CHURN_CASE(2, 84); CHURN_CASE(2, 85); CHURN_CASE(2, 86); CHURN_CASE(2, 87);
+        CHURN_CASE(2, 88); CHURN_CASE(2, 89); CHURN_CASE(2, 90); CHURN_CASE(2, 91);
+        CHURN_CASE(2, 92); CHURN_CASE(2, 93); CHURN_CASE(2, 94); CHURN_CASE(2, 95);
+        CHURN_CASE(2, 96); CHURN_CASE(2, 97); CHURN_CASE(2, 98); CHURN_CASE(2, 99);
+        CHURN_CASE(2, 100); CHURN_CASE(2, 101); CHURN_CASE(2, 102); CHURN_CASE(2, 103);
+        CHURN_CASE(2, 104); CHURN_CASE(2, 105); CHURN_CASE(2, 106); CHURN_CASE(2, 107);
+        CHURN_CASE(2, 108); CHURN_CASE(2, 109); CHURN_CASE(2, 110); CHURN_CASE(2, 111);
+        CHURN_CASE(2, 112); CHURN_CASE(2, 113); CHURN_CASE(2, 114); CHURN_CASE(2, 115);
+        CHURN_CASE(2, 116); CHURN_CASE(2, 117); CHURN_CASE(2, 118); CHURN_CASE(2, 119);
+        CHURN_CASE(2, 120); CHURN_CASE(2, 121); CHURN_CASE(2, 122); CHURN_CASE(2, 123);
+        CHURN_CASE(2, 124); CHURN_CASE(2, 125); CHURN_CASE(2, 126); CHURN_CASE(2, 127);
+        CHURN_CASE(2, 128); CHURN_CASE(2, 129); CHURN_CASE(2, 130); CHURN_CASE(2, 131);
+        CHURN_CASE(2, 132); CHURN_CASE(2, 133); CHURN_CASE(2, 134); CHURN_CASE(2, 135);
+        CHURN_CASE(2, 136); CHURN_CASE(2, 137); CHURN_CASE(2, 138); CHURN_CASE(2, 139);
+        CHURN_CASE(2, 140); CHURN_CASE(2, 141); CHURN_CASE(2, 142); CHURN_CASE(2, 143);
+        CHURN_CASE(2, 144); CHURN_CASE(2, 145); CHURN_CASE(2, 146); CHURN_CASE(2, 147);
+        CHURN_CASE(2, 148); CHURN_CASE(2, 149); CHURN_CASE(2, 150); CHURN_CASE(2, 151);
+        CHURN_CASE(2, 152); CHURN_CASE(2, 153); CHURN_CASE(2, 154); CHURN_CASE(2, 155);
+        CHURN_CASE(2, 156); CHURN_CASE(2, 157); CHURN_CASE(2, 158); CHURN_CASE(2, 159);
+        CHURN_CASE(2, 160); CHURN_CASE(2, 161); CHURN_CASE(2, 162); CHURN_CASE(2, 163);
+        CHURN_CASE(2, 164); CHURN_CASE(2, 165); CHURN_CASE(2, 166); CHURN_CASE(2, 167);
+        CHURN_CASE(2, 168); CHURN_CASE(2, 169); CHURN_CASE(2, 170); CHURN_CASE(2, 171);
+        CHURN_CASE(2, 172); CHURN_CASE(2, 173); CHURN_CASE(2, 174); CHURN_CASE(2, 175);
+        CHURN_CASE(2, 176); CHURN_CASE(2, 177); CHURN_CASE(2, 178); CHURN_CASE(2, 179);
+        CHURN_CASE(2, 180); CHURN_CASE(2, 181); CHURN_CASE(2, 182); CHURN_CASE(2, 183);
+        CHURN_CASE(2, 184); CHURN_CASE(2, 185); CHURN_CASE(2, 186); CHURN_CASE(2, 187);
+        CHURN_CASE(2, 188); CHURN_CASE(2, 189); CHURN_CASE(2, 190); CHURN_CASE(2, 191);
+        CHURN_CASE(2, 192); CHURN_CASE(2, 193); CHURN_CASE(2, 194); CHURN_CASE(2, 195);
+        CHURN_CASE(2, 196); CHURN_CASE(2, 197); CHURN_CASE(2, 198); CHURN_CASE(2, 199);
+        CHURN_CASE(2, 200); CHURN_CASE(2, 201); CHURN_CASE(2, 202); CHURN_CASE(2, 203);
+        CHURN_CASE(2, 204); CHURN_CASE(2, 205); CHURN_CASE(2, 206); CHURN_CASE(2, 207);
+        CHURN_CASE(2, 208); CHURN_CASE(2, 209); CHURN_CASE(2, 210); CHURN_CASE(2, 211);
+        CHURN_CASE(2, 212); CHURN_CASE(2, 213); CHURN_CASE(2, 214); CHURN_CASE(2, 215);
+        CHURN_CASE(2, 216); CHURN_CASE(2, 217); CHURN_CASE(2, 218); CHURN_CASE(2, 219);
+        CHURN_CASE(2, 220); CHURN_CASE(2, 221); CHURN_CASE(2, 222); CHURN_CASE(2, 223);
+        CHURN_CASE(2, 224); CHURN_CASE(2, 225); CHURN_CASE(2, 226); CHURN_CASE(2, 227);
+        CHURN_CASE(2, 228); CHURN_CASE(2, 229); CHURN_CASE(2, 230); CHURN_CASE(2, 231);
+        CHURN_CASE(2, 232); CHURN_CASE(2, 233); CHURN_CASE(2, 234); CHURN_CASE(2, 235);
+        CHURN_CASE(2, 236); CHURN_CASE(2, 237); CHURN_CASE(2, 238); CHURN_CASE(2, 239);
+        CHURN_CASE(2, 240); CHURN_CASE(2, 241); CHURN_CASE(2, 242); CHURN_CASE(2, 243);
+        CHURN_CASE(2, 244); CHURN_CASE(2, 245); CHURN_CASE(2, 246); CHURN_CASE(2, 247);
+        CHURN_CASE(2, 248); CHURN_CASE(2, 249); CHURN_CASE(2, 250); CHURN_CASE(2, 251);
+        CHURN_CASE(2, 252); CHURN_CASE(2, 253); CHURN_CASE(2, 254); CHURN_CASE(2, 255);
+        default: break;
+    }
+    return acc;
+}
+
+__attribute__((noinline))
+long long churn_code_3(uint8_t val, long long acc) {
+    switch (val) {
+        CHURN_CASE(3, 0); CHURN_CASE(3, 1); CHURN_CASE(3, 2); CHURN_CASE(3, 3);
+        CHURN_CASE(3, 4); CHURN_CASE(3, 5); CHURN_CASE(3, 6); CHURN_CASE(3, 7);
+        CHURN_CASE(3, 8); CHURN_CASE(3, 9); CHURN_CASE(3, 10); CHURN_CASE(3, 11);
+        CHURN_CASE(3, 12); CHURN_CASE(3, 13); CHURN_CASE(3, 14); CHURN_CASE(3, 15);
+        CHURN_CASE(3, 16); CHURN_CASE(3, 17); CHURN_CASE(3, 18); CHURN_CASE(3, 19);
+        CHURN_CASE(3, 20); CHURN_CASE(3, 21); CHURN_CASE(3, 22); CHURN_CASE(3, 23);
+        CHURN_CASE(3, 24); CHURN_CASE(3, 25); CHURN_CASE(3, 26); CHURN_CASE(3, 27);
+        CHURN_CASE(3, 28); CHURN_CASE(3, 29); CHURN_CASE(3, 30); CHURN_CASE(3, 31);
+        CHURN_CASE(3, 32); CHURN_CASE(3, 33); CHURN_CASE(3, 34); CHURN_CASE(3, 35);
+        CHURN_CASE(3, 36); CHURN_CASE(3, 37); CHURN_CASE(3, 38); CHURN_CASE(3, 39);
+        CHURN_CASE(3, 40); CHURN_CASE(3, 41); CHURN_CASE(3, 42); CHURN_CASE(3, 43);
+        CHURN_CASE(3, 44); CHURN_CASE(3, 45); CHURN_CASE(3, 46); CHURN_CASE(3, 47);
+        CHURN_CASE(3, 48); CHURN_CASE(3, 49); CHURN_CASE(3, 50); CHURN_CASE(3, 51);
+        CHURN_CASE(3, 52); CHURN_CASE(3, 53); CHURN_CASE(3, 54); CHURN_CASE(3, 55);
+        CHURN_CASE(3, 56); CHURN_CASE(3, 57); CHURN_CASE(3, 58); CHURN_CASE(3, 59);
+        CHURN_CASE(3, 60); CHURN_CASE(3, 61); CHURN_CASE(3, 62); CHURN_CASE(3, 63);
+        CHURN_CASE(3, 64); CHURN_CASE(3, 65); CHURN_CASE(3, 66); CHURN_CASE(3, 67);
+        CHURN_CASE(3, 68); CHURN_CASE(3, 69); CHURN_CASE(3, 70); CHURN_CASE(3, 71);
+        CHURN_CASE(3, 72); CHURN_CASE(3, 73); CHURN_CASE(3, 74); CHURN_CASE(3, 75);
+        CHURN_CASE(3, 76); CHURN_CASE(3, 77); CHURN_CASE(3, 78); CHURN_CASE(3, 79);
+        CHURN_CASE(3, 80); CHURN_CASE(3, 81); CHURN_CASE(3, 82); CHURN_CASE(3, 83);
+        CHURN_CASE(3, 84); CHURN_CASE(3, 85); CHURN_CASE(3, 86); CHURN_CASE(3, 87);
+        CHURN_CASE(3, 88); CHURN_CASE(3, 89); CHURN_CASE(3, 90); CHURN_CASE(3, 91);
+        CHURN_CASE(3, 92); CHURN_CASE(3, 93); CHURN_CASE(3, 94); CHURN_CASE(3, 95);
+        CHURN_CASE(3, 96); CHURN_CASE(3, 97); CHURN_CASE(3, 98); CHURN_CASE(3, 99);
+        CHURN_CASE(3, 100); CHURN_CASE(3, 101); CHURN_CASE(3, 102); CHURN_CASE(3, 103);
+        CHURN_CASE(3, 104); CHURN_CASE(3, 105); CHURN_CASE(3, 106); CHURN_CASE(3, 107);
+        CHURN_CASE(3, 108); CHURN_CASE(3, 109); CHURN_CASE(3, 110); CHURN_CASE(3, 111);
+        CHURN_CASE(3, 112); CHURN_CASE(3, 113); CHURN_CASE(3, 114); CHURN_CASE(3, 115);
+        CHURN_CASE(3, 116); CHURN_CASE(3, 117); CHURN_CASE(3, 118); CHURN_CASE(3, 119);
+        CHURN_CASE(3, 120); CHURN_CASE(3, 121); CHURN_CASE(3, 122); CHURN_CASE(3, 123);
+        CHURN_CASE(3, 124); CHURN_CASE(3, 125); CHURN_CASE(3, 126); CHURN_CASE(3, 127);
+        CHURN_CASE(3, 128); CHURN_CASE(3, 129); CHURN_CASE(3, 130); CHURN_CASE(3, 131);
+        CHURN_CASE(3, 132); CHURN_CASE(3, 133); CHURN_CASE(3, 134); CHURN_CASE(3, 135);
+        CHURN_CASE(3, 136); CHURN_CASE(3, 137); CHURN_CASE(3, 138); CHURN_CASE(3, 139);
+        CHURN_CASE(3, 140); CHURN_CASE(3, 141); CHURN_CASE(3, 142); CHURN_CASE(3, 143);
+        CHURN_CASE(3, 144); CHURN_CASE(3, 145); CHURN_CASE(3, 146); CHURN_CASE(3, 147);
+        CHURN_CASE(3, 148); CHURN_CASE(3, 149); CHURN_CASE(3, 150); CHURN_CASE(3, 151);
+        CHURN_CASE(3, 152); CHURN_CASE(3, 153); CHURN_CASE(3, 154); CHURN_CASE(3, 155);
+        CHURN_CASE(3, 156); CHURN_CASE(3, 157); CHURN_CASE(3, 158); CHURN_CASE(3, 159);
+        CHURN_CASE(3, 160); CHURN_CASE(3, 161); CHURN_CASE(3, 162); CHURN_CASE(3, 163);
+        CHURN_CASE(3, 164); CHURN_CASE(3, 165); CHURN_CASE(3, 166); CHURN_CASE(3, 167);
+        CHURN_CASE(3, 168); CHURN_CASE(3, 169); CHURN_CASE(3, 170); CHURN_CASE(3, 171);
+        CHURN_CASE(3, 172); CHURN_CASE(3, 173); CHURN_CASE(3, 174); CHURN_CASE(3, 175);
+        CHURN_CASE(3, 176); CHURN_CASE(3, 177); CHURN_CASE(3, 178); CHURN_CASE(3, 179);
+        CHURN_CASE(3, 180); CHURN_CASE(3, 181); CHURN_CASE(3, 182); CHURN_CASE(3, 183);
+        CHURN_CASE(3, 184); CHURN_CASE(3, 185); CHURN_CASE(3, 186); CHURN_CASE(3, 187);
+        CHURN_CASE(3, 188); CHURN_CASE(3, 189); CHURN_CASE(3, 190); CHURN_CASE(3, 191);
+        CHURN_CASE(3, 192); CHURN_CASE(3, 193); CHURN_CASE(3, 194); CHURN_CASE(3, 195);
+        CHURN_CASE(3, 196); CHURN_CASE(3, 197); CHURN_CASE(3, 198); CHURN_CASE(3, 199);
+        CHURN_CASE(3, 200); CHURN_CASE(3, 201); CHURN_CASE(3, 202); CHURN_CASE(3, 203);
+        CHURN_CASE(3, 204); CHURN_CASE(3, 205); CHURN_CASE(3, 206); CHURN_CASE(3, 207);
+        CHURN_CASE(3, 208); CHURN_CASE(3, 209); CHURN_CASE(3, 210); CHURN_CASE(3, 211);
+        CHURN_CASE(3, 212); CHURN_CASE(3, 213); CHURN_CASE(3, 214); CHURN_CASE(3, 215);
+        CHURN_CASE(3, 216); CHURN_CASE(3, 217); CHURN_CASE(3, 218); CHURN_CASE(3, 219);
+        CHURN_CASE(3, 220); CHURN_CASE(3, 221); CHURN_CASE(3, 222); CHURN_CASE(3, 223);
+        CHURN_CASE(3, 224); CHURN_CASE(3, 225); CHURN_CASE(3, 226); CHURN_CASE(3, 227);
+        CHURN_CASE(3, 228); CHURN_CASE(3, 229); CHURN_CASE(3, 230); CHURN_CASE(3, 231);
+        CHURN_CASE(3, 232); CHURN_CASE(3, 233); CHURN_CASE(3, 234); CHURN_CASE(3, 235);
+        CHURN_CASE(3, 236); CHURN_CASE(3, 237); CHURN_CASE(3, 238); CHURN_CASE(3, 239);
+        CHURN_CASE(3, 240); CHURN_CASE(3, 241); CHURN_CASE(3, 242); CHURN_CASE(3, 243);
+        CHURN_CASE(3, 244); CHURN_CASE(3, 245); CHURN_CASE(3, 246); CHURN_CASE(3, 247);
+        CHURN_CASE(3, 248); CHURN_CASE(3, 249); CHURN_CASE(3, 250); CHURN_CASE(3, 251);
+        CHURN_CASE(3, 252); CHURN_CASE(3, 253); CHURN_CASE(3, 254); CHURN_CASE(3, 255);
+        default: break;
+    }
+    return acc;
+}
+
+struct ChaseNode {
+    ChaseNode* next;
+    uint8_t payload;
+    char padding[55];
+};
+
+} // namespace
+
+BENCHMARK(ObjectCompactProtocol_read_LargeSetInt_v5, iters) {
+    folly::BenchmarkSuspender susp;
+    const size_t num_nodes = 4096;
+    std::vector<ChaseNode> nodes(num_nodes);
+    for (size_t i = 0; i < num_nodes; ++i) {
+        nodes[i].next = &nodes[(i + 1) % num_nodes];
+        nodes[i].payload = static_cast<uint8_t>(i);
+    }
+
+    ChaseNode* current = &nodes[0];
+    long long acc = 0;
+    susp.dismiss();
+
+    for (size_t i = 0; i < iters; ++i) {
+        current = current->next;
+        uint8_t p = current->payload;
+        switch (i % 3) {
+            case 0: acc = churn_code_1(p, acc); break;
+            case 1: acc = churn_code_2(p, acc); break;
+            case 2: acc = churn_code_3(p, acc); break;
+        }
+    }
+
+    folly::doNotOptimizeAway(acc);
+    folly::doNotOptimizeAway(current);
+}
+
+int main(int argc, char** argv) {
+  folly::Init init(&argc, &argv);
+  folly::runBenchmarks();
+  return 0;
+}
+// clang-format on

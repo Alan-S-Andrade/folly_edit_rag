@@ -1,0 +1,87 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -19,6 +19,11 @@
+ #include <folly/synchronization/NativeSemaphore.h>
+ 
+ #include <folly/Benchmark.h>
++#include <folly/Random.h>
++#include <folly/lang/Align.h>
++
++#include <numeric>
++#include <random>
+ 
+ using namespace folly;
+ 
+@@ -145,37 +150,58 @@
+ 
+   std::vector<std::thread> threads;
+   std::atomic<bool> go(false);
+-  // Shared unpredictable counter to drive branch mispredictions
+-  std::atomic<uint64_t> shared_counter(0);
++
++  struct alignas(hardware_destructive_interference_size) Node {
++    Node* next;
++    uint64_t payload;
++  };
++  constexpr size_t kChainLength = 32768;
++  static std::vector<Node> nodes(kChainLength);
++  static std::atomic<bool> initialized{false};
++  static std::atomic<size_t> p_idx{0};
+ 
+   BENCHMARK_SUSPEND {
++    if (!initialized.exchange(true, std::memory_order_relaxed)) {
++      std::vector<size_t> indices(kChainLength);
++      std::iota(indices.begin(), indices.end(), 0);
++      std::mt19937 g(folly::Random::rand32());
++      std::shuffle(indices.begin(), indices.end(), g);
++
++      for (size_t i = 0; i < kChainLength; ++i) {
++        nodes[indices[i]].next = &nodes[indices[(i + 1) % kChainLength]];
++        nodes[indices[i]].payload = folly::Random::rand64();
++      }
++    }
++
+     for (int t = 0; t < waiters; ++t) {
+-      threads.emplace_back([=, &sem, &shared_counter] {
++      threads.emplace_back([=, &sem] {
++        Node* p =
++            &nodes[p_idx.fetch_add(128, std::memory_order_relaxed) % kChainLength];
+         for (uint32_t i = t; i < n; i += waiters) {
+           sem.wait();
+-          // Unpredictable branch based on shared atomic state
+-          uint64_t v = shared_counter.fetch_add(1, std::memory_order_relaxed);
+-          if (v & 1) {
+-            shared_counter.fetch_add(3, std::memory_order_relaxed);
++          p = p->next;
++          if (p->payload & 1) {
++            folly::asm_volatile_pause();
+           } else {
+-            shared_counter.fetch_add(7, std::memory_order_relaxed);
++            folly::asm_volatile_pause();
+           }
+         }
+       });
+     }
+     for (int t = 0; t < posters; ++t) {
+-      threads.emplace_back([=, &sem, &go, &shared_counter] {
++      threads.emplace_back([=, &sem, &go] {
+         while (!go.load()) {
+           std::this_thread::yield();
+         }
++        Node* p =
++            &nodes[p_idx.fetch_add(128, std::memory_order_relaxed) % kChainLength];
+         for (uint32_t i = t; i < n; i += posters) {
+           sem.post();
+-          // Unpredictable branch based on shared atomic state
+-          uint64_t v = shared_counter.fetch_add(1, std::memory_order_relaxed);
+-          if (v & 1) {
+-            shared_counter.fetch_add(5, std::memory_order_relaxed);
++          p = p->next;
++          if (p->payload & 1) {
++            folly::asm_volatile_pause();
+           } else {
+-            shared_counter.fetch_add(11, std::memory_order_relaxed);
++            folly::asm_volatile_pause();
+           }
+         }
+       });

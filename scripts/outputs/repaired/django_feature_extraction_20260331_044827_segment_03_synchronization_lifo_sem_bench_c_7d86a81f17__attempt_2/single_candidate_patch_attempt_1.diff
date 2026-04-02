@@ -1,0 +1,78 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -136,30 +136,67 @@
+   }
+ }
+ 
++// Macro to generate a single ALU operation with unique constants
++#define SINGLE_ALU_OP(v, c, case_base, op_idx)                                 \
++  v = (v * (3 + ((case_base + op_idx) % 29))) + (uint64_t)c + (case_base + op_idx * 1000); \
++  v ^= (v >> 7) ^ (uint64_t)(case_base + op_idx * 7) ^ ((uint64_t)c << 3);
++
++// Macro to expand 28 ALU operations per case block
++#define ALU_OPS_EXPANSION_28(v, c, case_base) \
++  SINGLE_ALU_OP(v, c, case_base, 0); \
++  SINGLE_ALU_OP(v, c, case_base, 1); \
++  SINGLE_ALU_OP(v, c, case_base, 2); \
++  SINGLE_ALU_OP(v, c, case_base, 3); \
++  SINGLE_ALU_OP(v, c, case_base, 4); \
++  SINGLE_ALU_OP(v, c, case_base, 5); \
++  SINGLE_ALU_OP(v, c, case_base, 6); \
++  SINGLE_ALU_OP(v, c, case_base, 7); \
++  SINGLE_ALU_OP(v, c, case_base, 8); \
++  SINGLE_ALU_OP(v, c, case_base, 9); \
++  SINGLE_ALU_OP(v, c, case_base, 10); \
++  SINGLE_ALU_OP(v, c, case_base, 11); \
++  SINGLE_ALU_OP(v, c, case_base, 12); \
++  SINGLE_ALU_OP(v, c, case_base, 13); \
++  SINGLE_ALU_OP(v, c, case_base, 14); \
++  SINGLE_ALU_OP(v, c, case_base, 15); \
++  SINGLE_ALU_OP(v, c, case_base, 16); \
++  SINGLE_ALU_OP(v, c, case_base, 17); \
++  SINGLE_ALU_OP(v, c, case_base, 18); \
++  SINGLE_ALU_OP(v, c, case_base, 19); \
++  SINGLE_ALU_OP(v, c, case_base, 20); \
++  SINGLE_ALU_OP(v, c, case_base, 21); \
++  SINGLE_ALU_OP(v, c, case_base, 22); \
++  SINGLE_ALU_OP(v, c, case_base, 23); \
++  SINGLE_ALU_OP(v, c, case_base, 24); \
++  SINGLE_ALU_OP(v, c, case_base, 25); \
++  SINGLE_ALU_OP(v, c, case_base, 26); \
++  SINGLE_ALU_OP(v, c, case_base, 27); \
++
++#undef CASES_8
+ #define CASES_8(v, c, base)                                                    \
+   case base + 0:                                                               \
+-    v = (v * 3) + (uint64_t)c + base + 0;                                      \
++    ALU_OPS_EXPANSION_28(v, c, base + 0);                                      \
+     break;                                                                     \
+   case base + 1:                                                               \
+-    v = (v * 5) + (uint64_t)c + base + 1;                                      \
++    ALU_OPS_EXPANSION_28(v, c, base + 1);                                      \
+     break;                                                                     \
+   case base + 2:                                                               \
+-    v = (v * 7) + (uint64_t)c + base + 2;                                      \
++    ALU_OPS_EXPANSION_28(v, c, base + 2);                                      \
+     break;                                                                     \
+   case base + 3:                                                               \
+-    v = (v * 11) + (uint64_t)c + base + 3;                                     \
++    ALU_OPS_EXPANSION_28(v, c, base + 3);                                      \
+     break;                                                                     \
+   case base + 4:                                                               \
+-    v = (v * 13) + (uint64_t)c + base + 4;                                     \
++    ALU_OPS_EXPANSION_28(v, c, base + 4);                                      \
+     break;                                                                     \
+   case base + 5:                                                               \
+-    v = (v * 17) + (uint64_t)c + base + 5;                                     \
++    ALU_OPS_EXPANSION_28(v, c, base + 5);                                      \
+     break;                                                                     \
+   case base + 6:                                                               \
+-    v = (v * 19) + (uint64_t)c + base + 6;                                     \
++    ALU_OPS_EXPANSION_28(v, c, base + 6);                                      \
+     break;                                                                     \
+   case base + 7:                                                               \
+-    v = (v * 23) + (uint64_t)c + base + 7;                                     \
++    ALU_OPS_EXPANSION_28(v, c, base + 7);                                      \
+     break;
+ 
+ #define CASES_256(v, c)                                                        \

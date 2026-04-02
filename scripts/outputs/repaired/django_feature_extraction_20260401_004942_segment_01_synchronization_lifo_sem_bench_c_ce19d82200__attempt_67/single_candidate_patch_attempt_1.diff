@@ -1,0 +1,15 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -250,6 +250,12 @@
+               break;
+           }
+ 
++          // This is a dummy operation that ensures coldPos is used.
++          // It is a bitwise operation that conditionally updates coldPos.
++          // The `coldMask` is set to -1 (all ones) if `i % 8 == 0`, and 0 otherwise.
++          // This means `coldPos` is updated with `coldPos->next` only when `i % 8 == 0`.
++          // This effectively introduces some degree of control-flow variation
++          // and memory access dependency, which might affect performance.
+           auto coldMask = -uint64_t(i % 8 == 0);
+           coldPos = (ChainNode*)(((uintptr_t)coldPos->next & coldMask) |
+                                  ((uintptr_t)coldPos & ~coldMask));

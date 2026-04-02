@@ -1,0 +1,66 @@
+--- a/thrift/lib/cpp2/test/ProtocolBench.cpp
++++ b/thrift/lib/cpp2/test/ProtocolBench.cpp
+@@ -235,6 +235,14 @@
+     }
+     return acc;
+ }
++
++// A large scratch buffer so that sequential scans across it cause many
++// icache misses from calling process_data at widely-spaced offsets.
++static constexpr size_t kScratchPages = 512;
++static constexpr size_t kScratchSize = kScratchPages * 4096;
++alignas(4096) static uint8_t g_scratch[kScratchSize];
++static bool g_scratch_initialized = false;
++
+ } // namespace
+ 
+ 
+@@ -249,27 +257,40 @@
+     const uint8_t* data = buf->data();
+     size_t data_len = buf->length();
+ 
+-    // Guard: need at least 8 bytes for OPS_28 to index d[0]..d[7] safely
+     CHECK_GE(data_len, 8u);
+ 
+-    size_t current_offset = 0;
++    // Initialize the scratch buffer once with data derived from the serialized
++    // payload so the compiler cannot fold it away.
++    if (!g_scratch_initialized) {
++        for (size_t i = 0; i < kScratchSize; ++i) {
++            g_scratch[i] = data[i % data_len] ^ (uint8_t)(i * 0x9e);
++        }
++        g_scratch_initialized = true;
++    }
++
++    // Walk the scratch buffer in large strides (one 4 KB page per iteration)
++    // so every call to process_data touches a new icache line deep in the
++    // buffer, driving up L1-icache-load-misses.
++    size_t scratch_offset = 0;
+     int acc = 0;
+ 
+     susp.dismiss();
+ 
+     for (size_t i = 0; i < iters; ++i) {
+-        const uint8_t* p = data + current_offset;
+-
++        const uint8_t* p = g_scratch + scratch_offset;
++
++        // Rotate through three differently-instantiated process_data templates
++        // so the indirect calls cannot be collapsed by the optimizer.
+         switch (i % 3) {
+             case 0: acc = process_data<1>(acc, p); break;
+             case 1: acc = process_data<2>(acc, p); break;
+             default: acc = process_data<3>(acc, p); break;
+         }
+ 
+-        current_offset += (1 + (p[1] % 32));
+-        // Ensure we always have at least 8 bytes available after current_offset
+-        if (current_offset + 8 >= data_len) {
+-            current_offset = 0;
++        // Advance by one page each iteration to maximise icache pressure.
++        scratch_offset += 4096;
++        if (scratch_offset + 8 >= kScratchSize) {
++            scratch_offset = 0;
+         }
+     }
+ 

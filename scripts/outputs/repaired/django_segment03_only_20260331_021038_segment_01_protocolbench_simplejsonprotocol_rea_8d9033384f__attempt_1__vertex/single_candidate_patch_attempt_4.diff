@@ -1,0 +1,95 @@
+--- a/thrift/lib/cpp2/test/ProtocolBench.cpp
++++ b/thrift/lib/cpp2/test/ProtocolBench.cpp
+@@ -26,6 +26,8 @@
+ #include <folly/init/Init.h>
+ #include <folly/portability/GFlags.h>
+ 
++#include <stdexcept>
++
+ using namespace apache::thrift;
+ using namespace thrift::benchmark;
+ 
+@@ -126,11 +128,56 @@
+   susp.rehire();
+ }
+ 
++namespace {
++FOLLY_NOINLINE int process_v1_a(int x) { return x ^ (x >> 3); }
++FOLLY_NOINLINE int process_v1_b(int x) { return x + (x << 2); }
++FOLLY_NOINLINE int process_v1_c(int x) { return (x * 17) & (x - 1); }
++} // namespace
++
++template <SerializerMethod kSerializerMethod, typename Serializer>
++void readBench_UnorderedSetInt_v1(size_t iters) {
++  using Struct = UnorderedSetInt;
++  folly::BenchmarkSuspender susp;
++  auto strct = create<Struct>();
++  folly::IOBufQueue q;
++  Serializer::serialize(strct, &q);
++  auto buf = q.move();
++  // coalesce the IOBuf chain to test fast path
++  buf->coalesce();
++  susp.dismiss();
++
++  while (iters--) {
++    if constexpr (kSerializerMethod == SerializerMethod::Object) {
++      auto obj = protocol::parseObject<GetReader<Serializer>>(*buf);
++      folly::doNotOptimizeAway(obj);
++    } else {
++      Struct data;
++      Serializer::deserialize(buf.get(), data);
++
++      if (data.fieldA_ref().size() >= 3) {
++        auto it = data.fieldA_ref().begin();
++        int v1 = *it++;
++        int v2 = *it++;
++        int v3 = *it;
++
++        int r1 = process_v1_a(v1);
++        int r2 = process_v1_b(v2);
++        int r3 = process_v1_c(v3);
++
++        folly::doNotOptimizeAway(r1 + r2 + r3);
++      }
++
++      folly::doNotOptimizeAway(data);
++    }
++  }
++  susp.rehire();
++}
++
+ constexpr SerializerMethod getSerializerMethod(std::string_view prefix) {
+   return prefix == "" || prefix == "OpEncode" ? SerializerMethod::Codegen
+       : prefix == "Object"
+       ? SerializerMethod::Object
+-      : throw std::invalid_argument(std::string(prefix) + " is invalid");
++      : throw std::invalid_argument("Invalid prefix");
+ }
+ 
+ #define X1(Prefix, proto, rdwr, bench, benchprefix)            \
+@@ -186,9 +233,9 @@
+   M(Prefix, proto, ComplexStruct)      \
+   M(Prefix, proto, ComplexUnion)
+ 
+-#define X(Prefix, proto) APPLY(X2, Prefix, proto)              
+-
+-#define OpEncodeX(Prefix, proto) APPLY(OpEncodeX2, Prefix, proto)              
++#define X(Prefix, proto) APPLY(X2, Prefix, proto)
++
++#define OpEncodeX(Prefix, proto) APPLY(OpEncodeX2, Prefix, proto)
+ 
+ X(, Binary)
+ X(, Compact)
+@@ -200,6 +247,12 @@
+ OpEncodeX(OpEncode, Binary)
+ OpEncodeX(OpEncode, Compact)
+ 
++BENCHMARK(SimpleJSONProtocol_read_UnorderedSetInt_v1, iters) {
++  readBench_UnorderedSetInt_v1<
++      SerializerMethod::Codegen,
++      SimpleJSONSerializer>(iters);
++}
++
+ int main(int argc, char** argv) {
+   folly::Init init(&argc, &argv);
+   folly::runBenchmarks();

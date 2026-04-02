@@ -1,0 +1,39 @@
+--- a/thrift/lib/cpp2/test/ProtocolBench.cpp
++++ b/thrift/lib/cpp2/test/ProtocolBench.cpp
+@@ -124,6 +124,36 @@
+     }
+   }
+   susp.rehire();
++}
++
++// Variant: read UnorderedSetInt twice per iteration to increase instruction
++// throughput and frontend pressure, targeting higher IPC.
++FOLLY_NOINLINE void readBenchUnorderedSetIntDouble(size_t iters) {
++  folly::BenchmarkSuspender susp;
++  auto strct = create<UnorderedSetInt>();
++  folly::IOBufQueue q;
++  SimpleJSONSerializer::serialize(strct, &q);
++  auto buf = q.move();
++  buf->coalesce();
++  susp.dismiss();
++
++  while (iters--) {
++    {
++      UnorderedSetInt data;
++      SimpleJSONSerializer::deserialize(buf.get(), data);
++      folly::doNotOptimizeAway(data);
++    }
++    {
++      UnorderedSetInt data2;
++      SimpleJSONSerializer::deserialize(buf.get(), data2);
++      folly::doNotOptimizeAway(data2);
++    }
++  }
++  susp.rehire();
++}
++
++BENCHMARK(SimpleJSONProtocol_read_UnorderedSetIntDouble, iters) {
++  readBenchUnorderedSetIntDouble(iters);
+ }
+ 
+ constexpr SerializerMethod getSerializerMethod(std::string_view prefix) {

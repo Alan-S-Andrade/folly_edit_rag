@@ -1,0 +1,180 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -19,6 +19,14 @@
+ #include <folly/synchronization/NativeSemaphore.h>
+ 
+ #include <folly/Benchmark.h>
++#include <folly/lang/Align.h>
++
++#include <atomic>
++#include <mutex>
++#include <numeric>
++#include <random>
++#include <thread>
++#include <vector>
+ 
+ using namespace folly;
+ 
+@@ -108,6 +116,94 @@
+   }
+ }
+ 
++namespace {
++struct ChainNode {
++  ChainNode* next;
++  char pad[64 - sizeof(ChainNode*)];
++};
++static_assert(sizeof(ChainNode) == 64, "ChainNode should be 64 bytes");
++
++// Hot chain: 1 MB (16384 nodes * 64 B)
++static constexpr size_t kHotLen = 16384;
++static cacheline_aligned<ChainNode> hotNodes[kHotLen];
++
++// Cold chain: 128 MB (2M nodes * 64 B)
++static constexpr size_t kColdLen = 2 * 1024 * 1024;
++static ChainNode* coldNodes;
++
++#define GEN_CASE(i, salt) \
++  case i:                 \
++    v ^= (v >> 13);       \
++    v += (i * salt);      \
++    break;
++
++#define GEN_SWITCH_CHUNK(start, salt) \
++  GEN_CASE(start + 0, salt) GEN_CASE(start + 1, salt) GEN_CASE(start + 2, salt) GEN_CASE(start + 3, salt) \
++  GEN_CASE(start + 4, salt) GEN_CASE(start + 5, salt) GEN_CASE(start + 6, salt) GEN_CASE(start + 7, salt)
++
++#define GEN_SWITCH_BODY(prefix, salt) \
++  GEN_SWITCH_CHUNK(prefix + 0, salt) GEN_SWITCH_CHUNK(prefix + 8, salt) \
++  GEN_SWITCH_CHUNK(prefix + 16, salt) GEN_SWITCH_CHUNK(prefix + 24, salt) \
++  GEN_SWITCH_CHUNK(prefix + 32, salt) GEN_SWITCH_CHUNK(prefix + 40, salt) \
++  GEN_SWITCH_CHUNK(prefix + 48, salt) GEN_SWITCH_CHUNK(prefix + 56, salt)
++
++__attribute__((noinline)) uint64_t switchA(uint64_t v, int c) {
++  switch (c) {
++    GEN_SWITCH_BODY(0, 0x123456789abcdef1ULL)
++    GEN_SWITCH_BODY(64, 0x123456789abcdef1ULL)
++    GEN_SWITCH_BODY(128, 0x123456789abcdef1ULL)
++    GEN_SWITCH_BODY(192, 0x123456789abcdef1ULL)
++  }
++  return v;
++}
++
++__attribute__((noinline)) uint64_t switchB(uint64_t v, int c) {
++  switch (c) {
++    GEN_SWITCH_BODY(0, 0x9abcdef123456781ULL)
++    GEN_SWITCH_BODY(64, 0x9abcdef123456781ULL)
++    GEN_SWITCH_BODY(128, 0x9abcdef123456781ULL)
++    GEN_SWITCH_BODY(192, 0x9abcdef123456781ULL)
++  }
++  return v;
++}
++
++__attribute__((noinline)) uint64_t switchC(uint64_t v, int c) {
++  switch (c) {
++    GEN_SWITCH_BODY(0, 0xfedcba9876543211ULL)
++    GEN_SWITCH_BODY(64, 0xfedcba9876543211ULL)
++    GEN_SWITCH_BODY(128, 0xfedcba9876543211ULL)
++    GEN_SWITCH_BODY(192, 0xfedcba9876543211ULL)
++  }
++  return v;
++}
++
++#undef GEN_CASE
++#undef GEN_SWITCH_CHUNK
++#undef GEN_SWITCH_BODY
++
++static void initChain(ChainNode* nodes, size_t len) {
++  std::vector<size_t> perm(len);
++  std::iota(perm.begin(), perm.end(), 0u);
++  std::mt19937_64 rng(42);
++  for (size_t i = len - 1; i > 0; --i) {
++    std::swap(perm[i], perm[rng() % (i + 1)]);
++  }
++  for (size_t i = 0; i < len; ++i) {
++    nodes[perm[i]].next = &nodes[perm[(i + 1) % len]];
++  }
++}
++
++static std::once_flag initFlag;
++static void initialize() {
++  std::call_once(initFlag, [] {
++    initChain(hotNodes, kHotLen);
++    coldNodes = new ChainNode[kColdLen];
++    initChain(coldNodes, kColdLen);
++  });
++}
++
++} // namespace
++
+ static void contendedUse(uint32_t n, int posters, int waiters) {
+   LifoSemImpl<std::atomic> sem;
+ 
+@@ -140,8 +236,67 @@
+   }
+ }
+ 
++static void contendedUse_v1(uint32_t n, int posters, int waiters) {
++  initialize();
++  LifoSemImpl<std::atomic> sem;
++
++  std::vector<std::thread> threads;
++  std::atomic<bool> go(false);
++  constexpr size_t kWorkIters = 512;
++
++  BENCHMARK_SUSPEND {
++    for (int t = 0; t < waiters; ++t) {
++      threads.emplace_back([=, &sem] {
++        for (uint32_t i = t; i < n; i += waiters) {
++          sem.wait();
++        }
++      });
++    }
++    for (int t = 0; t < posters; ++t) {
++      threads.emplace_back([=, &sem, &go] {
++        while (!go.load()) {
++          std::this_thread::yield();
++        }
++
++        ChainNode* hotPos = &hotNodes[(t * 37) % kHotLen];
++        ChainNode* coldPos = &coldNodes[(t * 37) % kColdLen];
++        uint64_t acc = 0;
++
++        for (uint32_t i = t; i < n; i += posters) {
++          for (size_t j = 0; j < kWorkIters; ++j) {
++            hotPos = hotPos->next;
++            uint64_t payload = (uint64_t)(uintptr_t)hotPos;
++            switch (j % 3) {
++              case 0:
++                acc = switchA(acc, payload & 0xFF);
++                break;
++              case 1:
++                acc = switchB(acc, payload & 0xFF);
++                break;
++              case 2:
++                acc = switchC(acc, payload & 0xFF);
++                break;
++            }
++            auto coldMask = -uint64_t((j & 7) == 0);
++            coldPos = (ChainNode*)(((uintptr_t)coldPos->next & coldMask) |
++                                    ((uintptr_t)coldPos & ~coldMask));
++          }
++          sem.post();
++        }
++        folly::doNotOptimizeAway(acc);
++      });
++    }
++  }
++
++  go.store(true);
++  for (auto& thr : threads) {
++    thr.join();
++  }
++}
++
+ BENCHMARK_DRAW_LINE();
+ BENCHMARK_NAMED_PARAM(contendedUse, 1_to_1, 1, 1)
++BENCHMARK_NAMED_PARAM(contendedUse_v1, 32_to_32_v1, 32, 32)
+ BENCHMARK_NAMED_PARAM(contendedUse, 1_to_4, 1, 4)
+ BENCHMARK_NAMED_PARAM(contendedUse, 1_to_32, 1, 32)
+ BENCHMARK_NAMED_PARAM(contendedUse, 4_to_1, 4, 1)

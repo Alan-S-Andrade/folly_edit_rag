@@ -1,0 +1,12 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -250,6 +250,9 @@
+               break;
+           }
+ 
++          // This line is the minimal corrective patch to reduce stall time.
++          // It changes the pattern of coldPos access to be less predictable,
++          // potentially distributing memory accesses more evenly.
+           auto coldMask = -uint64_t(i % 8 == 0);
+           coldPos = (ChainNode*)(((uintptr_t)coldPos->next & coldMask) |
+                                  ((uintptr_t)coldPos & ~coldMask));

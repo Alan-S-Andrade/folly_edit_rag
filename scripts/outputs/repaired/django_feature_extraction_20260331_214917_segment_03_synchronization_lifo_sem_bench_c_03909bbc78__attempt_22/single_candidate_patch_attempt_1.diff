@@ -1,0 +1,11 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -182,7 +182,7 @@
+ 
+ __attribute__((noinline)) uint64_t switchA(uint64_t v, int c) {
+   switch (c) {
+-    CASES_256(v, c);
++    CASES_256(v, c * 7); // Changed from 'c' to 'c * 7' to add more arithmetic work.
+     default:;
+   }
+   return v;

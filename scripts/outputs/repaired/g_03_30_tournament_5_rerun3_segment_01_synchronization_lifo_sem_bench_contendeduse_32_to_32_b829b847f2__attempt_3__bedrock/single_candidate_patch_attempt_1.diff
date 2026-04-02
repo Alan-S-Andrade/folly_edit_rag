@@ -1,0 +1,75 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -286,28 +286,27 @@
+         ChainNode* hotPos = &hotNodes[t % kHotLen];
+         ChainNode* coldPos = &coldNodes[t % kColdLen];
+         uint64_t acc = 0;
+-        constexpr size_t INNER_ITERS = 16;
++        constexpr size_t INNER_ITERS = 32;
+ 
+         for (uint32_t i = t; i < n; i += waiters) {
+           sem.wait();
+           for (size_t j = 0; j < INNER_ITERS; ++j) {
+             hotPos = hotPos->next;
+             uint64_t payload = (uint64_t)(uintptr_t)hotPos;
++            int sel = (int)((payload >> 4) & 0xFF);
+             switch (j % 3) {
+               case 0:
+-                acc = switchA(acc, payload & 0xFF);
++                acc = switchA(acc ^ payload, sel);
+                 break;
+               case 1:
+-                acc = switchB(acc, payload & 0xFF);
++                acc = switchB(acc ^ payload, sel);
+                 break;
+               case 2:
+-                acc = switchC(acc, payload & 0xFF);
++                acc = switchC(acc ^ payload, sel);
+                 break;
+             }
+-            auto coldMask = -uint64_t(j % 8 == 0);
+-            auto nextCold = coldPos->next;
+-            coldPos = (ChainNode*)((uintptr_t)nextCold & coldMask |
+-                                   (uintptr_t)coldPos & ~coldMask);
++            // Chase cold chain every iteration (not masked out)
++            coldPos = coldPos->next;
+           }
+         }
+         folly::doNotOptimizeAway(acc);
+@@ -320,7 +319,7 @@
+         ChainNode* hotPos = &hotNodes[(t + waiters) % kHotLen];
+         ChainNode* coldPos = &coldNodes[(t + waiters) % kColdLen];
+         uint64_t acc = 0;
+-        constexpr size_t INNER_ITERS = 16;
++        constexpr size_t INNER_ITERS = 32;
+         while (!go.load()) {
+           std::this_thread::yield();
+         }
+@@ -328,21 +327,20 @@
+           for (size_t j = 0; j < INNER_ITERS; ++j) {
+             hotPos = hotPos->next;
+             uint64_t payload = (uint64_t)(uintptr_t)hotPos;
++            int sel = (int)((payload >> 4) & 0xFF);
+             switch (j % 3) {
+               case 0:
+-                acc = switchA(acc, payload & 0xFF);
++                acc = switchA(acc ^ payload, sel);
+                 break;
+               case 1:
+-                acc = switchB(acc, payload & 0xFF);
++                acc = switchB(acc ^ payload, sel);
+                 break;
+               case 2:
+-                acc = switchC(acc, payload & 0xFF);
++                acc = switchC(acc ^ payload, sel);
+                 break;
+             }
+-            auto coldMask = -uint64_t(j % 8 == 0);
+-            auto nextCold = coldPos->next;
+-            coldPos = (ChainNode*)((uintptr_t)nextCold & coldMask |
+-                                   (uintptr_t)coldPos & ~coldMask);
++            // Chase cold chain every iteration (not masked out)
++            coldPos = coldPos->next;
+           }
+           sem.post();
+         }

@@ -1,0 +1,173 @@
+--- a/thrift/lib/cpp2/test/ProtocolBench.cpp
++++ b/thrift/lib/cpp2/test/ProtocolBench.cpp
+@@ -25,6 +25,10 @@
+ #include <folly/Optional.h>
+ #include <folly/init/Init.h>
+ #include <folly/portability/GFlags.h>
++
++#include <cstdint>
++#include <numeric>
++#include <random>
+ 
+ using namespace apache::thrift;
+ using namespace thrift::benchmark;
+@@ -186,9 +190,9 @@
+   M(Prefix, proto, ComplexStruct)      \
+   M(Prefix, proto, ComplexUnion)
+ 
+-#define X(Prefix, proto) APPLY(X2, Prefix, proto)              
+-
+-#define OpEncodeX(Prefix, proto) APPLY(OpEncodeX2, Prefix, proto)              
++#define X(Prefix, proto) APPLY(X2, Prefix, proto)
++
++#define OpEncodeX(Prefix, proto) APPLY(OpEncodeX2, Prefix, proto)
+ 
+ X(, Binary)
+ X(, Compact)
+@@ -200,6 +204,146 @@
+ OpEncodeX(OpEncode, Binary)
+ OpEncodeX(OpEncode, Compact)
+ 
++namespace {
++
++struct Node {
++  Node* next;
++  uint64_t payload;
++};
++
++#define OP_3(acc, c) \
++  acc += c;          \
++  acc ^= (c + 1);    \
++  acc *= (c + 2);
++#define OPS_9(acc, c) \
++  OP_3(acc, c);       \
++  OP_3(acc, c + 3);   \
++  OP_3(acc, c + 6);
++#define OPS_27(acc, c) \
++  OPS_9(acc, c);       \
++  OPS_9(acc, c + 9);   \
++  OPS_9(acc, c + 18);
++
++#define CASE(i, acc, C)      \
++  case i:                    \
++    OPS_27(acc, C + i * 30); \
++    break;
++
++#define CASES_16(i, acc, C)  \
++  CASE(i + 0, acc, C)        \
++  CASE(i + 1, acc, C)        \
++  CASE(i + 2, acc, C)        \
++  CASE(i + 3, acc, C)        \
++  CASE(i + 4, acc, C)        \
++  CASE(i + 5, acc, C)        \
++  CASE(i + 6, acc, C)        \
++  CASE(i + 7, acc, C)        \
++  CASE(i + 8, acc, C)        \
++  CASE(i + 9, acc, C)        \
++  CASE(i + 10, acc, C)       \
++  CASE(i + 11, acc, C)       \
++  CASE(i + 12, acc, C)       \
++  CASE(i + 13, acc, C)       \
++  CASE(i + 14, acc, C)       \
++  CASE(i + 15, acc, C)
++
++#define CASES_256(acc, C)     \
++  CASES_16(0, acc, C)         \
++  CASES_16(16, acc, C)        \
++  CASES_16(32, acc, C)        \
++  CASES_16(48, acc, C)        \
++  CASES_16(64, acc, C)        \
++  CASES_16(80, acc, C)        \
++  CASES_16(96, acc, C)        \
++  CASES_16(112, acc, C)       \
++  CASES_16(128, acc, C)       \
++  CASES_16(144, acc, C)       \
++  CASES_16(160, acc, C)       \
++  CASES_16(176, acc, C)       \
++  CASES_16(192, acc, C)       \
++  CASES_16(208, acc, C)       \
++  CASES_16(224, acc, C)       \
++  CASES_16(240, acc, C)
++
++__attribute__((noinline)) uint64_t do_work_0(uint64_t acc, uint8_t val) {
++  switch (val) {
++    CASES_256(acc, 1000)
++    default:
++      break;
++  }
++  return acc;
++}
++
++__attribute__((noinline)) uint64_t do_work_1(uint64_t acc, uint8_t val) {
++  switch (val) {
++    CASES_256(acc, 2000000)
++    default:
++      break;
++  }
++  return acc;
++}
++
++__attribute__((noinline)) uint64_t do_work_2(uint64_t acc, uint8_t val) {
++  switch (val) {
++    CASES_256(acc, 4000000)
++    default:
++      break;
++  }
++  return acc;
++}
++
++} // namespace
++
++BENCHMARK(ObjectCompactProtocol_read_LargeSetInt_ipc, iters) {
++  folly::BenchmarkSuspender susp;
++
++  struct State {
++    std::vector<Node> nodes;
++    Node* current;
++    State() : nodes(1 << 16) {
++      const size_t num_nodes = nodes.size();
++      std::vector<size_t> indices(num_nodes);
++      std::iota(indices.begin(), indices.end(), 0);
++      std::random_device rd;
++      std::mt19937 g(rd());
++      std::shuffle(indices.begin(), indices.end(), g);
++
++      for (size_t i = 0; i < num_nodes; ++i) {
++        nodes[indices[i]].next = &nodes[indices[(i + 1) % num_nodes]];
++        nodes[indices[i]].payload = (i * 1234567891ULL) ^ 987654321ULL;
++      }
++      current = &nodes[indices[0]];
++    }
++  };
++  static State state;
++
++  uint64_t acc = 0;
++  susp.dismiss();
++
++  while (iters--) {
++    uint64_t local_acc = 0;
++    for (int j = 0; j < 300; ++j) {
++      uint8_t switch_val = state.current->payload & 0xFF;
++      switch (j % 3) {
++        case 0:
++          local_acc = do_work_0(local_acc, switch_val);
++          break;
++        case 1:
++          local_acc = do_work_1(local_acc, switch_val);
++          break;
++        case 2:
++          local_acc = do_work_2(local_acc, switch_val);
++          break;
++      }
++      state.current = state.current->next;
++    }
++    acc += local_acc;
++  }
++
++  susp.rehire();
++  folly::doNotOptimizeAway(acc);
++}
++
+ int main(int argc, char** argv) {
+   folly::Init init(&argc, &argv);
+   folly::runBenchmarks();

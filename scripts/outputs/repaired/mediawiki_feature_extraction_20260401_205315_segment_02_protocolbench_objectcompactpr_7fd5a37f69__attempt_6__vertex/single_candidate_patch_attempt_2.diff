@@ -1,0 +1,118 @@
+--- a/thrift/lib/cpp2/test/ProtocolBench.cpp
++++ b/thrift/lib/cpp2/test/ProtocolBench.cpp
+@@ -124,6 +124,115 @@
+     }
+   }
+   susp.rehire();
++}
++
++#define ALU_OPS_26_OFFSET(acc, i, offset) \
++  acc += (i) * 26 + 1 + offset;           \
++  acc ^= (i) * 26 + 2 + offset;           \
++  acc += (i) * 26 + 3 + offset;           \
++  acc ^= (i) * 26 + 4 + offset;           \
++  acc += (i) * 26 + 5 + offset;           \
++  acc ^= (i) * 26 + 6 + offset;           \
++  acc += (i) * 26 + 7 + offset;           \
++  acc ^= (i) * 26 + 8 + offset;           \
++  acc += (i) * 26 + 9 + offset;           \
++  acc ^= (i) * 26 + 10 + offset;          \
++  acc += (i) * 26 + 11 + offset;          \
++  acc ^= (i) * 26 + 12 + offset;          \
++  acc += (i) * 26 + 13 + offset;          \
++  acc ^= (i) * 26 + 14 + offset;          \
++  acc += (i) * 26 + 15 + offset;          \
++  acc ^= (i) * 26 + 16 + offset;          \
++  acc += (i) * 26 + 17 + offset;          \
++  acc ^= (i) * 26 + 18 + offset;          \
++  acc += (i) * 26 + 19 + offset;          \
++  acc ^= (i) * 26 + 20 + offset;          \
++  acc += (i) * 26 + 21 + offset;          \
++  acc ^= (i) * 26 + 22 + offset;          \
++  acc += (i) * 26 + 23 + offset;          \
++  acc ^= (i) * 26 + 24 + offset;          \
++  acc += (i) * 26 + 25 + offset;          \
++  acc ^= (i) * 26 + 26 + offset
++
++#define C(n, offset)                           \
++  case n:                                      \
++    ALU_OPS_26_OFFSET(acc, n, offset); \
++    break;
++#define C4(n, offset) C(n, offset) C(n + 1, offset) C(n + 2, offset) C(n + 3, offset)
++#define C16(n, offset) \
++  C4(n, offset) C4(n + 4, offset) C4(n + 8, offset) C4(n + 12, offset)
++#define C64(n, offset)                                                    \
++  C16(n, offset) C16(n + 16, offset) C16(n + 32, offset) C16(n + 48, \
++                                                                    offset)
++#define C256(n, offset)                                                 \
++  C64(n, offset) C64(n + 64, offset) C64(n + 128, offset) C64(n + 192, \
++                                                                      offset)
++
++__attribute__((noinline)) static int64_t alu_worker1(int64_t acc, uint8_t val) {
++  switch (val) {
++    C256(0, 0);
++  }
++  return acc;
++}
++
++__attribute__((noinline)) static int64_t alu_worker2(int64_t acc, uint8_t val) {
++  switch (val) {
++    C256(0, 256 * 26);
++  }
++  return acc;
++}
++
++__attribute__((noinline)) static int64_t alu_worker3(int64_t acc, uint8_t val) {
++  switch (val) {
++    C256(0, 256 * 26 * 2);
++  }
++  return acc;
++}
++
++#undef C
++#undef C4
++#undef C16
++#undef C64
++#undef C256
++#undef ALU_OPS_26_OFFSET
++
++BENCHMARK(ObjectCompactProtocol_read_LargeSetInt_v6, iters) {
++  folly::BenchmarkSuspender susp;
++
++  struct ChaseNode {
++    uint8_t payload;
++    ChaseNode* next;
++  };
++  constexpr size_t kNumNodes = 4096;
++  auto nodes = std::make_unique<ChaseNode[]>(kNumNodes);
++  for (size_t i = 0; i < kNumNodes; ++i) {
++    nodes[i].payload = (i * 13 + 7) & 0xFF;
++    nodes[i].next = &nodes[(i + 1) % kNumNodes];
++  }
++
++  ChaseNode* p = &nodes[0];
++  int64_t acc = 0;
++
++  susp.dismiss();
++
++  for (size_t i = 0; i < iters; ++i) {
++    uint8_t val = p->payload;
++    switch (i % 3) {
++      case 0:
++        acc = alu_worker1(acc, val);
++        break;
++      case 1:
++        acc = alu_worker2(acc, val);
++        break;
++      case 2:
++        acc = alu_worker3(acc, val);
++        break;
++    }
++    p = p->next;
++  }
++
++  susp.rehire();
++  folly::doNotOptimizeAway(acc);
+ }
+ 
+ constexpr SerializerMethod getSerializerMethod(std::string_view prefix) {

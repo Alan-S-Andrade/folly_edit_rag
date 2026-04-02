@@ -1,0 +1,81 @@
+--- a/folly/io/test/IOBufBenchmark.cpp
++++ b/folly/io/test/IOBufBenchmark.cpp
+@@ -145,6 +145,52 @@
+   }
+   return 0; // Unreachable
+ }
++
++// Helper functions for createAndDestroyMulti_LargeAlloc_Variant
++__attribute__((noinline)) static void largeAllocSwitchFn1(uint64_t& payload) {
++  uint64_t acc = payload;
++  for (int i = 0; i < 8; ++i) { // 8 ALU ops per case
++    acc = (acc * 0x13767C0000000000ULL) ^ (acc >> 7);
++    acc = (acc + 0x7476797371706162ULL) ^ (acc << 3);
++    acc = (acc * 0x13767C0000000000ULL) ^ (acc >> 7);
++    acc = (acc + 0x7476797371706162ULL) ^ (acc << 3);
++    acc = (acc * 0x13767C0000000000ULL) ^ (acc >> 7);
++    acc = (acc + 0x7476797371706162ULL) ^ (acc << 3);
++    acc = (acc * 0x13767C0000000000ULL) ^ (acc >> 7);
++    acc = (acc + 0x7476797371706162ULL) ^ (acc << 3);
++  }
++  payload = acc;
++}
++
++__attribute__((noinline)) static void largeAllocSwitchFn2(uint64_t& payload) {
++  uint64_t acc = payload;
++  for (int i = 0; i < 8; ++i) { // 8 ALU ops per case
++    acc = (acc ^ 0x13767C0000000000ULL) + (acc >> 7);
++    acc = (acc - 0x7476797371706162ULL) ^ (acc >> 3);
++    acc = (acc ^ 0x13767C0000000000ULL) + (acc >> 7);
++    acc = (acc - 0x7476797371706162ULL) ^ (acc >> 3);
++    acc = (acc ^ 0x13767C0000000000ULL) + (acc >> 7);
++    acc = (acc - 0x7476797371706162ULL) ^ (acc >> 3);
++    acc = (acc ^ 0x13767C0000000000ULL) + (acc >> 7);
++    acc = (acc - 0x7476797371706162ULL) ^ (acc >> 3);
++  }
++  payload = acc;
++}
++
++__attribute__((noinline)) static void largeAllocSwitchFn3(uint64_t& payload) {
++  uint64_t acc = payload;
++  for (int i = 0; i < 8; ++i) { // 8 ALU ops per case
++    acc = (acc << 7) ^ (acc * 0x13767C0000000000ULL);
++    acc = (acc + 0x7476797371706162ULL) ^ (acc << 3);
++    acc = (acc << 7) ^ (acc * 0x13767C0000000000ULL);
++    acc = (acc + 0x7476797371706162ULL) ^ (acc << 3);
++    acc = (acc << 7) ^ (acc * 0x13767C0000000000ULL);
++    acc = (acc + 0x7476797371706162ULL) ^ (acc << 3);
++    acc = (acc << 7) ^ (acc * 0x13767C0000000000ULL);
++    acc = (acc + 0x7476797371706162ULL) ^ (acc << 3);
++  }
++  payload = acc;
++}
+ } // namespace
+ 
+ static void createAndDestroyMulti(size_t iters, size_t size) {
+@@ -200,10 +246,26 @@
+   std::array<std::unique_ptr<IOBuf>, kSize> buffers;
+   size_t size = 1024 * 1024; // 1MB allocation
+ 
++  uint64_t payload = 0;
+   while (iters--) {
+     for (auto i = 0; i < kSize; ++i) {
+       buffers[i] = IOBuf::create(size);
+     }
++    // Introduce indirect branches and pointer chasing
++    for (int j = 0; j < 256; ++j) {
++      switch (j % 3) {
++        case 0:
++          largeAllocSwitchFn1(payload);
++          break;
++        case 1:
++          largeAllocSwitchFn2(payload);
++          break;
++        case 2:
++          largeAllocSwitchFn3(payload);
++          break;
++      }
++    }
++    folly::doNotOptimizeAway(payload);
+   }
+ }

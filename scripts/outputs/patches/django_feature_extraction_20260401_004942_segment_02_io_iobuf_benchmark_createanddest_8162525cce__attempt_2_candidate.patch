@@ -1,0 +1,72 @@
+--- a/folly/io/test/IOBufBenchmark.cpp
++++ b/folly/io/test/IOBufBenchmark.cpp
+@@ -15,6 +15,7 @@
+  */
+ 
+ #include <folly/Benchmark.h>
++#include <folly/Memory.h>
+ #include <folly/io/IOBuf.h>
+ 
+ using folly::IOBuf;
+@@ -122,6 +123,36 @@
+   }
+ }
+ 
++namespace {
++// Helper functions for the PROVEN PATTERN
++inline void case_func(uint8_t v) {
++  // Use a switch statement with a large number of cases to promote branch mispredictions.
++  // The index is derived from a value that is unlikely to be predictable by the CPU.
++  switch (v % 3) {
++    case 0:
++      folly::doNotOptimizeAway(v);
++      break;
++    case 1:
++      folly::doNotOptimizeAway(v);
++      break;
++    case 2:
++      folly::doNotOptimizeAway(v);
++      break;
++  }
++}
++
++// Function to generate a chain of indirect branches
++inline uint8_t chain_func(uint8_t v, size_t chainLen) {
++  if (chainLen == 0) {
++    return v;
++  }
++  // Introduce a level of indirection by using a pointer to a function.
++  // The function pointer is calculated based on the input value, making it less predictable.
++  case_func(v);
++  return chain_func(v + (v & 0x01), chainLen - 1);
++}
++} // namespace
++
+ static void createAndDestroyMulti(size_t iters, size_t size) {
+   static constexpr auto kSize = 1024;
+   std::array<std::unique_ptr<IOBuf>, kSize> buffers;
+@@ -132,6 +163,24 @@
+     }
+   }
+ }
++
++// New derived benchmark using the PROVEN PATTERN
++BENCHMARK(createAndDestroyMulti_IndirectBranch, iters) {
++  static constexpr auto kSize = 1024;
++  static constexpr size_t kChainLen = 100; // Tune this value for branch misprediction
++  std::array<std::unique_ptr<IOBuf>, kSize> buffers;
++  uint8_t val = 0;
++
++  while (iters--) {
++    for (size_t i = 0; i < kSize; ++i) {
++      buffers[i] = IOBuf::create(128); // Small size to focus on control flow
++      val = chain_func(val + (i & 0x01), kChainLen);
++      folly::doNotOptimizeAway(buffers[i]->capacity());
++    }
++    folly::doNotOptimizeAway(val);
++  }
++}
++
+ 
+ BENCHMARK_DRAW_LINE();
+ BENCHMARK_NAMED_PARAM(createAndDestroyMulti, 64, 64)

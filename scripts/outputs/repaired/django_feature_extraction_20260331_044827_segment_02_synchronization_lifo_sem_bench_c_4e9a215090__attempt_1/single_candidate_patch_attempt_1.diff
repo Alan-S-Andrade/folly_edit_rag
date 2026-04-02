@@ -1,0 +1,53 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -301,8 +301,50 @@
+   }
+ }
+ 
++// Added variant: contendedUse_MemBarrier.
++// This variant adds asm_volatile_memory() after each sem.post() and sem.wait()
++// operation in the hot path. This can act as a compiler barrier, preventing
++// reordering of memory operations, which might influence instruction pipeline
++// efficiency or cache behavior, potentially improving IPC.
++static void contendedUse_MemBarrier(uint32_t n, int posters, int waiters) {
++  LifoSemImpl<std::atomic> sem;
++
++  std::vector<std::thread> threads;
++  std::atomic<bool> go(false);
++
++  BENCHMARK_SUSPEND {
++    for (int t = 0; t < waiters; ++t) {
++      threads.emplace_back([=, &sem] {
++        for (uint32_t i = t; i < n; i += waiters) {
++          sem.wait();
++          asm_volatile_memory(); // Added for this variant
++        }
++      });
++    }
++    for (int t = 0; t < posters; ++t) {
++      threads.emplace_back([=, &sem, &go] {
++        while (!go.load()) {
++          std::this_thread::yield();
++        }
++        for (uint32_t i = t; i < n; i += posters) {
++          sem.post();
++          asm_volatile_memory(); // Added for this variant
++        }
++      });
++    }
++  }
++
++  go.store(true);
++  for (auto& thr : threads) {
++    thr.join();
++  }
++}
++
++
+ BENCHMARK_DRAW_LINE();
+ BENCHMARK_NAMED_PARAM(contendedUse, 1_to_1, 1, 1)
++// New benchmark registration adjacent to contendedUse, 1_to_1
++BENCHMARK_NAMED_PARAM(contendedUse_MemBarrier, 32_to_1000_MemBarrier, 32, 1000)
+ BENCHMARK_NAMED_PARAM(contendedUse, 1_to_4, 1, 4)
+ BENCHMARK_NAMED_PARAM(contendedUse, 1_to_32, 1, 32)
+ BENCHMARK_NAMED_PARAM(contendedUse, 4_to_1, 4, 1)

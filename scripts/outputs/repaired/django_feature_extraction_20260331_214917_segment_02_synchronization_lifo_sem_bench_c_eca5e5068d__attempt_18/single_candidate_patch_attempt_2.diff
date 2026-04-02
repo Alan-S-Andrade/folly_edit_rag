@@ -1,0 +1,19 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -145,11 +145,14 @@
+   v_acc = ((v_acc + 17) ^ ((uint64_t)c_val * base_val + case_id + 4));        \
+   v_acc = ((v_acc * 19) + ((uint64_t)c_val & (base_val + case_id + 5)));      \
+   v_acc = ((v_acc ^ 23) - ((uint64_t)c_val + base_val + case_id + 6));        \
+-  v_acc = ((v_acc + 29) * ((uint64_t)c_val | (base_val + case_id + 7)));      \
++  v_acc = ((v_acc + 29) * ((uint64_t)c_val | (base_val + case_id + 7)));       \
+   v_acc = ((v_acc - 31) & ((uint64_t)c_val + base_val + case_id + 8));        \
+   v_acc = ((v_acc * 37) ^ ((uint64_t)c_val - base_val + case_id + 9));        \
+   v_acc = ((v_acc + 41) >> (((uint64_t)c_val % 31) + 1));                     \
+-  v_acc = ((v_acc * 43) + ((uint64_t)c_val ^ (base_val + case_id + 10)));
++  v_acc = ((v_acc * 43) + ((uint64_t)c_val ^ (base_val + case_id + 10)));     \
++  v_acc = ((v_acc + 47) ^ ((uint64_t)c_val * base_val + case_id + 11));       \
++  v_acc = ((v_acc * 53) + ((uint64_t)c_val & (base_val + case_id + 12)));     \
++  v_acc = ((v_acc ^ 59) - ((uint64_t)c_val + base_val + case_id + 13));
+ 
+ #define CASES_8(v, c, base)                                                    \
+   case base + 0:                                                               \

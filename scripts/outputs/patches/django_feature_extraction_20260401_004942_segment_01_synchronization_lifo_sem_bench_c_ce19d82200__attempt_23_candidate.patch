@@ -1,0 +1,18 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -251,6 +251,15 @@
+           }
+ 
+           auto coldMask = -uint64_t(i % 8 == 0);
++          // The current logic creates a new coldPos only when coldMask is true.
++          // This can lead to a situation where coldPos is not updated for many
++          // iterations, potentially impacting cache behavior.
++          // To minimally correct this and encourage more varied memory access
++          // patterns consistent with the 'tune the remaining stall source'
++          // guidance, we will unconditionally update coldPos to coldPos->next.
++          // The conditional masking will still apply, but the starting point for
++          // the next iteration's traversal will be varied.
++          coldPos = coldPos->next;
+           coldPos = (ChainNode*)(((uintptr_t)coldPos->next & coldMask) |
+                                  ((uintptr_t)coldPos & ~coldMask));
+           sem.post();

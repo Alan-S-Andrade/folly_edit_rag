@@ -1,0 +1,57 @@
+--- a/thrift/lib/cpp2/test/ProtocolBench.cpp
++++ b/thrift/lib/cpp2/test/ProtocolBench.cpp
+@@ -3,7 +3,8 @@
+  *
+  * Licensed under the Apache License, Version 2.0 (the "License");
+  * you may not use this file except in compliance with the License.
+- * You may obtain a copy of the License at
++ * You may
++ * obtain a copy of the License at
+  *
+  *     http://www.apache.org/licenses/LICENSE-2.0
+  *
+@@ -119,6 +120,31 @@
+       folly::doNotOptimizeAway(obj);
+     } else {
+       Struct data;
++      Serializer::deserialize(buf.get(), data);
++      folly::doNotOptimizeAway(data);
++    }
++  }
++  susp.rehire();
++}
++
++template <SerializerMethod kSerializerMethod, typename Serializer>
++void readBenchUnorderedSetIntReuse(size_t iters) {
++  using Struct = UnorderedSetInt;
++  folly::BenchmarkSuspender susp;
++  auto strct = create<Struct>();
++  folly::IOBufQueue q;
++  Serializer::serialize(strct, &q);
++  auto buf = q.move();
++  // coalesce the IOBuf chain to test fast path
++  buf->coalesce();
++  susp.dismiss();
++
++  Struct data;
++  while (iters--) {
++    if constexpr (kSerializerMethod == SerializerMethod::Object) {
++      auto obj = protocol::parseObject<GetReader<Serializer>>(*buf);
++      folly::doNotOptimizeAway(obj);
++    } else {
+       Serializer::deserialize(buf.get(), data);
+       folly::doNotOptimizeAway(data);
+     }
+@@ -200,6 +226,12 @@
+ OpEncodeX(OpEncode, Binary)
+ OpEncodeX(OpEncode, Compact)
+ 
++BENCHMARK(SimpleJSONProtocol_read_UnorderedSetInt_reuse, iters) {
++  readBenchUnorderedSetIntReuse<
++      SerializerMethod::Codegen,
++      SimpleJSONSerializer>(iters);
++}
++
+ int main(int argc, char** argv) {
+   folly::Init init(&argc, &argv);
+   folly::runBenchmarks();

@@ -1,0 +1,36 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -295,13 +295,13 @@
+             uint64_t payload = (uint64_t)(uintptr_t)hotPos;
+             switch (j % 3) {
+               case 0:
+-                acc = switchA(acc, payload & 0xFF);
++                acc = switchA(acc, (payload >> 6) & 0xFF);
+                 break;
+               case 1:
+-                acc = switchB(acc, payload & 0xFF);
++                acc = switchB(acc, (payload >> 6) & 0xFF);
+                 break;
+               case 2:
+-                acc = switchC(acc, payload & 0xFF);
++                acc = switchC(acc, (payload >> 6) & 0xFF);
+                 break;
+             }
+             auto coldMask = -uint64_t(j % 8 == 0);
+@@ -330,13 +330,13 @@
+             uint64_t payload = (uint64_t)(uintptr_t)hotPos;
+             switch (j % 3) {
+               case 0:
+-                acc = switchA(acc, payload & 0xFF);
++                acc = switchA(acc, (payload >> 6) & 0xFF);
+                 break;
+               case 1:
+-                acc = switchB(acc, payload & 0xFF);
++                acc = switchB(acc, (payload >> 6) & 0xFF);
+                 break;
+               case 2:
+-                acc = switchC(acc, payload & 0xFF);
++                acc = switchC(acc, (payload >> 6) & 0xFF);
+                 break;
+             }
+             auto coldMask = -uint64_t(j % 8 == 0);

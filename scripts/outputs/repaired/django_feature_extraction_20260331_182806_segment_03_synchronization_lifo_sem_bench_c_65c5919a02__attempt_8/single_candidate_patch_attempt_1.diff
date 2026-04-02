@@ -1,0 +1,35 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -385,18 +385,20 @@
+           std::this_thread::yield();
+         }
+         for (uint32_t i = t; i < n; i += posters) {
+-          hotPos = hotPos->next;
+-          uint64_t payload = (uint64_t)(uintptr_t)hotPos;
+-          switch (i % 3) {
+-            case 0:
+-              acc = switchD(acc, payload & 0xFF);
+-              break;
+-            case 1:
+-              acc = switchE(acc, payload & 0xFF);
+-              break;
+-            case 2:
+-              acc = switchF(acc, payload & 0xFF);
+-              break;
++          for (uint32_t j = 0; j < 30; ++j) {
++            hotPos = hotPos->next;
++            uint64_t payload = (uint64_t)(uintptr_t)hotPos;
++            switch (j % 3) {
++              case 0:
++                acc = switchD(acc, payload & 0xFF);
++                break;
++              case 1:
++                acc = switchE(acc, payload & 0xFF);
++                break;
++              case 2:
++                acc = switchF(acc, payload & 0xFF);
++                break;
++            }
+           }
+ 
+           auto coldMask = -uint64_t(i % 8 == 0);

@@ -1,0 +1,40 @@
+--- a/thrift/lib/cpp2/test/ProtocolBench.cpp
++++ b/thrift/lib/cpp2/test/ProtocolBench.cpp
+@@ -25,6 +25,7 @@
+ #include <folly/Optional.h>
+ #include <folly/init/Init.h>
+ #include <folly/portability/GFlags.h>
++#include <folly/hash/Hash.h>
+ 
+ using namespace apache::thrift;
+ using namespace thrift::benchmark;
+@@ -193,6 +194,29 @@
+ X(, Binary)
+ X(, Compact)
+ X(, SimpleJSON)
++
++BENCHMARK(SimpleJSONProtocol_read_UnorderedSetInt_smaller, iters) {
++  folly::BenchmarkSuspender susp;
++  UnorderedSetInt strct;
++  constexpr int kSize = 25;
++  strct.ints_ref()->reserve(kSize);
++  for (size_t i = 0; i < kSize; ++i) {
++    strct.ints_ref()->insert(folly::hash::twang_mix64(i));
++  }
++  folly::IOBufQueue q;
++  SimpleJSONSerializer::serialize(strct, &q);
++  auto buf = q.move();
++  buf->coalesce();
++  susp.dismiss();
++
++  while (iters--) {
++    UnorderedSetInt data;
++    SimpleJSONSerializer::deserialize(buf.get(), data);
++    folly::doNotOptimizeAway(data);
++  }
++  susp.rehire();
++}
++
+ X(, JSON)
+ X(, Frozen)
+ X(Object, Binary)

@@ -1,0 +1,69 @@
+--- a/thrift/lib/cpp2/test/ProtocolBench.cpp
++++ b/thrift/lib/cpp2/test/ProtocolBench.cpp
+@@ -171,6 +171,20 @@
+   SWITCH_256(val, acc, 0xFEDCBA9);
+ }
+ 
++// Additional noinline switch functions with distinct offsets to widen the
++// executed instruction footprint and raise L1i pressure / lower IPC.
++__attribute__((noinline)) void switch_func_3(int val, int& acc) {
++  SWITCH_256(val, acc, 0x5A5A5A5);
++}
++
++__attribute__((noinline)) void switch_func_4(int val, int& acc) {
++  SWITCH_256(val, acc, 0xC3C3C3C);
++}
++
++__attribute__((noinline)) void switch_func_5(int val, int& acc) {
++  SWITCH_256(val, acc, 0x76543210);
++}
++
+ } // namespace
+ 
+ template <class>
+@@ -371,6 +385,45 @@
+   susp.rehire();
+ }
+ 
++// Variant: rotate across 6 noinline switch functions (vs 3 in v11) to widen
++// the hot instruction footprint and increase i-cache pressure, pushing IPC
++// down toward the target by stressing the frontend decode bandwidth.
++BENCHMARK(ObjectCompactProtocol_read_LargeSetInt_v12, iters) {
++  folly::BenchmarkSuspender susp;
++  constexpr size_t kSize = 1024 * 16;
++  struct Node {
++    Node* next;
++    char payload;
++  };
++  std::vector<Node> nodes(kSize);
++  for (size_t i = 0; i < kSize; ++i) {
++    nodes[i].next = &nodes[(i + 1) % kSize];
++    nodes[i].payload = (i * 53) & 0xFF;
++  }
++
++  Node* current = &nodes[0];
++  int acc = 0;
++  // 6-function rotation doubles the hot code footprint relative to v11,
++  // increasing L1i miss pressure and reducing IPC.
++  void (*funcs[])(int, int&) = {
++      switch_func_0,
++      switch_func_1,
++      switch_func_2,
++      switch_func_3,
++      switch_func_4,
++      switch_func_5,
++  };
++  susp.dismiss();
++
++  for (size_t i = 0; i < iters; ++i) {
++    current = current->next;
++    funcs[i % 6](current->payload, acc);
++  }
++
++  folly::doNotOptimizeAway(acc);
++  susp.rehire();
++}
++
+ int main(int argc, char** argv) {
+   folly::Init init(&argc, &argv);
+   folly::runBenchmarks();

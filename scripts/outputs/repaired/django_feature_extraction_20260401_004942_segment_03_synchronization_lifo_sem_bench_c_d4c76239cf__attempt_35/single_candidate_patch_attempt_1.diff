@@ -1,0 +1,12 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -250,6 +250,9 @@
+               break;
+           }
+ 
++          // This line was introduced to add a small, deterministic bit of work
++          // that's less likely to be optimized out, and also potentially
++          // increase instruction-level parallelism variance.
+           auto coldMask = -uint64_t(i % 8 == 0);
+           coldPos = (ChainNode*)(((uintptr_t)coldPos->next & coldMask) |
+                                  ((uintptr_t)coldPos & ~coldMask));

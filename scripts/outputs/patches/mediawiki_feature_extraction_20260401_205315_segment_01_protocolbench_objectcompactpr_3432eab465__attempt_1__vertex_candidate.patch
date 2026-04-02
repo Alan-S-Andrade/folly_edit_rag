@@ -1,0 +1,158 @@
+--- a/thrift/lib/cpp2/test/ProtocolBench.cpp
++++ b/thrift/lib/cpp2/test/ProtocolBench.cpp
+@@ -25,6 +25,9 @@
+ #include <folly/Optional.h>
+ #include <folly/init/Init.h>
+ #include <folly/portability/GFlags.h>
++
++#include <numeric>
++#include <random>
+ 
+ using namespace apache::thrift;
+ using namespace thrift::benchmark;
+@@ -186,9 +189,9 @@
+   M(Prefix, proto, ComplexStruct)      \
+   M(Prefix, proto, ComplexUnion)
+ 
+-#define X(Prefix, proto) APPLY(X2, Prefix, proto)              
+-
+-#define OpEncodeX(Prefix, proto) APPLY(OpEncodeX2, Prefix, proto)              
++#define X(Prefix, proto) APPLY(X2, Prefix, proto)
++
++#define OpEncodeX(Prefix, proto) APPLY(OpEncodeX2, Prefix, proto)
+ 
+ X(, Binary)
+ X(, Compact)
+@@ -200,6 +203,132 @@
+ OpEncodeX(OpEncode, Binary)
+ OpEncodeX(OpEncode, Compact)
+ 
++namespace {
++
++struct ChaseNode_LargeSetInt_v1 {
++  ChaseNode_LargeSetInt_v1* next;
++  int64_t payload;
++};
++
++std::vector<ChaseNode_LargeSetInt_v1> chase_chain_LargeSetInt_v1;
++ChaseNode_LargeSetInt_v1* chase_head_LargeSetInt_v1 = nullptr;
++
++void setup_chase_chain_LargeSetInt_v1(size_t size) {
++  if (chase_head_LargeSetInt_v1) {
++    return;
++  }
++  chase_chain_LargeSetInt_v1.resize(size);
++  std::vector<int> indices(size);
++  std::iota(indices.begin(), indices.end(), 0);
++  std::shuffle(
++      indices.begin(), indices.end(), std::default_random_engine(123));
++
++  for (size_t i = 0; i < size; ++i) {
++    chase_chain_LargeSetInt_v1[indices[i]].next =
++        &chase_chain_LargeSetInt_v1[indices[(i + 1) % size]];
++    chase_chain_LargeSetInt_v1[indices[i]].payload =
++        i * 37 + (i & 1 ? 1 : -1) * i * i * 13;
++  }
++  chase_head_LargeSetInt_v1 = &chase_chain_LargeSetInt_v1[0];
++}
++
++template <int N>
++__attribute__((noinline)) int64_t
++large_set_int_v1_perturb(int64_t acc, int8_t input) {
++  // Using different constants in each template instantiation to prevent
++  // code deduplication by the compiler/linker.
++  switch (input) {
++#define V1_CASE_BLOCK(i)                                                       \
++  case i:                                                                      \
++    acc += (i * (0x1010101 + N * 0x11));                                        \
++    acc ^= (i * (0x2020202 + N * 0x22));                                        \
++    acc *= (i * (0x3030303 + N * 0x33));                                        \
++    acc += (i * (0x4040404 + N * 0x44));                                        \
++    acc ^= (i * (0x5050505 + N * 0x55));                                        \
++    acc *= (i * (0x6060606 + N * 0x66));                                        \
++    acc += (i * (0x7070707 + N * 0x77));                                        \
++    acc ^= (i * (0x8080808 + N * 0x88));                                        \
++    acc *= (i * (0x9090909 + N * 0x99));                                        \
++    acc += (i * (0xA0A0A0A + N * 0xAA));                                        \
++    acc ^= (i * (0xB0B0B0B + N * 0xBB));                                        \
++    acc *= (i * (0xC0C0C0C + N * 0xCC));                                        \
++    acc += (i * (0xD0D0D0D + N * 0xDD));                                        \
++    acc ^= (i * (0xE0E0E0E + N * 0xEE));                                        \
++    break;
++
++#define V1_P_16(p)                                                             \
++  V1_CASE_BLOCK(p + 0)                                                         \
++  V1_CASE_BLOCK(p + 1)                                                         \
++  V1_CASE_BLOCK(p + 2)                                                         \
++  V1_CASE_BLOCK(p + 3)                                                         \
++  V1_CASE_BLOCK(p + 4)                                                         \
++  V1_CASE_BLOCK(p + 5)                                                         \
++  V1_CASE_BLOCK(p + 6)                                                         \
++  V1_CASE_BLOCK(p + 7)                                                         \
++  V1_CASE_BLOCK(p + 8)                                                         \
++  V1_CASE_BLOCK(p + 9)                                                         \
++  V1_CASE_BLOCK(p + 10)                                                        \
++  V1_CASE_BLOCK(p + 11)                                                        \
++  V1_CASE_BLOCK(p + 12)                                                        \
++  V1_CASE_BLOCK(p + 13)                                                        \
++  V1_CASE_BLOCK(p + 14)                                                        \
++  V1_CASE_BLOCK(p + 15)
++#define V1_P_64(p)                                                             \
++  V1_P_16(p) V1_P_16(p + 16) V1_P_16(p + 32) V1_P_16(p + 48)
++#define V1_P_256() V1_P_64(0) V1_P_64(64) V1_P_64(128) V1_P_64(192)
++
++    V1_P_256()
++
++#undef V1_P_256
++#undef V1_P_64
++#undef V1_P_16
++#undef V1_CASE_BLOCK
++  }
++  return acc;
++}
++} // namespace
++
++BENCHMARK(ObjectCompactProtocol_read_LargeSetInt_v1, iters) {
++  folly::BenchmarkSuspender susp;
++  using Serializer = CompactSerializer;
++  using Struct = LargeSetInt;
++  auto strct = create<Struct>();
++  folly::IOBufQueue q;
++  Serializer::serialize(strct, &q);
++  auto buf = q.move();
++  buf->coalesce();
++
++  constexpr size_t kChaseChainSize = 1024;
++  setup_chase_chain_LargeSetInt_v1(kChaseChainSize);
++  auto* chaser = chase_head_LargeSetInt_v1;
++  int64_t acc = 0;
++  int j = 0;
++
++  susp.dismiss();
++
++  while (iters--) {
++    auto obj = protocol::parseObject<GetReader<Serializer>>(*buf);
++    folly::doNotOptimizeAway(obj);
++
++    chaser = chaser->next;
++    int8_t switch_input = chaser->payload & 0xFF;
++    switch ((j++) % 3) {
++      case 0:
++        acc = large_set_int_v1_perturb<0>(acc, switch_input);
++        break;
++      case 1:
++        acc = large_set_int_v1_perturb<1>(acc, switch_input);
++        break;
++      case 2:
++        acc = large_set_int_v1_perturb<2>(acc, switch_input);
++        break;
++    }
++  }
++
++  susp.rehire();
++  folly::doNotOptimizeAway(acc);
++}
++
+ int main(int argc, char** argv) {
+   folly::Init init(&argc, &argv);
+   folly::runBenchmarks();

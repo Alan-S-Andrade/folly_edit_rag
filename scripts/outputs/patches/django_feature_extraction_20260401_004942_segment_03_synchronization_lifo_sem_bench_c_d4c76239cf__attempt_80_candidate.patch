@@ -1,0 +1,14 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -250,6 +250,11 @@
+               break;
+           }
+ 
++          // The following line ensures that coldPos is used to access memory
++          // without being optimized away and also to contribute to cache pressure.
++          // The bitwise AND with a mask ensures that only one of the next pointers
++          // is selected based on the condition. This also reduces the potential
++          // for a branch misprediction if the condition is stable.
+           auto coldMask = -uint64_t(i % 8 == 0);
+           coldPos = (ChainNode*)(((uintptr_t)coldPos->next & coldMask) |
+                                  ((uintptr_t)coldPos & ~coldMask));

@@ -1,0 +1,104 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -136,67 +136,72 @@
+   }
+ }
+ 
+-#define CASES_8(v, c, base)                                                    \
++#define CASES_8(v, c, base, op)                                                \
+   case base + 0:                                                               \
+-    v = (v * 3) + (uint64_t)c + base + 0;                                      \
++    v = (v op 3) + (uint64_t)c + base + 0;                                     \
+     break;                                                                     \
+   case base + 1:                                                               \
+-    v = (v * 5) + (uint64_t)c + base + 1;                                      \
++    v = (v op 5) + (uint64_t)c + base + 1;                                     \
+     break;                                                                     \
+   case base + 2:                                                               \
+-    v = (v * 7) + (uint64_t)c + base + 2;                                      \
++    v = (v op 7) + (uint64_t)c + base + 2;                                     \
+     break;                                                                     \
+   case base + 3:                                                               \
+-    v = (v * 11) + (uint64_t)c + base + 3;                                     \
++    v = (v op 11) + (uint64_t)c + base + 3;                                    \
+     break;                                                                     \
+   case base + 4:                                                               \
+-    v = (v * 13) + (uint64_t)c + base + 4;                                     \
++    v = (v op 13) + (uint64_t)c + base + 4;                                    \
+     break;                                                                     \
+   case base + 5:                                                               \
+-    v = (v * 17) + (uint64_t)c + base + 5;                                     \
++    v = (v op 17) + (uint64_t)c + base + 5;                                    \
+     break;                                                                     \
+   case base + 6:                                                               \
+-    v = (v * 19) + (uint64_t)c + base + 6;                                     \
++    v = (v op 19) + (uint64_t)c + base + 6;                                    \
+     break;                                                                     \
+   case base + 7:                                                               \
+-    v = (v * 23) + (uint64_t)c + base + 7;                                     \
++    v = (v op 23) + (uint64_t)c + base + 7;                                    \
+     break;
+ 
+-#define CASES_256(v, c)                                                        \
+-  CASES_8(v, c, 0)                                                             \
+-  CASES_8(v, c, 8) CASES_8(v, c, 16) CASES_8(v, c, 24) CASES_8(v, c, 32)       \
+-      CASES_8(v, c, 40) CASES_8(v, c, 48) CASES_8(v, c, 56)                     \
+-          CASES_8(v, c, 64) CASES_8(v, c, 72) CASES_8(v, c, 80)                 \
+-              CASES_8(v, c, 88) CASES_8(v, c, 96) CASES_8(v, c, 104)            \
+-                  CASES_8(v, c, 112) CASES_8(v, c, 120) CASES_8(v, c, 128)      \
+-                      CASES_8(v, c, 136) CASES_8(v, c, 144)                     \
+-                          CASES_8(v, c, 152) CASES_8(v, c, 160)                 \
+-                              CASES_8(v, c, 168) CASES_8(v, c, 176)             \
+-                                  CASES_8(v, c, 184) CASES_8(v, c, 192)         \
+-                                      CASES_8(v, c, 200) CASES_8(v, c, 208)     \
+-                                          CASES_8(v, c, 216)                   \
+-                                              CASES_8(v, c, 224)               \
+-                                                  CASES_8(v, c, 232)           \
+-                                                      CASES_8(v, c, 240)       \
+-                                                          CASES_8(v, c, 248)
++#define CASES_256(v, c, op)                                                    \
++  CASES_8(v, c, 0, op)                                                         \
++  CASES_8(v, c, 8, op) CASES_8(v, c, 16, op) CASES_8(v, c, 24, op)            \
++      CASES_8(v, c, 32, op) CASES_8(v, c, 40, op) CASES_8(v, c, 48, op)        \
++          CASES_8(v, c, 56, op) CASES_8(v, c, 64, op) CASES_8(v, c, 72, op)    \
++              CASES_8(v, c, 80, op) CASES_8(v, c, 88, op)                      \
++                  CASES_8(v, c, 96, op) CASES_8(v, c, 104, op)                 \
++                      CASES_8(v, c, 112, op) CASES_8(v, c, 120, op)            \
++                          CASES_8(v, c, 128, op) CASES_8(v, c, 136, op)        \
++                              CASES_8(v, c, 144, op) CASES_8(v, c, 152, op)    \
++                                  CASES_8(v, c, 160, op)                       \
++                                      CASES_8(v, c, 168, op)                   \
++                                          CASES_8(v, c, 176, op)               \
++                                              CASES_8(v, c, 184, op)           \
++                                                  CASES_8(v, c, 192, op)       \
++                                                      CASES_8(v, c, 200, op)   \
++                                                          CASES_8(v, c, 208, op) \
++                                                              CASES_8(v, c, 216, op) \
++                                                                  CASES_8(v, c, 224, op) \
++                                                                      CASES_8(v, c, 232, op) \
++                                                                          CASES_8(v, c, 240, op) \
++                                                                              CASES_8(v, c, 248, op)
+ 
+ __attribute__((noinline)) uint64_t switchA(uint64_t v, int c) {
+   switch (c) {
+-    CASES_256(v, c);
++    CASES_256(v, c, +); // Changed from * to +
+     default:;
+   }
+   return v;
+ }
+ __attribute__((noinline)) uint64_t switchB(uint64_t v, int c) {
+   switch (c) {
+-    CASES_256(v, c * 3);
++    CASES_256(v, c * 3, ^); // Changed from * to ^
+     default:;
+   }
+   return v;
+ }
+ __attribute__((noinline)) uint64_t switchC(uint64_t v, int c) {
+   switch (c) {
+-    CASES_256(v, c * 5);
++    CASES_256(v, c * 5, *); // Kept *
+     default:;
+   }
+   return v;

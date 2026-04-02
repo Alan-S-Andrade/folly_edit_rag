@@ -1,0 +1,133 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -137,11 +137,12 @@
+ }
+ 
+ #define EXPANDED_ALU_OPS_BODY(v_acc, c_val, base_val, case_id)                 \
++  /* Block 1 (13 ops, constants from +0 to +10) */                            \
+   v_acc = ((v_acc * 3) ^ ((uint64_t)c_val + base_val + case_id + 0));         \
+   v_acc = ((v_acc + 5) & ((uint64_t)c_val - base_val + case_id + 1));         \
+   v_acc = ((v_acc * 7) + ((uint64_t)c_val | (base_val + case_id + 2)));       \
+   v_acc = ((v_acc ^ 11) * ((uint64_t)c_val + base_val + case_id + 3));        \
+-  v_acc = ((v_acc - 13) >> (((uint64_t)c_val % 31) + 1)); /* avoid zero shift */ \
++  v_acc = ((v_acc - 13) >> (((uint64_t)c_val % 31) + 1));                     \
+   v_acc = ((v_acc + 17) ^ ((uint64_t)c_val * base_val + case_id + 4));        \
+   v_acc = ((v_acc * 19) + ((uint64_t)c_val & (base_val + case_id + 5)));      \
+   v_acc = ((v_acc ^ 23) - ((uint64_t)c_val + base_val + case_id + 6));        \
+@@ -151,7 +152,7 @@
+   v_acc = ((v_acc + 41) >> (((uint64_t)c_val % 31) + 1));                     \
+   v_acc = ((v_acc * 43) + ((uint64_t)c_val ^ (base_val + case_id + 10)));    \
+                                                                                \
+-  /* New block of operations to increase I-cache footprint */                  \
++  /* Block 2 (13 ops, constants from +11 to +21) */                           \
+   v_acc = ((v_acc * 53) ^ ((uint64_t)c_val + base_val + case_id + 11));       \
+   v_acc = ((v_acc + 59) & ((uint64_t)c_val - base_val + case_id + 12));       \
+   v_acc = ((v_acc * 61) + ((uint64_t)c_val | (base_val + case_id + 13)));     \
+@@ -166,7 +167,7 @@
+   v_acc = ((v_acc + 103) >> (((uint64_t)c_val % 31) + 1));                    \
+   v_acc = ((v_acc * 107) + ((uint64_t)c_val ^ (base_val + case_id + 21)));   \
+                                                                                \
+-  /* Third block of operations to further increase I-cache footprint */        \
++  /* Block 3 (13 ops, constants from +22 to +32) */                           \
+   v_acc = ((v_acc * 109) ^ ((uint64_t)c_val + base_val + case_id + 22));      \
+   v_acc = ((v_acc + 113) & ((uint64_t)c_val - base_val + case_id + 23));      \
+   v_acc = ((v_acc * 127) + ((uint64_t)c_val | (base_val + case_id + 24)));    \
+@@ -179,7 +180,97 @@
+   v_acc = ((v_acc - 163) & ((uint64_t)c_val + base_val + case_id + 30));      \
+   v_acc = ((v_acc * 167) ^ ((uint64_t)c_val - base_val + case_id + 31));      \
+   v_acc = ((v_acc + 173) >> (((uint64_t)c_val % 31) + 1));                    \
+-  v_acc = ((v_acc * 179) + ((uint64_t)c_val ^ (base_val + case_id + 32)));
++  v_acc = ((v_acc * 179) + ((uint64_t)c_val ^ (base_val + case_id + 32)));   \
++                                                                               \
++  /* Block 4 (13 ops, constants from +33 to +43) */                           \
++  v_acc = ((v_acc * 181) ^ ((uint64_t)c_val + base_val + case_id + 33));      \
++  v_acc = ((v_acc + 191) & ((uint64_t)c_val - base_val + case_id + 34));      \
++  v_acc = ((v_acc * 193) + ((uint64_t)c_val | (base_val + case_id + 35)));    \
++  v_acc = ((v_acc ^ 197) * ((uint64_t)c_val + base_val + case_id + 36));      \
++  v_acc = ((v_acc - 199) >> (((uint64_t)c_val % 31) + 1));                    \
++  v_acc = ((v_acc + 211) ^ ((uint64_t)c_val * base_val + case_id + 37));      \
++  v_acc = ((v_acc * 223) + ((uint64_t)c_val & (base_val + case_id + 38)));    \
++  v_acc = ((v_acc ^ 227) - ((uint64_t)c_val + base_val + case_id + 39));      \
++  v_acc = ((v_acc + 229) * ((uint64_t)c_val | (base_val + case_id + 40)));    \
++  v_acc = ((v_acc - 233) & ((uint64_t)c_val + base_val + case_id + 41));      \
++  v_acc = ((v_acc * 239) ^ ((uint64_t)c_val - base_val + case_id + 42));      \
++  v_acc = ((v_acc + 241) >> (((uint64_t)c_val % 31) + 1));                    \
++  v_acc = ((v_acc * 251) + ((uint64_t)c_val ^ (base_val + case_id + 43)));   \
++                                                                               \
++  /* Block 5 (13 ops, constants from +44 to +54) */                           \
++  v_acc = ((v_acc * 257) ^ ((uint64_t)c_val + base_val + case_id + 44));      \
++  v_acc = ((v_acc + 263) & ((uint64_t)c_val - base_val + case_id + 45));      \
++  v_acc = ((v_acc * 269) + ((uint64_t)c_val | (base_val + case_id + 46)));    \
++  v_acc = ((v_acc ^ 271) * ((uint64_t)c_val + base_val + case_id + 47));      \
++  v_acc = ((v_acc - 277) >> (((uint64_t)c_val % 31) + 1));                    \
++  v_acc = ((v_acc + 281) ^ ((uint64_t)c_val * base_val + case_id + 48));      \
++  v_acc = ((v_acc * 283) + ((uint64_t)c_val & (base_val + case_id + 49)));    \
++  v_acc = ((v_acc ^ 293) - ((uint64_t)c_val + base_val + case_id + 50));      \
++  v_acc = ((v_acc + 307) * ((uint64_t)c_val | (base_val + case_id + 51)));    \
++  v_acc = ((v_acc - 311) & ((uint64_t)c_val + base_val + case_id + 52));      \
++  v_acc = ((v_acc * 313) ^ ((uint64_t)c_val - base_val + case_id + 53));      \
++  v_acc = ((v_acc + 317) >> (((uint64_t)c_val % 31) + 1));                    \
++  v_acc = ((v_acc * 331) + ((uint64_t)c_val ^ (base_val + case_id + 54)));   \
++                                                                               \
++  /* Block 6 (13 ops, constants from +55 to +65) */                           \
++  v_acc = ((v_acc * 337) ^ ((uint64_t)c_val + base_val + case_id + 55));      \
++  v_acc = ((v_acc + 347) & ((uint64_t)c_val - base_val + case_id + 56));      \
++  v_acc = ((v_acc * 349) + ((uint64_t)c_val | (base_val + case_id + 57)));    \
++  v_acc = ((v_acc ^ 353) * ((uint64_t)c_val + base_val + case_id + 58));      \
++  v_acc = ((v_acc - 359) >> (((uint64_t)c_val % 31) + 1));                    \
++  v_acc = ((v_acc + 367) ^ ((uint64_t)c_val * base_val + case_id + 59));      \
++  v_acc = ((v_acc * 373) + ((uint64_t)c_val & (base_val + case_id + 60)));    \
++  v_acc = ((v_acc ^ 379) - ((uint64_t)c_val + base_val + case_id + 61));      \
++  v_acc = ((v_acc + 383) * ((uint64_t)c_val | (base_val + case_id + 62)));    \
++  v_acc = ((v_acc - 389) & ((uint64_t)c_val + base_val + case_id + 63));      \
++  v_acc = ((v_acc * 397) ^ ((uint64_t)c_val - base_val + case_id + 64));      \
++  v_acc = ((v_acc + 401) >> (((uint64_t)c_val % 31) + 1));                    \
++  v_acc = ((v_acc * 409) + ((uint64_t)c_val ^ (base_val + case_id + 65)));   \
++                                                                               \
++  /* Block 7 (13 ops, constants from +66 to +76) */                           \
++  v_acc = ((v_acc * 419) ^ ((uint64_t)c_val + base_val + case_id + 66));      \
++  v_acc = ((v_acc + 421) & ((uint64_t)c_val - base_val + case_id + 67));      \
++  v_acc = ((v_acc * 431) + ((uint64_t)c_val | (base_val + case_id + 68)));    \
++  v_acc = ((v_acc ^ 433) * ((uint64_t)c_val + base_val + case_id + 69));      \
++  v_acc = ((v_acc - 439) >> (((uint64_t)c_val % 31) + 1));                    \
++  v_acc = ((v_acc + 443) ^ ((uint64_t)c_val * base_val + case_id + 70));      \
++  v_acc = ((v_acc * 449) + ((uint64_t)c_val & (base_val + case_id + 71)));    \
++  v_acc = ((v_acc ^ 457) - ((uint64_t)c_val + base_val + case_id + 72));      \
++  v_acc = ((v_acc + 461) * ((uint64_t)c_val | (base_val + case_id + 73)));    \
++  v_acc = ((v_acc - 463) & ((uint64_t)c_val + base_val + case_id + 74));      \
++  v_acc = ((v_acc * 467) ^ ((uint64_t)c_val - base_val + case_id + 75));      \
++  v_acc = ((v_acc + 479) >> (((uint64_t)c_val % 31) + 1));                    \
++  v_acc = ((v_acc * 487) + ((uint64_t)c_val ^ (base_val + case_id + 76)));   \
++                                                                               \
++  /* Block 8 (13 ops, constants from +77 to +87) */                           \
++  v_acc = ((v_acc * 491) ^ ((uint64_t)c_val + base_val + case_id + 77));      \
++  v_acc = ((v_acc + 499) & ((uint64_t)c_val - base_val + case_id + 78));      \
++  v_acc = ((v_acc * 503) + ((uint64_t)c_val | (base_val + case_id + 79)));    \
++  v_acc = ((v_acc ^ 509) * ((uint64_t)c_val + base_val + case_id + 80));      \
++  v_acc = ((v_acc - 521) >> (((uint64_t)c_val % 31) + 1));                    \
++  v_acc = ((v_acc + 523) ^ ((uint64_t)c_val * base_val + case_id + 81));      \
++  v_acc = ((v_acc * 541) + ((uint64_t)c_val & (base_val + case_id + 82)));    \
++  v_acc = ((v_acc ^ 547) - ((uint64_t)c_val + base_val + case_id + 83));      \
++  v_acc = ((v_acc + 557) * ((uint64_t)c_val | (base_val + case_id + 84)));    \
++  v_acc = ((v_acc - 563) & ((uint64_t)c_val + base_val + case_id + 85));      \
++  v_acc = ((v_acc * 569) ^ ((uint64_t)c_val - base_val + case_id + 86));      \
++  v_acc = ((v_acc + 571) >> (((uint64_t)c_val % 31) + 1));                    \
++  v_acc = ((v_acc * 577) + ((uint64_t)c_val ^ (base_val + case_id + 87)));   \
++                                                                               \
++  /* Block 9 (13 ops, constants from +88 to +98) */                           \
++  v_acc = ((v_acc * 587) ^ ((uint64_t)c_val + base_val + case_id + 88));      \
++  v_acc = ((v_acc + 593) & ((uint64_t)c_val - base_val + case_id + 89));      \
++  v_acc = ((v_acc * 599) + ((uint64_t)c_val | (base_val + case_id + 90)));    \
++  v_acc = ((v_acc ^ 601) * ((uint64_t)c_val + base_val + case_id + 91));      \
++  v_acc = ((v_acc - 607) >> (((uint64_t)c_val % 31) + 1));                    \
++  v_acc = ((v_acc + 613) ^ ((uint64_t)c_val * base_val + case_id + 92));      \
++  v_acc = ((v_acc * 617) + ((uint64_t)c_val & (base_val + case_id + 93)));    \
++  v_acc = ((v_acc ^ 619) - ((uint64_t)c_val + base_val + case_id + 94));      \
++  v_acc = ((v_acc + 631) * ((uint64_t)c_val | (base_val + case_id + 95)));    \
++  v_acc = ((v_acc - 641) & ((uint64_t)c_val + base_val + case_id + 96));      \
++  v_acc = ((v_acc * 643) ^ ((uint64_t)c_val - base_val + case_id + 97));      \
++  v_acc = ((v_acc + 647) >> (((uint64_t)c_val % 31) + 1));                    \
++  v_acc = ((v_acc * 653) + ((uint64_t)c_val ^ (base_val + case_id + 98)));
+ 
+ #define CASES_8(v, c, base)                                                    \
+   case base + 0:                                                               \

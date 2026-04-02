@@ -1,0 +1,18 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -241,13 +241,13 @@
+           uint64_t payload = (uint64_t)(uintptr_t)coldPos; // Derive payload from the cold, cache-missing pointer chase
+           switch (i % 3) {
+             case 0:
+-              acc = switchA(acc, payload & 0xFF);
++              acc = switchA(acc, payload & 0x0);
+               break;
+             case 1:
+-              acc = switchB(acc, payload & 0xFF);
++              acc = switchB(acc, (payload & 0x0) * 3);
+               break;
+             case 2:
+-              acc = switchC(acc, payload & 0xFF);
++              acc = switchC(acc, (payload & 0x0) * 5);
+               break;
+           }

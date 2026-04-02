@@ -1,0 +1,144 @@
+--- a/thrift/lib/cpp2/test/ProtocolBench.cpp
++++ b/thrift/lib/cpp2/test/ProtocolBench.cpp
+@@ -25,6 +25,9 @@
+ #include <folly/Optional.h>
+ #include <folly/init/Init.h>
+ #include <folly/portability/GFlags.h>
++
++#include <numeric>
++#include <random>
+ 
+ using namespace apache::thrift;
+ using namespace thrift::benchmark;
+@@ -186,9 +189,9 @@
+   M(Prefix, proto, ComplexStruct)      \
+   M(Prefix, proto, ComplexUnion)
+ 
+-#define X(Prefix, proto) APPLY(X2, Prefix, proto)              
+-
+-#define OpEncodeX(Prefix, proto) APPLY(OpEncodeX2, Prefix, proto)              
++#define X(Prefix, proto) APPLY(X2, Prefix, proto)
++
++#define OpEncodeX(Prefix, proto) APPLY(OpEncodeX2, Prefix, proto)
+ 
+ X(, Binary)
+ X(, Compact)
+@@ -200,6 +203,118 @@
+ OpEncodeX(OpEncode, Binary)
+ OpEncodeX(OpEncode, Compact)
+ 
++namespace {
++
++struct ICacheBenchNode {
++  ICacheBenchNode* next;
++  uint64_t payload;
++};
++
++#define ALU_OPS_28(acc, i, op1, op2, salt) \
++    acc = (acc op1 (i * 28 * 2 + 0 + salt)) op2 (i * 28 * 2 + 1 + salt); \
++    acc = (acc op1 (i * 28 * 2 + 2 + salt)) op2 (i * 28 * 2 + 3 + salt); \
++    acc = (acc op1 (i * 28 * 2 + 4 + salt)) op2 (i * 28 * 2 + 5 + salt); \
++    acc = (acc op1 (i * 28 * 2 + 6 + salt)) op2 (i * 28 * 2 + 7 + salt); \
++    acc = (acc op1 (i * 28 * 2 + 8 + salt)) op2 (i * 28 * 2 + 9 + salt); \
++    acc = (acc op1 (i * 28 * 2 + 10 + salt)) op2 (i * 28 * 2 + 11 + salt); \
++    acc = (acc op1 (i * 28 * 2 + 12 + salt)) op2 (i * 28 * 2 + 13 + salt); \
++    acc = (acc op1 (i * 28 * 2 + 14 + salt)) op2 (i * 28 * 2 + 15 + salt); \
++    acc = (acc op1 (i * 28 * 2 + 16 + salt)) op2 (i * 28 * 2 + 17 + salt); \
++    acc = (acc op1 (i * 28 * 2 + 18 + salt)) op2 (i * 28 * 2 + 19 + salt); \
++    acc = (acc op1 (i * 28 * 2 + 20 + salt)) op2 (i * 28 * 2 + 21 + salt); \
++    acc = (acc op1 (i * 28 * 2 + 22 + salt)) op2 (i * 28 * 2 + 23 + salt); \
++    acc = (acc op1 (i * 28 * 2 + 24 + salt)) op2 (i * 28 * 2 + 25 + salt); \
++    acc = (acc op1 (i * 28 * 2 + 26 + salt)) op2 (i * 28 * 2 + 27 + salt);
++
++
++#define CASE_ITEM(i, op1, op2, salt) case i: ALU_OPS_28(acc, i, op1, op2, salt); break;
++
++#define CASES_16(start, op1, op2, salt) \
++    CASE_ITEM(start + 0, op1, op2, salt) \
++    CASE_ITEM(start + 1, op1, op2, salt) \
++    CASE_ITEM(start + 2, op1, op2, salt) \
++    CASE_ITEM(start + 3, op1, op2, salt) \
++    CASE_ITEM(start + 4, op1, op2, salt) \
++    CASE_ITEM(start + 5, op1, op2, salt) \
++    CASE_ITEM(start + 6, op1, op2, salt) \
++    CASE_ITEM(start + 7, op1, op2, salt) \
++    CASE_ITEM(start + 8, op1, op2, salt) \
++    CASE_ITEM(start + 9, op1, op2, salt) \
++    CASE_ITEM(start + 10, op1, op2, salt) \
++    CASE_ITEM(start + 11, op1, op2, salt) \
++    CASE_ITEM(start + 12, op1, op2, salt) \
++    CASE_ITEM(start + 13, op1, op2, salt) \
++    CASE_ITEM(start + 14, op1, op2, salt) \
++    CASE_ITEM(start + 15, op1, op2, salt)
++
++#define DEFINE_SWITCH_FUNC(func_name, op1, op2, salt) \
++__attribute__((noinline)) \
++uint64_t func_name(uint64_t acc, uint8_t val) { \
++    switch (val) { \
++    CASES_16(0, op1, op2, salt) \
++    CASES_16(16, op1, op2, salt) \
++    CASES_16(32, op1, op2, salt) \
++    CASES_16(48, op1, op2, salt) \
++    CASES_16(64, op1, op2, salt) \
++    CASES_16(80, op1, op2, salt) \
++    CASES_16(96, op1, op2, salt) \
++    CASES_16(112, op1, op2, salt) \
++    CASES_16(128, op1, op2, salt) \
++    CASES_16(144, op1, op2, salt) \
++    CASES_16(160, op1, op2, salt) \
++    CASES_16(176, op1, op2, salt) \
++    CASES_16(192, op1, op2, salt) \
++    CASES_16(208, op1, op2, salt) \
++    CASES_16(224, op1, op2, salt) \
++    CASES_16(240, op1, op2, salt) \
++    default: break; \
++    } \
++    return acc; \
++}
++
++DEFINE_SWITCH_FUNC(icache_func_1, +, ^, 0)
++DEFINE_SWITCH_FUNC(icache_func_2, *, +, 20000)
++DEFINE_SWITCH_FUNC(icache_func_3, ^, *, 40000)
++
++} // namespace
++
++BENCHMARK(ObjectCompactProtocol_read_LargeSetInt_icache_v1, iters) {
++    folly::BenchmarkSuspender susp;
++
++    constexpr size_t num_nodes = 256 * 1024; // 4MB of nodes
++    std::vector<ICacheBenchNode> nodes(num_nodes);
++    std::vector<uint32_t> indices(num_nodes);
++    std::iota(indices.begin(), indices.end(), 0);
++
++    std::random_device rd;
++    std::mt19937 g(rd());
++    std::shuffle(indices.begin(), indices.end(), g);
++
++    for (size_t i = 0; i < num_nodes; ++i) {
++        nodes[indices[i]].next = &nodes[indices[(i + 1) % num_nodes]];
++        nodes[indices[i]].payload = g();
++    }
++
++    uint64_t (*funcs[])(uint64_t, uint8_t) = {
++      icache_func_1, icache_func_2, icache_func_3
++    };
++
++    ICacheBenchNode* p = &nodes[0];
++    uint64_t acc = 0;
++
++    susp.dismiss();
++
++    size_t j = 0;
++    while (iters--) {
++        p = p->next;
++        acc = funcs[j++ % 3](acc, p->payload & 0xFF);
++    }
++
++    folly::doNotOptimizeAway(acc);
++    folly::doNotOptimizeAway(p);
++    susp.rehire();
++}
++
+ int main(int argc, char** argv) {
+   folly::Init init(&argc, &argv);
+   folly::runBenchmarks();

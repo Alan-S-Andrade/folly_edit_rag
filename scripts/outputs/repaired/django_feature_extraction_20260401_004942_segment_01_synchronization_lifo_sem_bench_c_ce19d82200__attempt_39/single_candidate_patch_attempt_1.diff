@@ -1,0 +1,13 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -250,7 +250,9 @@
+               break;
+           }
+ 
+-          auto coldMask = -uint64_t(i % 8 == 0);
++          // This is a conditional read from coldNodes, and it's likely to be
++          // a cache miss. Reduce its frequency.
++          auto coldMask = -uint64_t(i % 16 == 0); // Reduced from 8 to 16
+           coldPos = (ChainNode*)(((uintptr_t)coldPos->next & coldMask) |
+                                  ((uintptr_t)coldPos & ~coldMask));
+           sem.post();

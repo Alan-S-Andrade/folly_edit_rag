@@ -1,0 +1,1116 @@
+/*
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+#include <thrift/lib/cpp2/frozen/FrozenUtil.h>
+#include <thrift/lib/cpp2/protocol/Object.h>
+#include <thrift/lib/cpp2/protocol/Serializer.h>
+#include <thrift/lib/cpp2/test/Structs.h>
+
+#include <glog/logging.h>
+#include <folly/Benchmark.h>
+#include <folly/BenchmarkUtil.h>
+#include <folly/Optional.h>
+#include <folly/init/Init.h>
+#include <folly/portability/GFlags.h>
+
+#include <vector>
+#include <folly/Random.h>
+
+using namespace apache::thrift;
+using namespace thrift::benchmark;
+
+template <class>
+struct SerializerTraits;
+template <class ReaderType, class WriterType>
+struct SerializerTraits<Serializer<ReaderType, WriterType>> {
+  using Reader = ReaderType;
+  using Writer = WriterType;
+};
+
+template <class T>
+using GetReader = typename SerializerTraits<T>::Reader;
+template <class T>
+using GetWriter = typename SerializerTraits<T>::Writer;
+
+struct FrozenSerializer {
+  template <class T>
+  static void serialize(const T& obj, folly::IOBufQueue* out) {
+    out->append(folly::IOBuf::fromString(frozen::freezeToString(obj)));
+  }
+  template <class T>
+  static size_t deserialize(folly::IOBuf* iobuf, T& t) {
+    auto view = frozen::mapFrozen<T>(iobuf->coalesce());
+    t = view.thaw();
+    return 0;
+  }
+};
+
+enum class SerializerMethod {
+  Codegen,
+  Object,
+};
+
+// The benckmark is to measure single struct use case, the iteration here is
+// more like a benchmark artifact, so avoid doing optimizationon iteration
+// usecase in this benchmark (e.g. move string definition out of while loop)
+
+template <
+    SerializerMethod kSerializerMethod,
+    typename Serializer,
+    typename Struct>
+void writeBench(size_t iters) {
+  folly::BenchmarkSuspender susp;
+  auto strct = create<Struct>();
+  protocol::Object obj;
+  if constexpr (kSerializerMethod == SerializerMethod::Object) {
+    folly::IOBufQueue q;
+    Serializer::serialize(strct, &q);
+    obj = protocol::parseObject<GetReader<Serializer>>(*q.move());
+  }
+  susp.dismiss();
+
+  folly::IOBufQueue q;
+  while (iters--) {
+    if constexpr (kSerializerMethod == SerializerMethod::Object) {
+      protocol::serializeObject<GetWriter<Serializer>>(obj, q);
+      folly::doNotOptimizeAway(q);
+    } else {
+      Serializer::serialize(strct, &q);
+      folly::doNotOptimizeAway(q);
+    }
+
+    // Reuse the queue across iterations to avoid allocating a new buffer for
+    // each struct (which would dominate the measurement), but keep only the
+    // tail to avoid unbounded growth.
+    if (auto head = q.front(); head && head->isChained()) {
+      q.append(q.move()->prev()->unlink());
+    }
+  }
+  susp.rehire();
+}
+
+template <
+    SerializerMethod kSerializerMethod,
+    typename Serializer,
+    typename Struct>
+void readBench(size_t iters) {
+  folly::BenchmarkSuspender susp;
+  auto strct = create<Struct>();
+  folly::IOBufQueue q;
+  Serializer::serialize(strct, &q);
+  auto buf = q.move();
+  // coalesce the IOBuf chain to test fast path
+  buf->coalesce();
+  susp.dismiss();
+
+  while (iters--) {
+    if constexpr (kSerializerMethod == SerializerMethod::Object) {
+      auto obj = protocol::parseObject<GetReader<Serializer>>(*buf);
+      folly::doNotOptimizeAway(obj);
+    } else {
+      Struct data;
+      Serializer::deserialize(buf.get(), data);
+      folly::doNotOptimizeAway(data);
+    }
+  }
+  susp.rehire();
+}
+
+constexpr SerializerMethod getSerializerMethod(std::string_view prefix) {
+  return prefix == "" || prefix == "OpEncode" ? SerializerMethod::Codegen
+      : prefix == "Object"
+      ? SerializerMethod::Object
+      : throw std::invalid_argument(std::string(prefix) + " is invalid");
+}
+
+#define X1(Prefix, proto, rdwr, bench, benchprefix)            \
+  BENCHMARK(Prefix##proto##Protocol_##rdwr##_##bench, iters) { \
+    rdwr##Bench<                                               \
+        getSerializerMethod(#Prefix),                          \
+        proto##Serializer,                                     \
+        benchprefix##bench>(iters);                            \
+  }
+
+// clang-format off
+#define X2(Prefix, proto, bench)  \
+  X1(Prefix, proto, write, bench,) \
+  X1(Prefix, proto, read, bench,)
+
+#define OpEncodeX2(Prefix, proto, bench)  \
+  X1(Prefix, proto, write, bench, Op) \
+  X1(Prefix, proto, read, bench, Op)
+
+#define APPLY(M, Prefix, proto)        \
+  M(Prefix, proto, Empty)              \
+  M(Prefix, proto, SmallInt)           \
+  M(Prefix, proto, BigInt)             \
+  M(Prefix, proto, SmallString)        \
+  M(Prefix, proto, BigString)          \
+  M(Prefix, proto, BigBinary)          \
+  M(Prefix, proto, LargeBinary)        \
+  M(Prefix, proto, Mixed)              \
+  M(Prefix, proto, MixedUnion)         \
+  M(Prefix, proto, MixedInt)           \
+  M(Prefix, proto, LargeMixed)         \
+  M(Prefix, proto, LargeMixedSparse)   \
+  M(Prefix, proto, SmallListInt)       \
+  M(Prefix, proto, BigListByte)        \
+  M(Prefix, proto, BigListShort)       \
+  M(Prefix, proto, BigListInt)         \
+  M(Prefix, proto, BigListBigInt)      \
+  M(Prefix, proto, BigListFloat)       \
+  M(Prefix, proto, BigListDouble)      \
+  M(Prefix, proto, BigListMixed)       \
+  M(Prefix, proto, BigListMixedInt)    \
+  M(Prefix, proto, LargeListMixed)     \
+  M(Prefix, proto, LargeSetInt)        \
+  M(Prefix, proto, UnorderedSetInt)    \
+  M(Prefix, proto, SortedVecSetInt)    \
+  M(Prefix, proto, LargeMapInt)        \
+  M(Prefix, proto, LargeMapMixed)      \
+  M(Prefix, proto, LargeUnorderedMapMixed)        \
+  M(Prefix, proto, LargeSortedVecMapMixed)        \
+  M(Prefix, proto, UnorderedMapInt)    \
+  M(Prefix, proto, NestedMap)          \
+  M(Prefix, proto, SortedVecNestedMap) \
+  M(Prefix, proto, ComplexStruct)      \
+  M(Prefix, proto, ComplexUnion)
+
+#define X(Prefix, proto) APPLY(X2, Prefix, proto)              
+
+#define OpEncodeX(Prefix, proto) APPLY(OpEncodeX2, Prefix, proto)              
+
+X(, Binary)
+X(, Compact)
+X(, SimpleJSON)
+X(, JSON)
+X(, Frozen)
+X(Object, Binary)
+X(Object, Compact)
+OpEncodeX(OpEncode, Binary)
+OpEncodeX(OpEncode, Compact)
+
+__attribute__((noinline)) int worker_v4_0(int x) {
+    int result = x;
+    switch (x & 0xFF) {
+#define W_V4_0(i, j) (10000 + (i) * 26 + (j))
+#define W_V4_0_OPS(i) \
+            result += W_V4_0(i, 0); \
+            result ^= W_V4_0(i, 1); \
+            result *= W_V4_0(i, 2); \
+            result += W_V4_0(i, 3); \
+            result ^= W_V4_0(i, 4); \
+            result *= W_V4_0(i, 5); \
+            result += W_V4_0(i, 6); \
+            result ^= W_V4_0(i, 7); \
+            result *= W_V4_0(i, 8); \
+            result += W_V4_0(i, 9); \
+            result ^= W_V4_0(i, 10); \
+            result *= W_V4_0(i, 11); \
+            result += W_V4_0(i, 12); \
+            result ^= W_V4_0(i, 13); \
+            result *= W_V4_0(i, 14); \
+            result += W_V4_0(i, 15); \
+            result ^= W_V4_0(i, 16); \
+            result *= W_V4_0(i, 17); \
+            result += W_V4_0(i, 18); \
+            result ^= W_V4_0(i, 19); \
+            result *= W_V4_0(i, 20); \
+            result += W_V4_0(i, 21); \
+            result ^= W_V4_0(i, 22); \
+            result *= W_V4_0(i, 23); \
+            result += W_V4_0(i, 24); \
+            result ^= W_V4_0(i, 25);
+        case 0: W_V4_0_OPS(0); break;
+        case 1: W_V4_0_OPS(1); break;
+        case 2: W_V4_0_OPS(2); break;
+        case 3: W_V4_0_OPS(3); break;
+        case 4: W_V4_0_OPS(4); break;
+        case 5: W_V4_0_OPS(5); break;
+        case 6: W_V4_0_OPS(6); break;
+        case 7: W_V4_0_OPS(7); break;
+        case 8: W_V4_0_OPS(8); break;
+        case 9: W_V4_0_OPS(9); break;
+        case 10: W_V4_0_OPS(10); break;
+        case 11: W_V4_0_OPS(11); break;
+        case 12: W_V4_0_OPS(12); break;
+        case 13: W_V4_0_OPS(13); break;
+        case 14: W_V4_0_OPS(14); break;
+        case 15: W_V4_0_OPS(15); break;
+        case 16: W_V4_0_OPS(16); break;
+        case 17: W_V4_0_OPS(17); break;
+        case 18: W_V4_0_OPS(18); break;
+        case 19: W_V4_0_OPS(19); break;
+        case 20: W_V4_0_OPS(20); break;
+        case 21: W_V4_0_OPS(21); break;
+        case 22: W_V4_0_OPS(22); break;
+        case 23: W_V4_0_OPS(23); break;
+        case 24: W_V4_0_OPS(24); break;
+        case 25: W_V4_0_OPS(25); break;
+        case 26: W_V4_0_OPS(26); break;
+        case 27: W_V4_0_OPS(27); break;
+        case 28: W_V4_0_OPS(28); break;
+        case 29: W_V4_0_OPS(29); break;
+        case 30: W_V4_0_OPS(30); break;
+        case 31: W_V4_0_OPS(31); break;
+        case 32: W_V4_0_OPS(32); break;
+        case 33: W_V4_0_OPS(33); break;
+        case 34: W_V4_0_OPS(34); break;
+        case 35: W_V4_0_OPS(35); break;
+        case 36: W_V4_0_OPS(36); break;
+        case 37: W_V4_0_OPS(37); break;
+        case 38: W_V4_0_OPS(38); break;
+        case 39: W_V4_0_OPS(39); break;
+        case 40: W_V4_0_OPS(40); break;
+        case 41: W_V4_0_OPS(41); break;
+        case 42: W_V4_0_OPS(42); break;
+        case 43: W_V4_0_OPS(43); break;
+        case 44: W_V4_0_OPS(44); break;
+        case 45: W_V4_0_OPS(45); break;
+        case 46: W_V4_0_OPS(46); break;
+        case 47: W_V4_0_OPS(47); break;
+        case 48: W_V4_0_OPS(48); break;
+        case 49: W_V4_0_OPS(49); break;
+        case 50: W_V4_0_OPS(50); break;
+        case 51: W_V4_0_OPS(51); break;
+        case 52: W_V4_0_OPS(52); break;
+        case 53: W_V4_0_OPS(53); break;
+        case 54: W_V4_0_OPS(54); break;
+        case 55: W_V4_0_OPS(55); break;
+        case 56: W_V4_0_OPS(56); break;
+        case 57: W_V4_0_OPS(57); break;
+        case 58: W_V4_0_OPS(58); break;
+        case 59: W_V4_0_OPS(59); break;
+        case 60: W_V4_0_OPS(60); break;
+        case 61: W_V4_0_OPS(61); break;
+        case 62: W_V4_0_OPS(62); break;
+        case 63: W_V4_0_OPS(63); break;
+        case 64: W_V4_0_OPS(64); break;
+        case 65: W_V4_0_OPS(65); break;
+        case 66: W_V4_0_OPS(66); break;
+        case 67: W_V4_0_OPS(67); break;
+        case 68: W_V4_0_OPS(68); break;
+        case 69: W_V4_0_OPS(69); break;
+        case 70: W_V4_0_OPS(70); break;
+        case 71: W_V4_0_OPS(71); break;
+        case 72: W_V4_0_OPS(72); break;
+        case 73: W_V4_0_OPS(73); break;
+        case 74: W_V4_0_OPS(74); break;
+        case 75: W_V4_0_OPS(75); break;
+        case 76: W_V4_0_OPS(76); break;
+        case 77: W_V4_0_OPS(77); break;
+        case 78: W_V4_0_OPS(78); break;
+        case 79: W_V4_0_OPS(79); break;
+        case 80: W_V4_0_OPS(80); break;
+        case 81: W_V4_0_OPS(81); break;
+        case 82: W_V4_0_OPS(82); break;
+        case 83: W_V4_0_OPS(83); break;
+        case 84: W_V4_0_OPS(84); break;
+        case 85: W_V4_0_OPS(85); break;
+        case 86: W_V4_0_OPS(86); break;
+        case 87: W_V4_0_OPS(87); break;
+        case 88: W_V4_0_OPS(88); break;
+        case 89: W_V4_0_OPS(89); break;
+        case 90: W_V4_0_OPS(90); break;
+        case 91: W_V4_0_OPS(91); break;
+        case 92: W_V4_0_OPS(92); break;
+        case 93: W_V4_0_OPS(93); break;
+        case 94: W_V4_0_OPS(94); break;
+        case 95: W_V4_0_OPS(95); break;
+        case 96: W_V4_0_OPS(96); break;
+        case 97: W_V4_0_OPS(97); break;
+        case 98: W_V4_0_OPS(98); break;
+        case 99: W_V4_0_OPS(99); break;
+        case 100: W_V4_0_OPS(100); break;
+        case 101: W_V4_0_OPS(101); break;
+        case 102: W_V4_0_OPS(102); break;
+        case 103: W_V4_0_OPS(103); break;
+        case 104: W_V4_0_OPS(104); break;
+        case 105: W_V4_0_OPS(105); break;
+        case 106: W_V4_0_OPS(106); break;
+        case 107: W_V4_0_OPS(107); break;
+        case 108: W_V4_0_OPS(108); break;
+        case 109: W_V4_0_OPS(109); break;
+        case 110: W_V4_0_OPS(110); break;
+        case 111: W_V4_0_OPS(111); break;
+        case 112: W_V4_0_OPS(112); break;
+        case 113: W_V4_0_OPS(113); break;
+        case 114: W_V4_0_OPS(114); break;
+        case 115: W_V4_0_OPS(115); break;
+        case 116: W_V4_0_OPS(116); break;
+        case 117: W_V4_0_OPS(117); break;
+        case 118: W_V4_0_OPS(118); break;
+        case 119: W_V4_0_OPS(119); break;
+        case 120: W_V4_0_OPS(120); break;
+        case 121: W_V4_0_OPS(121); break;
+        case 122: W_V4_0_OPS(122); break;
+        case 123: W_V4_0_OPS(123); break;
+        case 124: W_V4_0_OPS(124); break;
+        case 125: W_V4_0_OPS(125); break;
+        case 126: W_V4_0_OPS(126); break;
+        case 127: W_V4_0_OPS(127); break;
+        case 128: W_V4_0_OPS(128); break;
+        case 129: W_V4_0_OPS(129); break;
+        case 130: W_V4_0_OPS(130); break;
+        case 131: W_V4_0_OPS(131); break;
+        case 132: W_V4_0_OPS(132); break;
+        case 133: W_V4_0_OPS(133); break;
+        case 134: W_V4_0_OPS(134); break;
+        case 135: W_V4_0_OPS(135); break;
+        case 136: W_V4_0_OPS(136); break;
+        case 137: W_V4_0_OPS(137); break;
+        case 138: W_V4_0_OPS(138); break;
+        case 139: W_V4_0_OPS(139); break;
+        case 140: W_V4_0_OPS(140); break;
+        case 141: W_V4_0_OPS(141); break;
+        case 142: W_V4_0_OPS(142); break;
+        case 143: W_V4_0_OPS(143); break;
+        case 144: W_V4_0_OPS(144); break;
+        case 145: W_V4_0_OPS(145); break;
+        case 146: W_V4_0_OPS(146); break;
+        case 147: W_V4_0_OPS(147); break;
+        case 148: W_V4_0_OPS(148); break;
+        case 149: W_V4_0_OPS(149); break;
+        case 150: W_V4_0_OPS(150); break;
+        case 151: W_V4_0_OPS(151); break;
+        case 152: W_V4_0_OPS(152); break;
+        case 153: W_V4_0_OPS(153); break;
+        case 154: W_V4_0_OPS(154); break;
+        case 155: W_V4_0_OPS(155); break;
+        case 156: W_V4_0_OPS(156); break;
+        case 157: W_V4_0_OPS(157); break;
+        case 158: W_V4_0_OPS(158); break;
+        case 159: W_V4_0_OPS(159); break;
+        case 160: W_V4_0_OPS(160); break;
+        case 161: W_V4_0_OPS(161); break;
+        case 162: W_V4_0_OPS(162); break;
+        case 163: W_V4_0_OPS(163); break;
+        case 164: W_V4_0_OPS(164); break;
+        case 165: W_V4_0_OPS(165); break;
+        case 166: W_V4_0_OPS(166); break;
+        case 167: W_V4_0_OPS(167); break;
+        case 168: W_V4_0_OPS(168); break;
+        case 169: W_V4_0_OPS(169); break;
+        case 170: W_V4_0_OPS(170); break;
+        case 171: W_V4_0_OPS(171); break;
+        case 172: W_V4_0_OPS(172); break;
+        case 173: W_V4_0_OPS(173); break;
+        case 174: W_V4_0_OPS(174); break;
+        case 175: W_V4_0_OPS(175); break;
+        case 176: W_V4_0_OPS(176); break;
+        case 177: W_V4_0_OPS(177); break;
+        case 178: W_V4_0_OPS(178); break;
+        case 179: W_V4_0_OPS(179); break;
+        case 180: W_V4_0_OPS(180); break;
+        case 181: W_V4_0_OPS(181); break;
+        case 182: W_V4_0_OPS(182); break;
+        case 183: W_V4_0_OPS(183); break;
+        case 184: W_V4_0_OPS(184); break;
+        case 185: W_V4_0_OPS(185); break;
+        case 186: W_V4_0_OPS(186); break;
+        case 187: W_V4_0_OPS(187); break;
+        case 188: W_V4_0_OPS(188); break;
+        case 189: W_V4_0_OPS(189); break;
+        case 190: W_V4_0_OPS(190); break;
+        case 191: W_V4_0_OPS(191); break;
+        case 192: W_V4_0_OPS(192); break;
+        case 193: W_V4_0_OPS(193); break;
+        case 194: W_V4_0_OPS(194); break;
+        case 195: W_V4_0_OPS(195); break;
+        case 196: W_V4_0_OPS(196); break;
+        case 197: W_V4_0_OPS(197); break;
+        case 198: W_V4_0_OPS(198); break;
+        case 199: W_V4_0_OPS(199); break;
+        case 200: W_V4_0_OPS(200); break;
+        case 201: W_V4_0_OPS(201); break;
+        case 202: W_V4_0_OPS(202); break;
+        case 203: W_V4_0_OPS(203); break;
+        case 204: W_V4_0_OPS(204); break;
+        case 205: W_V4_0_OPS(205); break;
+        case 206: W_V4_0_OPS(206); break;
+        case 207: W_V4_0_OPS(207); break;
+        case 208: W_V4_0_OPS(208); break;
+        case 209: W_V4_0_OPS(209); break;
+        case 210: W_V4_0_OPS(210); break;
+        case 211: W_V4_0_OPS(211); break;
+        case 212: W_V4_0_OPS(212); break;
+        case 213: W_V4_0_OPS(213); break;
+        case 214: W_V4_0_OPS(214); break;
+        case 215: W_V4_0_OPS(215); break;
+        case 216: W_V4_0_OPS(216); break;
+        case 217: W_V4_0_OPS(217); break;
+        case 218: W_V4_0_OPS(218); break;
+        case 219: W_V4_0_OPS(219); break;
+        case 220: W_V4_0_OPS(220); break;
+        case 221: W_V4_0_OPS(221); break;
+        case 222: W_V4_0_OPS(222); break;
+        case 223: W_V4_0_OPS(223); break;
+        case 224: W_V4_0_OPS(224); break;
+        case 225: W_V4_0_OPS(225); break;
+        case 226: W_V4_0_OPS(226); break;
+        case 227: W_V4_0_OPS(227); break;
+        case 228: W_V4_0_OPS(228); break;
+        case 229: W_V4_0_OPS(229); break;
+        case 230: W_V4_0_OPS(230); break;
+        case 231: W_V4_0_OPS(231); break;
+        case 232: W_V4_0_OPS(232); break;
+        case 233: W_V4_0_OPS(233); break;
+        case 234: W_V4_0_OPS(234); break;
+        case 235: W_V4_0_OPS(235); break;
+        case 236: W_V4_0_OPS(236); break;
+        case 237: W_V4_0_OPS(237); break;
+        case 238: W_V4_0_OPS(238); break;
+        case 239: W_V4_0_OPS(239); break;
+        case 240: W_V4_0_OPS(240); break;
+        case 241: W_V4_0_OPS(241); break;
+        case 242: W_V4_0_OPS(242); break;
+        case 243: W_V4_0_OPS(243); break;
+        case 244: W_V4_0_OPS(244); break;
+        case 245: W_V4_0_OPS(245); break;
+        case 246: W_V4_0_OPS(246); break;
+        case 247: W_V4_0_OPS(247); break;
+        case 248: W_V4_0_OPS(248); break;
+        case 249: W_V4_0_OPS(249); break;
+        case 250: W_V4_0_OPS(250); break;
+        case 251: W_V4_0_OPS(251); break;
+        case 252: W_V4_0_OPS(252); break;
+        case 253: W_V4_0_OPS(253); break;
+        case 254: W_V4_0_OPS(254); break;
+        case 255: W_V4_0_OPS(255); break;
+#undef W_V4_0
+#undef W_V4_0_OPS
+    }
+    return result;
+}
+
+__attribute__((noinline)) int worker_v4_1(int x) {
+    int result = x;
+    switch (x & 0xFF) {
+#define W_V4_1(i, j) (30000 + (i) * 26 + (j))
+#define W_V4_1_OPS(i) \
+            result += W_V4_1(i, 0); \
+            result ^= W_V4_1(i, 1); \
+            result *= W_V4_1(i, 2); \
+            result += W_V4_1(i, 3); \
+            result ^= W_V4_1(i, 4); \
+            result *= W_V4_1(i, 5); \
+            result += W_V4_1(i, 6); \
+            result ^= W_V4_1(i, 7); \
+            result *= W_V4_1(i, 8); \
+            result += W_V4_1(i, 9); \
+            result ^= W_V4_1(i, 10); \
+            result *= W_V4_1(i, 11); \
+            result += W_V4_1(i, 12); \
+            result ^= W_V4_1(i, 13); \
+            result *= W_V4_1(i, 14); \
+            result += W_V4_1(i, 15); \
+            result ^= W_V4_1(i, 16); \
+            result *= W_V4_1(i, 17); \
+            result += W_V4_1(i, 18); \
+            result ^= W_V4_1(i, 19); \
+            result *= W_V4_1(i, 20); \
+            result += W_V4_1(i, 21); \
+            result ^= W_V4_1(i, 22); \
+            result *= W_V4_1(i, 23); \
+            result += W_V4_1(i, 24); \
+            result ^= W_V4_1(i, 25);
+        case 0: W_V4_1_OPS(0); break;
+        case 1: W_V4_1_OPS(1); break;
+        case 2: W_V4_1_OPS(2); break;
+        case 3: W_V4_1_OPS(3); break;
+        case 4: W_V4_1_OPS(4); break;
+        case 5: W_V4_1_OPS(5); break;
+        case 6: W_V4_1_OPS(6); break;
+        case 7: W_V4_1_OPS(7); break;
+        case 8: W_V4_1_OPS(8); break;
+        case 9: W_V4_1_OPS(9); break;
+        case 10: W_V4_1_OPS(10); break;
+        case 11: W_V4_1_OPS(11); break;
+        case 12: W_V4_1_OPS(12); break;
+        case 13: W_V4_1_OPS(13); break;
+        case 14: W_V4_1_OPS(14); break;
+        case 15: W_V4_1_OPS(15); break;
+        case 16: W_V4_1_OPS(16); break;
+        case 17: W_V4_1_OPS(17); break;
+        case 18: W_V4_1_OPS(18); break;
+        case 19: W_V4_1_OPS(19); break;
+        case 20: W_V4_1_OPS(20); break;
+        case 21: W_V4_1_OPS(21); break;
+        case 22: W_V4_1_OPS(22); break;
+        case 23: W_V4_1_OPS(23); break;
+        case 24: W_V4_1_OPS(24); break;
+        case 25: W_V4_1_OPS(25); break;
+        case 26: W_V4_1_OPS(26); break;
+        case 27: W_V4_1_OPS(27); break;
+        case 28: W_V4_1_OPS(28); break;
+        case 29: W_V4_1_OPS(29); break;
+        case 30: W_V4_1_OPS(30); break;
+        case 31: W_V4_1_OPS(31); break;
+        case 32: W_V4_1_OPS(32); break;
+        case 33: W_V4_1_OPS(33); break;
+        case 34: W_V4_1_OPS(34); break;
+        case 35: W_V4_1_OPS(35); break;
+        case 36: W_V4_1_OPS(36); break;
+        case 37: W_V4_1_OPS(37); break;
+        case 38: W_V4_1_OPS(38); break;
+        case 39: W_V4_1_OPS(39); break;
+        case 40: W_V4_1_OPS(40); break;
+        case 41: W_V4_1_OPS(41); break;
+        case 42: W_V4_1_OPS(42); break;
+        case 43: W_V4_1_OPS(43); break;
+        case 44: W_V4_1_OPS(44); break;
+        case 45: W_V4_1_OPS(45); break;
+        case 46: W_V4_1_OPS(46); break;
+        case 47: W_V4_1_OPS(47); break;
+        case 48: W_V4_1_OPS(48); break;
+        case 49: W_V4_1_OPS(49); break;
+        case 50: W_V4_1_OPS(50); break;
+        case 51: W_V4_1_OPS(51); break;
+        case 52: W_V4_1_OPS(52); break;
+        case 53: W_V4_1_OPS(53); break;
+        case 54: W_V4_1_OPS(54); break;
+        case 55: W_V4_1_OPS(55); break;
+        case 56: W_V4_1_OPS(56); break;
+        case 57: W_V4_1_OPS(57); break;
+        case 58: W_V4_1_OPS(58); break;
+        case 59: W_V4_1_OPS(59); break;
+        case 60: W_V4_1_OPS(60); break;
+        case 61: W_V4_1_OPS(61); break;
+        case 62: W_V4_1_OPS(62); break;
+        case 63: W_V4_1_OPS(63); break;
+        case 64: W_V4_1_OPS(64); break;
+        case 65: W_V4_1_OPS(65); break;
+        case 66: W_V4_1_OPS(66); break;
+        case 67: W_V4_1_OPS(67); break;
+        case 68: W_V4_1_OPS(68); break;
+        case 69: W_V4_1_OPS(69); break;
+        case 70: W_V4_1_OPS(70); break;
+        case 71: W_V4_1_OPS(71); break;
+        case 72: W_V4_1_OPS(72); break;
+        case 73: W_V4_1_OPS(73); break;
+        case 74: W_V4_1_OPS(74); break;
+        case 75: W_V4_1_OPS(75); break;
+        case 76: W_V4_1_OPS(76); break;
+        case 77: W_V4_1_OPS(77); break;
+        case 78: W_V4_1_OPS(78); break;
+        case 79: W_V4_1_OPS(79); break;
+        case 80: W_V4_1_OPS(80); break;
+        case 81: W_V4_1_OPS(81); break;
+        case 82: W_V4_1_OPS(82); break;
+        case 83: W_V4_1_OPS(83); break;
+        case 84: W_V4_1_OPS(84); break;
+        case 85: W_V4_1_OPS(85); break;
+        case 86: W_V4_1_OPS(86); break;
+        case 87: W_V4_1_OPS(87); break;
+        case 88: W_V4_1_OPS(88); break;
+        case 89: W_V4_1_OPS(89); break;
+        case 90: W_V4_1_OPS(90); break;
+        case 91: W_V4_1_OPS(91); break;
+        case 92: W_V4_1_OPS(92); break;
+        case 93: W_V4_1_OPS(93); break;
+        case 94: W_V4_1_OPS(94); break;
+        case 95: W_V4_1_OPS(95); break;
+        case 96: W_V4_1_OPS(96); break;
+        case 97: W_V4_1_OPS(97); break;
+        case 98: W_V4_1_OPS(98); break;
+        case 99: W_V4_1_OPS(99); break;
+        case 100: W_V4_1_OPS(100); break;
+        case 101: W_V4_1_OPS(101); break;
+        case 102: W_V4_1_OPS(102); break;
+        case 103: W_V4_1_OPS(103); break;
+        case 104: W_V4_1_OPS(104); break;
+        case 105: W_V4_1_OPS(105); break;
+        case 106: W_V4_1_OPS(106); break;
+        case 107: W_V4_1_OPS(107); break;
+        case 108: W_V4_1_OPS(108); break;
+        case 109: W_V4_1_OPS(109); break;
+        case 110: W_V4_1_OPS(110); break;
+        case 111: W_V4_1_OPS(111); break;
+        case 112: W_V4_1_OPS(112); break;
+        case 113: W_V4_1_OPS(113); break;
+        case 114: W_V4_1_OPS(114); break;
+        case 115: W_V4_1_OPS(115); break;
+        case 116: W_V4_1_OPS(116); break;
+        case 117: W_V4_1_OPS(117); break;
+        case 118: W_V4_1_OPS(118); break;
+        case 119: W_V4_1_OPS(119); break;
+        case 120: W_V4_1_OPS(120); break;
+        case 121: W_V4_1_OPS(121); break;
+        case 122: W_V4_1_OPS(122); break;
+        case 123: W_V4_1_OPS(123); break;
+        case 124: W_V4_1_OPS(124); break;
+        case 125: W_V4_1_OPS(125); break;
+        case 126: W_V4_1_OPS(126); break;
+        case 127: W_V4_1_OPS(127); break;
+        case 128: W_V4_1_OPS(128); break;
+        case 129: W_V4_1_OPS(129); break;
+        case 130: W_V4_1_OPS(130); break;
+        case 131: W_V4_1_OPS(131); break;
+        case 132: W_V4_1_OPS(132); break;
+        case 133: W_V4_1_OPS(133); break;
+        case 134: W_V4_1_OPS(134); break;
+        case 135: W_V4_1_OPS(135); break;
+        case 136: W_V4_1_OPS(136); break;
+        case 137: W_V4_1_OPS(137); break;
+        case 138: W_V4_1_OPS(138); break;
+        case 139: W_V4_1_OPS(139); break;
+        case 140: W_V4_1_OPS(140); break;
+        case 141: W_V4_1_OPS(141); break;
+        case 142: W_V4_1_OPS(142); break;
+        case 143: W_V4_1_OPS(143); break;
+        case 144: W_V4_1_OPS(144); break;
+        case 145: W_V4_1_OPS(145); break;
+        case 146: W_V4_1_OPS(146); break;
+        case 147: W_V4_1_OPS(147); break;
+        case 148: W_V4_1_OPS(148); break;
+        case 149: W_V4_1_OPS(149); break;
+        case 150: W_V4_1_OPS(150); break;
+        case 151: W_V4_1_OPS(151); break;
+        case 152: W_V4_1_OPS(152); break;
+        case 153: W_V4_1_OPS(153); break;
+        case 154: W_V4_1_OPS(154); break;
+        case 155: W_V4_1_OPS(155); break;
+        case 156: W_V4_1_OPS(156); break;
+        case 157: W_V4_1_OPS(157); break;
+        case 158: W_V4_1_OPS(158); break;
+        case 159: W_V4_1_OPS(159); break;
+        case 160: W_V4_1_OPS(160); break;
+        case 161: W_V4_1_OPS(161); break;
+        case 162: W_V4_1_OPS(162); break;
+        case 163: W_V4_1_OPS(163); break;
+        case 164: W_V4_1_OPS(164); break;
+        case 165: W_V4_1_OPS(165); break;
+        case 166: W_V4_1_OPS(166); break;
+        case 167: W_V4_1_OPS(167); break;
+        case 168: W_V4_1_OPS(168); break;
+        case 169: W_V4_1_OPS(169); break;
+        case 170: W_V4_1_OPS(170); break;
+        case 171: W_V4_1_OPS(171); break;
+        case 172: W_V4_1_OPS(172); break;
+        case 173: W_V4_1_OPS(173); break;
+        case 174: W_V4_1_OPS(174); break;
+        case 175: W_V4_1_OPS(175); break;
+        case 176: W_V4_1_OPS(176); break;
+        case 177: W_V4_1_OPS(177); break;
+        case 178: W_V4_1_OPS(178); break;
+        case 179: W_V4_1_OPS(179); break;
+        case 180: W_V4_1_OPS(180); break;
+        case 181: W_V4_1_OPS(181); break;
+        case 182: W_V4_1_OPS(182); break;
+        case 183: W_V4_1_OPS(183); break;
+        case 184: W_V4_1_OPS(184); break;
+        case 185: W_V4_1_OPS(185); break;
+        case 186: W_V4_1_OPS(186); break;
+        case 187: W_V4_1_OPS(187); break;
+        case 188: W_V4_1_OPS(188); break;
+        case 189: W_V4_1_OPS(189); break;
+        case 190: W_V4_1_OPS(190); break;
+        case 191: W_V4_1_OPS(191); break;
+        case 192: W_V4_1_OPS(192); break;
+        case 193: W_V4_1_OPS(193); break;
+        case 194: W_V4_1_OPS(194); break;
+        case 195: W_V4_1_OPS(195); break;
+        case 196: W_V4_1_OPS(196); break;
+        case 197: W_V4_1_OPS(197); break;
+        case 198: W_V4_1_OPS(198); break;
+        case 199: W_V4_1_OPS(199); break;
+        case 200: W_V4_1_OPS(200); break;
+        case 201: W_V4_1_OPS(201); break;
+        case 202: W_V4_1_OPS(202); break;
+        case 203: W_V4_1_OPS(203); break;
+        case 204: W_V4_1_OPS(204); break;
+        case 205: W_V4_1_OPS(205); break;
+        case 206: W_V4_1_OPS(206); break;
+        case 207: W_V4_1_OPS(207); break;
+        case 208: W_V4_1_OPS(208); break;
+        case 209: W_V4_1_OPS(209); break;
+        case 210: W_V4_1_OPS(210); break;
+        case 211: W_V4_1_OPS(211); break;
+        case 212: W_V4_1_OPS(212); break;
+        case 213: W_V4_1_OPS(213); break;
+        case 214: W_V4_1_OPS(214); break;
+        case 215: W_V4_1_OPS(215); break;
+        case 216: W_V4_1_OPS(216); break;
+        case 217: W_V4_1_OPS(217); break;
+        case 218: W_V4_1_OPS(218); break;
+        case 219: W_V4_1_OPS(219); break;
+        case 220: W_V4_1_OPS(220); break;
+        case 221: W_V4_1_OPS(221); break;
+        case 222: W_V4_1_OPS(222); break;
+        case 223: W_V4_1_OPS(223); break;
+        case 224: W_V4_1_OPS(224); break;
+        case 225: W_V4_1_OPS(225); break;
+        case 226: W_V4_1_OPS(226); break;
+        case 227: W_V4_1_OPS(227); break;
+        case 228: W_V4_1_OPS(228); break;
+        case 229: W_V4_1_OPS(229); break;
+        case 230: W_V4_1_OPS(230); break;
+        case 231: W_V4_1_OPS(231); break;
+        case 232: W_V4_1_OPS(232); break;
+        case 233: W_V4_1_OPS(233); break;
+        case 234: W_V4_1_OPS(234); break;
+        case 235: W_V4_1_OPS(235); break;
+        case 236: W_V4_1_OPS(236); break;
+        case 237: W_V4_1_OPS(237); break;
+        case 238: W_V4_1_OPS(238); break;
+        case 239: W_V4_1_OPS(239); break;
+        case 240: W_V4_1_OPS(240); break;
+        case 241: W_V4_1_OPS(241); break;
+        case 242: W_V4_1_OPS(242); break;
+        case 243: W_V4_1_OPS(243); break;
+        case 244: W_V4_1_OPS(244); break;
+        case 245: W_V4_1_OPS(245); break;
+        case 246: W_V4_1_OPS(246); break;
+        case 247: W_V4_1_OPS(247); break;
+        case 248: W_V4_1_OPS(248); break;
+        case 249: W_V4_1_OPS(249); break;
+        case 250: W_V4_1_OPS(250); break;
+        case 251: W_V4_1_OPS(251); break;
+        case 252: W_V4_1_OPS(252); break;
+        case 253: W_V4_1_OPS(253); break;
+        case 254: W_V4_1_OPS(254); break;
+        case 255: W_V4_1_OPS(255); break;
+#undef W_V4_1
+#undef W_V4_1_OPS
+    }
+    return result;
+}
+
+__attribute__((noinline)) int worker_v4_2(int x) {
+    int result = x;
+    switch (x & 0xFF) {
+#define W_V4_2(i, j) (50000 + (i) * 26 + (j))
+#define W_V4_2_OPS(i) \
+            result += W_V4_2(i, 0); \
+            result ^= W_V4_2(i, 1); \
+            result *= W_V4_2(i, 2); \
+            result += W_V4_2(i, 3); \
+            result ^= W_V4_2(i, 4); \
+            result *= W_V4_2(i, 5); \
+            result += W_V4_2(i, 6); \
+            result ^= W_V4_2(i, 7); \
+            result *= W_V4_2(i, 8); \
+            result += W_V4_2(i, 9); \
+            result ^= W_V4_2(i, 10); \
+            result *= W_V4_2(i, 11); \
+            result += W_V4_2(i, 12); \
+            result ^= W_V4_2(i, 13); \
+            result *= W_V4_2(i, 14); \
+            result += W_V4_2(i, 15); \
+            result ^= W_V4_2(i, 16); \
+            result *= W_V4_2(i, 17); \
+            result += W_V4_2(i, 18); \
+            result ^= W_V4_2(i, 19); \
+            result *= W_V4_2(i, 20); \
+            result += W_V4_2(i, 21); \
+            result ^= W_V4_2(i, 22); \
+            result *= W_V4_2(i, 23); \
+            result += W_V4_2(i, 24); \
+            result ^= W_V4_2(i, 25);
+        case 0: W_V4_2_OPS(0); break;
+        case 1: W_V4_2_OPS(1); break;
+        case 2: W_V4_2_OPS(2); break;
+        case 3: W_V4_2_OPS(3); break;
+        case 4: W_V4_2_OPS(4); break;
+        case 5: W_V4_2_OPS(5); break;
+        case 6: W_V4_2_OPS(6); break;
+        case 7: W_V4_2_OPS(7); break;
+        case 8: W_V4_2_OPS(8); break;
+        case 9: W_V4_2_OPS(9); break;
+        case 10: W_V4_2_OPS(10); break;
+        case 11: W_V4_2_OPS(11); break;
+        case 12: W_V4_2_OPS(12); break;
+        case 13: W_V4_2_OPS(13); break;
+        case 14: W_V4_2_OPS(14); break;
+        case 15: W_V4_2_OPS(15); break;
+        case 16: W_V4_2_OPS(16); break;
+        case 17: W_V4_2_OPS(17); break;
+        case 18: W_V4_2_OPS(18); break;
+        case 19: W_V4_2_OPS(19); break;
+        case 20: W_V4_2_OPS(20); break;
+        case 21: W_V4_2_OPS(21); break;
+        case 22: W_V4_2_OPS(22); break;
+        case 23: W_V4_2_OPS(23); break;
+        case 24: W_V4_2_OPS(24); break;
+        case 25: W_V4_2_OPS(25); break;
+        case 26: W_V4_2_OPS(26); break;
+        case 27: W_V4_2_OPS(27); break;
+        case 28: W_V4_2_OPS(28); break;
+        case 29: W_V4_2_OPS(29); break;
+        case 30: W_V4_2_OPS(30); break;
+        case 31: W_V4_2_OPS(31); break;
+        case 32: W_V4_2_OPS(32); break;
+        case 33: W_V4_2_OPS(33); break;
+        case 34: W_V4_2_OPS(34); break;
+        case 35: W_V4_2_OPS(35); break;
+        case 36: W_V4_2_OPS(36); break;
+        case 37: W_V4_2_OPS(37); break;
+        case 38: W_V4_2_OPS(38); break;
+        case 39: W_V4_2_OPS(39); break;
+        case 40: W_V4_2_OPS(40); break;
+        case 41: W_V4_2_OPS(41); break;
+        case 42: W_V4_2_OPS(42); break;
+        case 43: W_V4_2_OPS(43); break;
+        case 44: W_V4_2_OPS(44); break;
+        case 45: W_V4_2_OPS(45); break;
+        case 46: W_V4_2_OPS(46); break;
+        case 47: W_V4_2_OPS(47); break;
+        case 48: W_V4_2_OPS(48); break;
+        case 49: W_V4_2_OPS(49); break;
+        case 50: W_V4_2_OPS(50); break;
+        case 51: W_V4_2_OPS(51); break;
+        case 52: W_V4_2_OPS(52); break;
+        case 53: W_V4_2_OPS(53); break;
+        case 54: W_V4_2_OPS(54); break;
+        case 55: W_V4_2_OPS(55); break;
+        case 56: W_V4_2_OPS(56); break;
+        case 57: W_V4_2_OPS(57); break;
+        case 58: W_V4_2_OPS(58); break;
+        case 59: W_V4_2_OPS(59); break;
+        case 60: W_V4_2_OPS(60); break;
+        case 61: W_V4_2_OPS(61); break;
+        case 62: W_V4_2_OPS(62); break;
+        case 63: W_V4_2_OPS(63); break;
+        case 64: W_V4_2_OPS(64); break;
+        case 65: W_V4_2_OPS(65); break;
+        case 66: W_V4_2_OPS(66); break;
+        case 67: W_V4_2_OPS(67); break;
+        case 68: W_V4_2_OPS(68); break;
+        case 69: W_V4_2_OPS(69); break;
+        case 70: W_V4_2_OPS(70); break;
+        case 71: W_V4_2_OPS(71); break;
+        case 72: W_V4_2_OPS(72); break;
+        case 73: W_V4_2_OPS(73); break;
+        case 74: W_V4_2_OPS(74); break;
+        case 75: W_V4_2_OPS(75); break;
+        case 76: W_V4_2_OPS(76); break;
+        case 77: W_V4_2_OPS(77); break;
+        case 78: W_V4_2_OPS(78); break;
+        case 79: W_V4_2_OPS(79); break;
+        case 80: W_V4_2_OPS(80); break;
+        case 81: W_V4_2_OPS(81); break;
+        case 82: W_V4_2_OPS(82); break;
+        case 83: W_V4_2_OPS(83); break;
+        case 84: W_V4_2_OPS(84); break;
+        case 85: W_V4_2_OPS(85); break;
+        case 86: W_V4_2_OPS(86); break;
+        case 87: W_V4_2_OPS(87); break;
+        case 88: W_V4_2_OPS(88); break;
+        case 89: W_V4_2_OPS(89); break;
+        case 90: W_V4_2_OPS(90); break;
+        case 91: W_V4_2_OPS(91); break;
+        case 92: W_V4_2_OPS(92); break;
+        case 93: W_V4_2_OPS(93); break;
+        case 94: W_V4_2_OPS(94); break;
+        case 95: W_V4_2_OPS(95); break;
+        case 96: W_V4_2_OPS(96); break;
+        case 97: W_V4_2_OPS(97); break;
+        case 98: W_V4_2_OPS(98); break;
+        case 99: W_V4_2_OPS(99); break;
+        case 100: W_V4_2_OPS(100); break;
+        case 101: W_V4_2_OPS(101); break;
+        case 102: W_V4_2_OPS(102); break;
+        case 103: W_V4_2_OPS(103); break;
+        case 104: W_V4_2_OPS(104); break;
+        case 105: W_V4_2_OPS(105); break;
+        case 106: W_V4_2_OPS(106); break;
+        case 107: W_V4_2_OPS(107); break;
+        case 108: W_V4_2_OPS(108); break;
+        case 109: W_V4_2_OPS(109); break;
+        case 110: W_V4_2_OPS(110); break;
+        case 111: W_V4_2_OPS(111); break;
+        case 112: W_V4_2_OPS(112); break;
+        case 113: W_V4_2_OPS(113); break;
+        case 114: W_V4_2_OPS(114); break;
+        case 115: W_V4_2_OPS(115); break;
+        case 116: W_V4_2_OPS(116); break;
+        case 117: W_V4_2_OPS(117); break;
+        case 118: W_V4_2_OPS(118); break;
+        case 119: W_V4_2_OPS(119); break;
+        case 120: W_V4_2_OPS(120); break;
+        case 121: W_V4_2_OPS(121); break;
+        case 122: W_V4_2_OPS(122); break;
+        case 123: W_V4_2_OPS(123); break;
+        case 124: W_V4_2_OPS(124); break;
+        case 125: W_V4_2_OPS(125); break;
+        case 126: W_V4_2_OPS(126); break;
+        case 127: W_V4_2_OPS(127); break;
+        case 128: W_V4_2_OPS(128); break;
+        case 129: W_V4_2_OPS(129); break;
+        case 130: W_V4_2_OPS(130); break;
+        case 131: W_V4_2_OPS(131); break;
+        case 132: W_V4_2_OPS(132); break;
+        case 133: W_V4_2_OPS(133); break;
+        case 134: W_V4_2_OPS(134); break;
+        case 135: W_V4_2_OPS(135); break;
+        case 136: W_V4_2_OPS(136); break;
+        case 137: W_V4_2_OPS(137); break;
+        case 138: W_V4_2_OPS(138); break;
+        case 139: W_V4_2_OPS(139); break;
+        case 140: W_V4_2_OPS(140); break;
+        case 141: W_V4_2_OPS(141); break;
+        case 142: W_V4_2_OPS(142); break;
+        case 143: W_V4_2_OPS(143); break;
+        case 144: W_V4_2_OPS(144); break;
+        case 145: W_V4_2_OPS(145); break;
+        case 146: W_V4_2_OPS(146); break;
+        case 147: W_V4_2_OPS(147); break;
+        case 148: W_V4_2_OPS(148); break;
+        case 149: W_V4_2_OPS(149); break;
+        case 150: W_V4_2_OPS(150); break;
+        case 151: W_V4_2_OPS(151); break;
+        case 152: W_V4_2_OPS(152); break;
+        case 153: W_V4_2_OPS(153); break;
+        case 154: W_V4_2_OPS(154); break;
+        case 155: W_V4_2_OPS(155); break;
+        case 156: W_V4_2_OPS(156); break;
+        case 157: W_V4_2_OPS(157); break;
+        case 158: W_V4_2_OPS(158); break;
+        case 159: W_V4_2_OPS(159); break;
+        case 160: W_V4_2_OPS(160); break;
+        case 161: W_V4_2_OPS(161); break;
+        case 162: W_V4_2_OPS(162); break;
+        case 163: W_V4_2_OPS(163); break;
+        case 164: W_V4_2_OPS(164); break;
+        case 165: W_V4_2_OPS(165); break;
+        case 166: W_V4_2_OPS(166); break;
+        case 167: W_V4_2_OPS(167); break;
+        case 168: W_V4_2_OPS(168); break;
+        case 169: W_V4_2_OPS(169); break;
+        case 170: W_V4_2_OPS(170); break;
+        case 171: W_V4_2_OPS(171); break;
+        case 172: W_V4_2_OPS(172); break;
+        case 173: W_V4_2_OPS(173); break;
+        case 174: W_V4_2_OPS(174); break;
+        case 175: W_V4_2_OPS(175); break;
+        case 176: W_V4_2_OPS(176); break;
+        case 177: W_V4_2_OPS(177); break;
+        case 178: W_V4_2_OPS(178); break;
+        case 179: W_V4_2_OPS(179); break;
+        case 180: W_V4_2_OPS(180); break;
+        case 181: W_V4_2_OPS(181); break;
+        case 182: W_V4_2_OPS(182); break;
+        case 183: W_V4_2_OPS(183); break;
+        case 184: W_V4_2_OPS(184); break;
+        case 185: W_V4_2_OPS(185); break;
+        case 186: W_V4_2_OPS(186); break;
+        case 187: W_V4_2_OPS(187); break;
+        case 188: W_V4_2_OPS(188); break;
+        case 189: W_V4_2_OPS(189); break;
+        case 190: W_V4_2_OPS(190); break;
+        case 191: W_V4_2_OPS(191); break;
+        case 192: W_V4_2_OPS(192); break;
+        case 193: W_V4_2_OPS(193); break;
+        case 194: W_V4_2_OPS(194); break;
+        case 195: W_V4_2_OPS(195); break;
+        case 196: W_V4_2_OPS(196); break;
+        case 197: W_V4_2_OPS(197); break;
+        case 198: W_V4_2_OPS(198); break;
+        case 199: W_V4_2_OPS(199); break;
+        case 200: W_V4_2_OPS(200); break;
+        case 201: W_V4_2_OPS(201); break;
+        case 202: W_V4_2_OPS(202); break;
+        case 203: W_V4_2_OPS(203); break;
+        case 204: W_V4_2_OPS(204); break;
+        case 205: W_V4_2_OPS(205); break;
+        case 206: W_V4_2_OPS(206); break;
+        case 207: W_V4_2_OPS(207); break;
+        case 208: W_V4_2_OPS(208); break;
+        case 209: W_V4_2_OPS(209); break;
+        case 210: W_V4_2_OPS(210); break;
+        case 211: W_V4_2_OPS(211); break;
+        case 212: W_V4_2_OPS(212); break;
+        case 213: W_V4_2_OPS(213); break;
+        case 214: W_V4_2_OPS(214); break;
+        case 215: W_V4_2_OPS(215); break;
+        case 216: W_V4_2_OPS(216); break;
+        case 217: W_V4_2_OPS(217); break;
+        case 218: W_V4_2_OPS(218); break;
+        case 219: W_V4_2_OPS(219); break;
+        case 220: W_V4_2_OPS(220); break;
+        case 221: W_V4_2_OPS(221); break;
+        case 222: W_V4_2_OPS(222); break;
+        case 223: W_V4_2_OPS(223); break;
+        case 224: W_V4_2_OPS(224); break;
+        case 225: W_V4_2_OPS(225); break;
+        case 226: W_V4_2_OPS(226); break;
+        case 227: W_V4_2_OPS(227); break;
+        case 228: W_V4_2_OPS(228); break;
+        case 229: W_V4_2_OPS(229); break;
+        case 230: W_V4_2_OPS(230); break;
+        case 231: W_V4_2_OPS(231); break;
+        case 232: W_V4_2_OPS(232); break;
+        case 233: W_V4_2_OPS(233); break;
+        case 234: W_V4_2_OPS(234); break;
+        case 235: W_V4_2_OPS(235); break;
+        case 236: W_V4_2_OPS(236); break;
+        case 237: W_V4_2_OPS(237); break;
+        case 238: W_V4_2_OPS(238); break;
+        case 239: W_V4_2_OPS(239); break;
+        case 240: W_V4_2_OPS(240); break;
+        case 241: W_V4_2_OPS(241); break;
+        case 242: W_V4_2_OPS(242); break;
+        case 243: W_V4_2_OPS(243); break;
+        case 244: W_V4_2_OPS(244); break;
+        case 245: W_V4_2_OPS(245); break;
+        case 246: W_V4_2_OPS(246); break;
+        case 247: W_V4_2_OPS(247); break;
+        case 248: W_V4_2_OPS(248); break;
+        case 249: W_V4_2_OPS(249); break;
+        case 250: W_V4_2_OPS(250); break;
+        case 251: W_V4_2_OPS(251); break;
+        case 252: W_V4_2_OPS(252); break;
+        case 253: W_V4_2_OPS(253); break;
+        case 254: W_V4_2_OPS(254); break;
+        case 255: W_V4_2_OPS(255); break;
+#undef W_V4_2
+#undef W_V4_2_OPS
+    }
+    return result;
+}
+
+BENCHMARK(ObjectCompactProtocol_read_LargeSetInt_v4, iters) {
+    folly::BenchmarkSuspender susp;
+    struct Node {
+        Node* next;
+        int payload;
+    };
+
+    constexpr size_t kNumNodes = 1024;
+    std::vector<Node> nodes(kNumNodes);
+    for(size_t i = 0; i < kNumNodes; ++i) {
+        nodes[i].next = &nodes[(i + 1) % kNumNodes];
+        nodes[i].payload = folly::Random::rand32();
+    }
+    Node* current = &nodes[0];
+    int (*workers[])(int) = {worker_v4_0, worker_v4_1, worker_v4_2};
+    susp.dismiss();
+
+    long long total = 0;
+    for (size_t j = 0; j < iters; ++j) {
+        int val = current->payload;
+        total += workers[j % 3](val);
+        current = current->next;
+    }
+    folly::doNotOptimizeAway(total);
+}
+
+int main(int argc, char** argv) {
+  folly::Init init(&argc, &argv);
+  folly::runBenchmarks();
+  return 0;
+}
+// clang-format on

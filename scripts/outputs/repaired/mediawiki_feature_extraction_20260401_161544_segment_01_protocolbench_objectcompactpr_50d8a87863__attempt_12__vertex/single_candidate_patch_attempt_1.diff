@@ -1,0 +1,117 @@
+--- a/thrift/lib/cpp2/test/ProtocolBench.cpp
++++ b/thrift/lib/cpp2/test/ProtocolBench.cpp
+@@ -25,6 +25,11 @@
+ #include <folly/Optional.h>
+ #include <folly/init/Init.h>
+ #include <folly/portability/GFlags.h>
++
++#include <algorithm>
++#include <numeric>
++#include <random>
++#include <vector>
+ 
+ using namespace apache::thrift;
+ using namespace thrift::benchmark;
+@@ -186,9 +191,9 @@
+   M(Prefix, proto, ComplexStruct)      \
+   M(Prefix, proto, ComplexUnion)
+ 
+-#define X(Prefix, proto) APPLY(X2, Prefix, proto)              
+-
+-#define OpEncodeX(Prefix, proto) APPLY(OpEncodeX2, Prefix, proto)              
++#define X(Prefix, proto) APPLY(X2, Prefix, proto)
++
++#define OpEncodeX(Prefix, proto) APPLY(OpEncodeX2, Prefix, proto)
+ 
+ X(, Binary)
+ X(, Compact)
+@@ -200,6 +205,89 @@
+ OpEncodeX(OpEncode, Binary)
+ OpEncodeX(OpEncode, Compact)
+ 
++#define CASE_BLOCK(i, salt) \
++    case i: \
++        acc += i * 3 + salt; acc ^= 0x12345678 + salt; acc *= (i+1); \
++        acc += i * 5 + salt; acc ^= 0x87654321 + salt; acc *= (i+2); \
++        acc += i * 7 + salt; acc ^= 0xabcdef01 + salt; acc *= (i+3); \
++        acc += i * 9 + salt; acc ^= 0xfedcba98 + salt; acc *= (i+4); \
++        acc += i * 11 + salt; acc ^= 0xdeadbeef + salt; acc *= (i+5); \
++        acc += i * 13 + salt; acc ^= 0xc0ffee + salt; acc *= (i+6); \
++        acc += i * 15 + salt; acc ^= 0xbadf00d + salt; acc *= (i+7); \
++        acc += i * 17 + salt; acc ^= 0x1337 + salt; acc *= (i+8); \
++        acc += i * 19 + salt; acc ^= 0xbadcafe + salt; acc *= (i+9); \
++        break;
++
++#define CASES_16(m, base, salt) \
++    m(base + 0, salt) m(base + 1, salt) m(base + 2, salt) m(base + 3, salt) \
++    m(base + 4, salt) m(base + 5, salt) m(base + 6, salt) m(base + 7, salt) \
++    m(base + 8, salt) m(base + 9, salt) m(base + 10, salt) m(base + 11, salt) \
++    m(base + 12, salt) m(base + 13, salt) m(base + 14, salt) m(base + 15, salt)
++
++#define ALL_CASES(m, salt) \
++    CASES_16(m, 0, salt) CASES_16(m, 16, salt) CASES_16(m, 32, salt) CASES_16(m, 48, salt) \
++    CASES_16(m, 64, salt) CASES_16(m, 80, salt) CASES_16(m, 96, salt) CASES_16(m, 112, salt) \
++    CASES_16(m, 128, salt) CASES_16(m, 144, salt) CASES_16(m, 160, salt) CASES_16(m, 176, salt) \
++    CASES_16(m, 192, salt) CASES_16(m, 208, salt) CASES_16(m, 224, salt) CASES_16(m, 240, salt)
++
++__attribute__((noinline))
++long op_func_0(long acc, int val) {
++    switch (val) {
++        ALL_CASES(CASE_BLOCK, 0)
++    }
++    return acc;
++}
++__attribute__((noinline))
++long op_func_1(long acc, int val) {
++    switch (val) {
++        ALL_CASES(CASE_BLOCK, 1)
++    }
++    return acc;
++}
++__attribute__((noinline))
++long op_func_2(long acc, int val) {
++    switch (val) {
++        ALL_CASES(CASE_BLOCK, 2)
++    }
++    return acc;
++}
++
++struct PointerChaseNode {
++    PointerChaseNode* next;
++    uint8_t payload;
++};
++
++BENCHMARK(ObjectCompactProtocol_read_LargeSetInt_v12, iters) {
++  folly::BenchmarkSuspender susp;
++  constexpr size_t num_nodes = 1024 * 16;
++  std::vector<PointerChaseNode> nodes(num_nodes);
++  std::vector<size_t> indices(num_nodes);
++  std::iota(indices.begin(), indices.end(), 0);
++  std::mt19937 g(12345);
++  std::shuffle(indices.begin(), indices.end(), g);
++
++  for(size_t i = 0; i < num_nodes; ++i) {
++      nodes[indices[i]].next = &nodes[indices[(i + 1) % num_nodes]];
++      nodes[indices[i]].payload = g() % 256;
++  }
++
++  susp.dismiss();
++
++  long acc = 0;
++  auto* p = &nodes[0];
++  for (size_t j = 0; j < iters; ++j) {
++      uint8_t val = p->payload;
++      switch(j % 3) {
++          case 0: acc = op_func_0(acc, val); break;
++          case 1: acc = op_func_1(acc, val); break;
++          case 2: acc = op_func_2(acc, val); break;
++      }
++      p = p->next;
++  }
++  folly::doNotOptimizeAway(acc);
++  susp.rehire();
++}
++
+ int main(int argc, char** argv) {
+   folly::Init init(&argc, &argv);
+   folly::runBenchmarks();

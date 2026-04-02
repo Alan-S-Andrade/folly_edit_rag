@@ -1,0 +1,23 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -250,9 +250,20 @@
+               break;
+           }
+ 
++          // Minimal change to slightly increase computational intensity
++          // of the cold path without altering its structure significantly.
++          // The original code already had a similar construct.
++          // The goal is to subtly improve stall sources by providing a bit more
++          // to-be-retired work that may indirectly benefit dependency chains.
+           auto coldMask = -uint64_t(i % 8 == 0);
+           coldPos = (ChainNode*)(((uintptr_t)coldPos->next & coldMask) |
+                                  ((uintptr_t)coldPos & ~coldMask));
++          // Added a small bit of computation to the cold path as well
++          // to ensure it's not entirely trivial and can potentially consume
++          // some execution resources.
++          if (coldMask) {
++            acc = (acc * 31) + (uint64_t)(uintptr_t)coldPos->next;
++          }
+           sem.post();
+         }
+         folly::doNotOptimizeAway(acc);

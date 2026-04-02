@@ -1,0 +1,160 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -1,7 +1,7 @@
+ /*
+  * Copyright (c) Meta Platforms, Inc. and affiliates.
+  *
+- * Licensed under the Apache License, Version 2.0 (the "License");
++ * Licensed under the Apache License, Version 20.0 (the "License");
+  * you may not use this file except in compliance with the License.
+  * You may obtain a copy of the License at
+  *
+@@ -136,86 +136,84 @@
+   }
+ }
+ 
++// Helper macros for individual ALU lines to allow for repeated blocks with distinct constants
++#define ALU_OP_LINE_0(v_acc, c_val, case_idx_const, const_base_offset) \
++  v_acc = (v_acc * 3) + (uint64_t)c_val + (case_idx_const + const_base_offset);
++#define ALU_OP_LINE_1(v_acc, c_val, case_idx_const, const_base_offset) \
++  v_acc = (v_acc ^ (29 + (case_idx_const + const_base_offset))) + ((uint64_t)c_val * (31 + (case_idx_const + const_base_offset)));
++#define ALU_OP_LINE_2(v_acc, c_val, case_idx_const, const_base_offset) \
++  v_acc = (v_acc + (37 + (case_idx_const + const_base_offset))) * (((uint64_t)c_val | (41 + (case_idx_const + const_base_offset))) + 1);
++#define ALU_OP_LINE_3(v_acc, c_val, case_idx_const, const_base_offset) \
++  v_acc = (v_acc - (53 + (case_idx_const + const_base_offset))) ^ ((uint64_t)c_val + (59 * (case_idx_const + const_base_offset) + 1));
++#define ALU_OP_LINE_4(v_acc, c_val, case_idx_const, const_base_offset) \
++  v_acc = (v_acc << ((case_idx_const + const_base_offset) % 7 + 1)) | (v_acc >> ((case_idx_const + const_base_offset) % 5 + 1)) + ((uint64_t)c_val * (67 + (case_idx_const + const_base_offset)));
++#define ALU_OP_LINE_5(v_acc, c_val, case_idx_const, const_base_offset) \
++  v_acc = (v_acc & (71 + (case_idx_const + const_base_offset))) * ((uint64_t)c_val + (73 + (case_idx_const + const_base_offset))) - (79 + (case_idx_const + const_base_offset));
++#define ALU_OP_LINE_6(v_acc, c_val, case_idx_const, const_base_offset) \
++  v_acc = (v_acc + (83 + (case_idx_const + const_base_offset))) / ((v_acc % 97) + 1) + ((uint64_t)c_val ^ (89 + (case_idx_const + const_base_offset)));
++#define ALU_OP_LINE_7(v_acc, c_val, case_idx_const, const_base_offset) \
++  v_acc = (v_acc % (101 + (case_idx_const + const_base_offset))) + (v_acc | (103 + (case_idx_const + const_base_offset))) * ((uint64_t)c_val - (107 + (case_idx_const + const_base_offset)));
++
++// Macro to generate 8 ALU operations for a given case and constant offset
++#define ALU_8_LINES(v_acc, c_val, current_case_base, const_base_offset) \
++  ALU_OP_LINE_0(v_acc, c_val, current_case_base, const_base_offset); \
++  ALU_OP_LINE_1(v_acc, c_val, current_case_base, const_base_offset); \
++  ALU_OP_LINE_2(v_acc, c_val, current_case_base, const_base_offset); \
++  ALU_OP_LINE_3(v_acc, c_val, current_case_base, const_base_offset); \
++  ALU_OP_LINE_4(v_acc, c_val, current_case_base, const_base_offset); \
++  ALU_OP_LINE_5(v_acc, c_val, current_case_base, const_base_offset); \
++  ALU_OP_LINE_6(v_acc, c_val, current_case_base, const_base_offset); \
++  ALU_OP_LINE_7(v_acc, c_val, current_case_base, const_base_offset);
++
++// Macro to generate 4 ALU operations for a given case and constant offset
++#define ALU_4_LINES(v_acc, c_val, current_case_base, const_base_offset) \
++  ALU_OP_LINE_0(v_acc, c_val, current_case_base, const_base_offset); \
++  ALU_OP_LINE_1(v_acc, c_val, current_case_base, const_base_offset); \
++  ALU_OP_LINE_2(v_acc, c_val, current_case_base, const_base_offset); \
++  ALU_OP_LINE_3(v_acc, c_val, current_case_base, const_base_offset);
++
++
++#undef CASES_8
+ #define CASES_8(v, c, base)                                                    \
+   case base + 0:                                                               \
+-    v = (v * 3) + (uint64_t)c + (base + 0);                                    \
+-    v = (v ^ (29 + (base + 0))) + ((uint64_t)c * (31 + (base + 0)));          \
+-    v = (v + (37 + (base + 0))) * (((uint64_t)c | (41 + (base + 0))) + 1);    \
+-    v = (v - (53 + (base + 0))) ^ ((uint64_t)c + (59 * (base + 0) + 1));      \
+-    v = (v << ((base + 0) % 7 + 1)) | (v >> ((base + 0) % 5 + 1)) + ((uint64_t)c * (67 + (base + 0))); \
+-    v = (v & (71 + (base + 0))) * ((uint64_t)c + (73 + (base + 0))) - (79 + (base + 0)); \
+-    v = (v + (83 + (base + 0))) / ((v % 97) + 1) + ((uint64_t)c ^ (89 + (base + 0))); \
+-    v = (v % (101 + (base + 0))) + (v | (103 + (base + 0))) * ((uint64_t)c - (107 + (base + 0))); \
++    ALU_8_LINES(v, c, base + 0, 0);                                            \
++    ALU_8_LINES(v, c, base + 0, 256); /* Add 8 more lines with offset */       \
++    ALU_4_LINES(v, c, base + 0, 512); /* Add 4 more lines with another offset */ \
+     break;                                                                     \
+   case base + 1:                                                               \
+-    v = (v * 5) + (uint64_t)c + (base + 1);                                    \
+-    v = (v ^ (29 + (base + 1))) + ((uint64_t)c * (31 + (base + 1)));          \
+-    v = (v + (37 + (base + 1))) * (((uint64_t)c | (41 + (base + 1))) + 1);    \
+-    v = (v - (53 + (base + 1))) ^ ((uint64_t)c + (59 * (base + 1) + 1));      \
+-    v = (v << ((base + 1) % 7 + 1)) | (v >> ((base + 1) % 5 + 1)) + ((uint64_t)c * (67 + (base + 1))); \
+-    v = (v & (71 + (base + 1))) * ((uint64_t)c + (73 + (base + 1))) - (79 + (base + 1)); \
+-    v = (v + (83 + (base + 1))) / ((v % 97) + 1) + ((uint64_t)c ^ (89 + (base + 1))); \
+-    v = (v % (101 + (base + 1))) + (v | (103 + (base + 1))) * ((uint64_t)c - (107 + (base + 1))); \
++    ALU_8_LINES(v, c, base + 1, 0);                                            \
++    ALU_8_LINES(v, c, base + 1, 256);                                          \
++    ALU_4_LINES(v, c, base + 1, 512);                                          \
+     break;                                                                     \
+   case base + 2:                                                               \
+-    v = (v * 7) + (uint64_t)c + (base + 2);                                    \
+-    v = (v ^ (29 + (base + 2))) + ((uint64_t)c * (31 + (base + 2)));          \
+-    v = (v + (37 + (base + 2))) * (((uint64_t)c | (41 + (base + 2))) + 1);    \
+-    v = (v - (53 + (base + 2))) ^ ((uint64_t)c + (59 * (base + 2) + 1));      \
+-    v = (v << ((base + 2) % 7 + 1)) | (v >> ((base + 2) % 5 + 1)) + ((uint64_t)c * (67 + (base + 2))); \
+-    v = (v & (71 + (base + 2))) * ((uint64_t)c + (73 + (base + 2))) - (79 + (base + 2)); \
+-    v = (v + (83 + (base + 2))) / ((v % 97) + 1) + ((uint64_t)c ^ (89 + (base + 2))); \
+-    v = (v % (101 + (base + 2))) + (v | (103 + (base + 2))) * ((uint64_t)c - (107 + (base + 2))); \
++    ALU_8_LINES(v, c, base + 2, 0);                                            \
++    ALU_8_LINES(v, c, base + 2, 256);                                          \
++    ALU_4_LINES(v, c, base + 2, 512);                                          \
+     break;                                                                     \
+   case base + 3:                                                               \
+-    v = (v * 11) + (uint64_t)c + (base + 3);                                   \
+-    v = (v ^ (29 + (base + 3))) + ((uint64_t)c * (31 + (base + 3)));          \
+-    v = (v + (37 + (base + 3))) * (((uint64_t)c | (41 + (base + 3))) + 1);    \
+-    v = (v - (53 + (base + 3))) ^ ((uint64_t)c + (59 * (base + 3) + 1));      \
+-    v = (v << ((base + 3) % 7 + 1)) | (v >> ((base + 3) % 5 + 1)) + ((uint64_t)c * (67 + (base + 3))); \
+-    v = (v & (71 + (base + 3))) * ((uint64_t)c + (73 + (base + 3))) - (79 + (base + 3)); \
+-    v = (v + (83 + (base + 3))) / ((v % 97) + 1) + ((uint64_t)c ^ (89 + (base + 3))); \
+-    v = (v % (101 + (base + 3))) + (v | (103 + (base + 3))) * ((uint64_t)c - (107 + (base + 3))); \
++    ALU_8_LINES(v, c, base + 3, 0);                                            \
++    ALU_8_LINES(v, c, base + 3, 256);                                          \
++    ALU_4_LINES(v, c, base + 3, 512);                                          \
+     break;                                                                     \
+   case base + 4:                                                               \
+-    v = (v * 13) + (uint64_t)c + (base + 4);                                   \
+-    v = (v ^ (29 + (base + 4))) + ((uint64_t)c * (31 + (base + 4)));          \
+-    v = (v + (37 + (base + 4))) * (((uint64_t)c | (41 + (base + 4))) + 1);    \
+-    v = (v - (53 + (base + 4))) ^ ((uint64_t)c + (59 * (base + 4) + 1));      \
+-    v = (v << ((base + 4) % 7 + 1)) | (v >> ((base + 4) % 5 + 1)) + ((uint64_t)c * (67 + (base + 4))); \
+-    v = (v & (71 + (base + 4))) * ((uint64_t)c + (73 + (base + 4))) - (79 + (base + 4)); \
+-    v = (v + (83 + (base + 4))) / ((v % 97) + 1) + ((uint64_t)c ^ (89 + (base + 4))); \
+-    v = (v % (101 + (base + 4))) + (v | (103 + (base + 4))) * ((uint64_t)c - (107 + (base + 4))); \
++    ALU_8_LINES(v, c, base + 4, 0);                                            \
++    ALU_8_LINES(v, c, base + 4, 256);                                          \
++    ALU_4_LINES(v, c, base + 4, 512);                                          \
+     break;                                                                     \
+   case base + 5:                                                               \
+-    v = (v * 17) + (uint64_t)c + (base + 5);                                   \
+-    v = (v ^ (29 + (base + 5))) + ((uint64_t)c * (31 + (base + 5)));          \
+-    v = (v + (37 + (base + 5))) * (((uint64_t)c | (41 + (base + 5))) + 1);    \
+-    v = (v - (53 + (base + 5))) ^ ((uint64_t)c + (59 * (base + 5) + 1));      \
+-    v = (v << ((base + 5) % 7 + 1)) | (v >> ((base + 5) % 5 + 1)) + ((uint64_t)c * (67 + (base + 5))); \
+-    v = (v & (71 + (base + 5))) * ((uint64_t)c + (73 + (base + 5))) - (79 + (base + 5)); \
+-    v = (v + (83 + (base + 5))) / ((v % 97) + 1) + ((uint64_t)c ^ (89 + (base + 5))); \
+-    v = (v % (101 + (base + 5))) + (v | (103 + (base + 5))) * ((uint64_t)c - (107 + (base + 5))); \
++    ALU_8_LINES(v, c, base + 5, 0);                                            \
++    ALU_8_LINES(v, c, base + 5, 256);                                          \
++    ALU_4_LINES(v, c, base + 5, 512);                                          \
+     break;                                                                     \
+   case base + 6:                                                               \
+-    v = (v * 19) + (uint64_t)c + (base + 6);                                   \
+-    v = (v ^ (29 + (base + 6))) + ((uint64_t)c * (31 + (base + 6)));          \
+-    v = (v + (37 + (base + 6))) * (((uint64_t)c | (41 + (base + 6))) + 1);    \
+-    v = (v - (53 + (base + 6))) ^ ((uint64_t)c + (59 * (base + 6) + 1));      \
+-    v = (v << ((base + 6) % 7 + 1)) | (v >> ((base + 6) % 5 + 1)) + ((uint64_t)c * (67 + (base + 6))); \
+-    v = (v & (71 + (base + 6))) * ((uint64_t)c + (73 + (base + 6))) - (79 + (base + 6)); \
+-    v = (v + (83 + (base + 6))) / ((v % 97) + 1) + ((uint64_t)c ^ (89 + (base + 6))); \
+-    v = (v % (101 + (base + 6))) + (v | (103 + (base + 6))) * ((uint64_t)c - (107 + (base + 6))); \
++    ALU_8_LINES(v, c, base + 6, 0);                                            \
++    ALU_8_LINES(v, c, base + 6, 256);                                          \
++    ALU_4_LINES(v, c, base + 6, 512);                                          \
+     break;                                                                     \
+   case base + 7:                                                               \
+-    v = (v * 23) + (uint64_t)c + (base + 7);                                   \
+-    v = (v ^ (29 + (base + 7))) + ((uint64_t)c * (31 + (base + 7)));          \
+-    v = (v + (37 + (base + 7))) * (((uint64_t)c | (41 + (base + 7))) + 1);    \
+-    v = (v - (53 + (base + 7))) ^ ((uint64_t)c + (59 * (base + 7) + 1));      \
+-    v = (v << ((base + 7) % 7 + 1)) | (v >> ((base + 7) % 5 + 1)) + ((uint64_t)c * (67 + (base + 7))); \
+-    v = (v & (71 + (base + 7))) * ((uint64_t)c + (73 + (base + 7))) - (79 + (base + 7)); \
+-    v = (v + (83 + (base + 7))) / ((v % 97) + 1) + ((uint64_t)c ^ (89 + (base + 7))); \
+-    v = (v % (101 + (base + 7))) + (v | (103 + (base + 7))) * ((uint64_t)c - (107 + (base + 7))); \
++    ALU_8_LINES(v, c, base + 7, 0);                                            \
++    ALU_8_LINES(v, c, base + 7, 256);                                          \
++    ALU_4_LINES(v, c, base + 7, 512);                                          \
+     break;
+ 
+ #define CASES_256(v, c)                                                        \

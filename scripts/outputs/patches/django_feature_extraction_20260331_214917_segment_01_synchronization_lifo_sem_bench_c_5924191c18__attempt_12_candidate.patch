@@ -1,0 +1,71 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -138,28 +138,44 @@
+ 
+ #define CASES_8(v, c, base)                                                    \
+   case base + 0:                                                               \
+-    v = (v * 3) + (uint64_t)c + base + 0;                                      \
++    v = (v * (3 + (c % 7))) + (uint64_t)c + base + 0;                          \
++    v = (v ^ (0xABCDEF01ULL + (base * 17))) - ((uint64_t)c + (base * 3)) + 0x12345678ULL; \
++    v = (v + (0xDEADC0DEULL + (base * 11))) * ((uint64_t)c ^ (base + 9)) + 0xA5A5A5A5ULL; \
+     break;                                                                     \
+   case base + 1:                                                               \
+-    v = (v * 5) + (uint64_t)c + base + 1;                                      \
++    v = (v * (5 + (c % 7))) + (uint64_t)c + base + 1;                          \
++    v = (v ^ (0xABCDEF02ULL + (base * 17))) - ((uint64_t)c + (base * 3)) + 0x12345679ULL; \
++    v = (v + (0xDEADC0DEULL + (base * 11))) * ((uint64_t)c ^ (base + 10)) + 0xA5A5A5A6ULL; \
+     break;                                                                     \
+   case base + 2:                                                               \
+-    v = (v * 7) + (uint64_t)c + base + 2;                                      \
++    v = (v * (7 + (c % 7))) + (uint64_t)c + base + 2;                          \
++    v = (v ^ (0xABCDEF03ULL + (base * 17))) - ((uint64_t)c + (base * 3)) + 0x1234567AULL; \
++    v = (v + (0xDEADC0DEULL + (base * 11))) * ((uint64_t)c ^ (base + 11)) + 0xA5A5A5A7ULL; \
+     break;                                                                     \
+   case base + 3:                                                               \
+-    v = (v * 11) + (uint64_t)c + base + 3;                                     \
++    v = (v * (11 + (c % 7))) + (uint64_t)c + base + 3;                         \
++    v = (v ^ (0xABCDEF04ULL + (base * 17))) - ((uint64_t)c + (base * 3)) + 0x1234567BULL; \
++    v = (v + (0xDEADC0DEULL + (base * 11))) * ((uint64_t)c ^ (base + 12)) + 0xA5A5A5A8ULL; \
+     break;                                                                     \
+   case base + 4:                                                               \
+-    v = (v * 13) + (uint64_t)c + base + 4;                                     \
++    v = (v * (13 + (c % 7))) + (uint64_t)c + base + 4;                         \
++    v = (v ^ (0xABCDEF05ULL + (base * 17))) - ((uint64_t)c + (base * 3)) + 0x1234567CULL; \
++    v = (v + (0xDEADC0DEULL + (base * 11))) * ((uint64_t)c ^ (base + 13)) + 0xA5A5A5A9ULL; \
+     break;                                                                     \
+   case base + 5:                                                               \
+-    v = (v * 17) + (uint64_t)c + base + 5;                                     \
++    v = (v * (17 + (c % 7))) + (uint64_t)c + base + 5;                         \
++    v = (v ^ (0xABCDEF06ULL + (base * 17))) - ((uint64_t)c + (base * 3)) + 0x1234567DULL; \
++    v = (v + (0xDEADC0DEULL + (base * 11))) * ((uint64_t)c ^ (base + 14)) + 0xA5A5A5AAULL; \
+     break;                                                                     \
+   case base + 6:                                                               \
+-    v = (v * 19) + (uint64_t)c + base + 6;                                     \
++    v = (v * (19 + (c % 7))) + (uint64_t)c + base + 6;                         \
++    v = (v ^ (0xABCDEF07ULL + (base * 17))) - ((uint64_t)c + (base * 3)) + 0x1234567EULL; \
++    v = (v + (0xDEADC0DEULL + (base * 11))) * ((uint64_t)c ^ (base + 15)) + 0xA5A5A5ABULL; \
+     break;                                                                     \
+   case base + 7:                                                               \
+-    v = (v * 23) + (uint64_t)c + base + 7;                                     \
++    v = (v * (23 + (c % 7))) + (uint64_t)c + base + 7;                         \
++    v = (v ^ (0xABCDEF08ULL + (base * 17))) - ((uint64_t)c + (base * 3)) + 0x1234567FULL; \
++    v = (v + (0xDEADC0DEULL + (base * 11))) * ((uint64_t)c ^ (base + 16)) + 0xA5A5A5ACULL; \
+     break;
+ 
+ #define CASES_256(v, c)                                                        \
+@@ -330,6 +346,7 @@
+ // single_thread_native_trywait                                  7.30ns  136.98M
+ // ----------------------------------------------------------------------------
+ // contendedUse(1_to_1)                                       158.22ns    6.32M
++// contendedUse(1_to_1_branchy)                                 16.03ns   62.37M
+ // contendedUse(1_to_4)                                       574.73ns    1.74M
+ // contendedUse(1_to_32)                                      592.94ns    1.69M
+ // contendedUse(4_to_1)                                       118.28ns    8.45M
+@@ -338,6 +355,7 @@
+ // contendedUse(32_to_1)                                      165.06ns    6.06M
+ // contendedUse(16_to_16)                                     238.57ns    4.19M
+ // contendedUse(32_to_32)                                     219.82ns    4.55M
++// contendedUse_v2(32_to_32_v2)                                 15.93ns   62.77M
+ // contendedUse(32_to_1000)                                   777.42ns    1.29M
+ // ============================================================================
+ 

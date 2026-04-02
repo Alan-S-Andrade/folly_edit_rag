@@ -1,0 +1,96 @@
+--- a/thrift/lib/cpp2/test/ProtocolBench.cpp
++++ b/thrift/lib/cpp2/test/ProtocolBench.cpp
+@@ -200,6 +200,93 @@
+ OpEncodeX(OpEncode, Binary)
+ OpEncodeX(OpEncode, Compact)
+ 
++#define CASE_BLOCK_GEN(i, salt) \
++    case i: \
++        acc += i * (0x1010101 + salt); acc ^= (i + 1) * (0x2020202 + salt); \
++        acc *= (i + 2) * (0x3030303 + salt); acc += (i + 3) * (0x4040404 + salt); \
++        acc ^= (i + 4) * (0x5050505 + salt); acc *= (i + 5) * (0x6060606 + salt); \
++        acc += (i + 6) * (0x7070707 + salt); acc ^= (i + 7) * (0x8080808 + salt); \
++        acc *= (i + 8) * (0x9090909 + salt); acc += (i + 9) * (0xA0A0A0A + salt); \
++        acc ^= (i + 10) * (0xB0B0B0B + salt); acc *= (i + 11) * (0xC0C0C0C + salt); \
++        acc += (i + 12) * (0xD0D0D0D + salt); acc ^= (i + 13) * (0xE0E0E0E + salt); \
++        acc *= (i + 14) * (0xF0F0F0F + salt); acc += (i + 15) * (0x1111111 + salt); \
++        acc ^= (i + 16) * (0x2222222 + salt); acc *= (i + 17) * (0x3333333 + salt); \
++        acc += (i + 18) * (0x4444444 + salt); acc ^= (i + 19) * (0x5555555 + salt); \
++        acc *= (i + 20) * (0x6666666 + salt); acc += (i + 21) * (0x7777777 + salt); \
++        acc ^= (i + 22) * (0x8888888 + salt); acc *= (i + 23) * (0x9999999 + salt); \
++        acc += (i + 24) * (0xAAAAAAA + salt); acc ^= (i + 25) * (0xBBBBBBB + salt); \
++        acc *= (i + 26) * (0xCCCCCCC + salt); acc += (i + 27) * (0xDDDDDDD + salt); \
++        break
++
++#define R8_GEN(i, salt) CASE_BLOCK_GEN(i, salt) CASE_BLOCK_GEN(i+1, salt) CASE_BLOCK_GEN(i+2, salt) CASE_BLOCK_GEN(i+3, salt) CASE_BLOCK_GEN(i+4, salt) CASE_BLOCK_GEN(i+5, salt) CASE_BLOCK_GEN(i+6, salt) CASE_BLOCK_GEN(i+7, salt)
++#define R64_GEN(i, salt) R8_GEN(i, salt) R8_GEN(i+8, salt) R8_GEN(i+16, salt) R8_GEN(i+24, salt) R8_GEN(i+32, salt) R8_GEN(i+40, salt) R8_GEN(i+48, salt) R8_GEN(i+56, salt)
++#define R256_GEN(i, salt) R64_GEN(i, salt) R64_GEN(i+64, salt) R64_GEN(i+128, salt) R64_GEN(i+192, salt)
++
++__attribute__((noinline))
++int thrash_icache_1(int selector, int acc) {
++    switch (selector) {
++    R256_GEN(0, 1)
++    default: break;
++    }
++    return acc;
++}
++
++__attribute__((noinline))
++int thrash_icache_2(int selector, int acc) {
++    switch (selector) {
++    R256_GEN(0, 2)
++    default: break;
++    }
++    return acc;
++}
++
++__attribute__((noinline))
++int thrash_icache_3(int selector, int acc) {
++    switch (selector) {
++    R256_GEN(0, 3)
++    default: break;
++    }
++    return acc;
++}
++
++BENCHMARK(ObjectCompactProtocol_read_LargeSetInt_v7, iters) {
++    folly::BenchmarkSuspender susp;
++
++    constexpr size_t kDataSize = 4096;
++    std::vector<int> data(kDataSize);
++    // Fill with pseudo-random permutation for pointer chasing
++    for (size_t i = 0; i < kDataSize; ++i) {
++        data[i] = (i * 16381 + 1) % kDataSize; // A simple LCG-like permutation
++    }
++
++    int acc = 0;
++    int current_idx = 0;
++    const int inner_loop_count = 1000;
++
++    susp.dismiss();
++
++    for (size_t i = 0; i < iters; ++i) {
++        for (int j = 0; j < inner_loop_count; ++j) {
++            current_idx = data[current_idx];
++            int selector = current_idx & 0xFF;
++            switch (j % 3) {
++                case 0:
++                    acc = thrash_icache_1(selector, acc);
++                    break;
++                case 1:
++                    acc = thrash_icache_2(selector, acc);
++                    break;
++                case 2:
++                    acc = thrash_icache_3(selector, acc);
++                    break;
++            }
++        }
++    }
++
++    susp.rehire();
++    folly::doNotOptimizeAway(acc);
++}
++
+ int main(int argc, char** argv) {
+   folly::Init init(&argc, &argv);
+   folly::runBenchmarks();

@@ -1,0 +1,12 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -119,7 +119,8 @@
+ };
+ 
+ constexpr size_t kHotLen = 16384;
+-constexpr size_t kColdLen = 2u << 20;
++constexpr size_t kColdLen = 1u << 19; // Changed from 2u << 20 to 1u << 19 to tune down cache pressure
++// Previous value: constexpr size_t kColdLen = 2u << 20;
+ 
+ alignas(64) static ChainNode hotNodes[kHotLen];
+ static ChainNode* coldNodes;

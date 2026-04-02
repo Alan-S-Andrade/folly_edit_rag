@@ -1,0 +1,16 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -351,9 +351,10 @@
+               break;
+           }
+ 
+-          auto coldMask = -uint64_t(i % 8 == 0);
+-          coldPos = (ChainNode*)(((uintptr_t)coldPos->next & coldMask) |
+-                                 ((uintptr_t)coldPos & ~coldMask));
++          // Refinement: Always follow the cold chain. This removes a conditional
++          // data dependency, potentially improving IPC by simplifying the
++          // instruction flow and making memory access patterns more regular.
++          coldPos = coldPos->next;
+         }
+         folly::doNotOptimizeAway(acc);
+         folly::doNotOptimizeAway(hotPos);

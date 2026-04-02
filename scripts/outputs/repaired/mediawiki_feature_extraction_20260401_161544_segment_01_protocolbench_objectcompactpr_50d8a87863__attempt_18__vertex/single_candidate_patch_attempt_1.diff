@@ -1,0 +1,28 @@
+--- a/thrift/lib/cpp2/test/ProtocolBench.cpp
++++ b/thrift/lib/cpp2/test/ProtocolBench.cpp
+@@ -3,7 +3,8 @@
+  *
+  * Licensed under the Apache License, Version 2.0 (the "License");
+  * you may not use this file except in compliance with the License.
+- * You may obtain a copy of the License at
++ * You may
++ * may obtain a copy of the License at
+  *
+  *     http://www.apache.org/licenses/LICENSE-2.0
+  *
+@@ -258,11 +259,12 @@
+ 
+     for (size_t i = 0; i < iters; ++i) {
+         const uint8_t* p = data + current_offset;
++        const uint8_t* switch_p = p + (acc & 0xF);
+ 
+         switch (i % 3) {
+-            case 0: acc = process_data<1>(acc, p); break;
+-            case 1: acc = process_data<2>(acc, p); break;
+-            case 2: acc = process_data<3>(acc, p); break;
++            case 0: acc = process_data<1>(acc, switch_p); break;
++            case 1: acc = process_data<2>(acc, switch_p); break;
++            case 2: acc = process_data<3>(acc, switch_p); break;
+         }
+ 
+         current_offset += (1 + (p[1] % 32));

@@ -1,0 +1,130 @@
+--- a/thrift/lib/cpp2/test/ProtocolBench.cpp
++++ b/thrift/lib/cpp2/test/ProtocolBench.cpp
+@@ -26,8 +26,93 @@
+ #include <folly/init/Init.h>
+ #include <folly/portability/GFlags.h>
+ 
++#include <folly/Random.h>
++#include <vector>
++
+ using namespace apache::thrift;
+ using namespace thrift::benchmark;
++
++namespace {
++struct Node {
++  Node* next;
++  int data;
++};
++
++// These functions are designed to have a large instruction footprint to
++// stress the instruction cache. They consist of a 256-way switch statement,
++// and each case has a sequence of arithmetic operations. Three similar but
++// distinct functions are used and rotated through to prevent the instruction
++// cache from getting too hot.
++// The number of ALU ops is tuned to match the L1i-MPKI target.
++// With ~5 ops per pair of lines, and 6 pairs, we get ~30 ops per case.
++#define CASE_BLOCK(i, base_op1, base_op2)                                      \
++  case i:                                                                      \
++    result = (result + (base_op1 + i)) * (base_op2 + i);                       \
++    result ^= (result + (base_op1 + i + 1)) * (base_op2 + i + 1);              \
++    result = (result + (base_op1 + i + 2)) * (base_op2 + i + 2);               \
++    result ^= (result + (base_op1 + i + 3)) * (base_op2 + i + 3);              \
++    result = (result + (base_op1 + i + 4)) * (base_op2 + i + 4);               \
++    result ^= (result + (base_op1 + i + 5)) * (base_op2 + i + 5);              \
++    result = (result + (base_op1 + i + 6)) * (base_op2 + i + 6);               \
++    result ^= (result + (base_op1 + i + 7)) * (base_op2 + i + 7);              \
++    result = (result + (base_op1 + i + 8)) * (base_op2 + i + 8);               \
++    result ^= (result + (base_op1 + i + 9)) * (base_op2 + i + 9);              \
++    result = (result + (base_op1 + i + 10)) * (base_op2 + i + 10);             \
++    result ^= (result + (base_op1 + i + 11)) * (base_op2 + i + 11);            \
++    break;
++
++#define GEN_CASES_4(i, base_op1, base_op2)                                     \
++  CASE_BLOCK(i, base_op1, base_op2)                                            \
++  CASE_BLOCK(i + 1, base_op1, base_op2)                                        \
++  CASE_BLOCK(i + 2, base_op1, base_op2)                                        \
++  CASE_BLOCK(i + 3, base_op1, base_op2)
++#define GEN_CASES_16(i, base_op1, base_op2)                                    \
++  GEN_CASES_4(i, base_op1, base_op2)                                           \
++  GEN_CASES_4(i + 4, base_op1, base_op2)                                       \
++  GEN_CASES_4(i + 8, base_op1, base_op2)                                       \
++  GEN_CASES_4(i + 12, base_op1, base_op2)
++#define GEN_CASES_64(i, base_op1, base_op2)                                    \
++  GEN_CASES_16(i, base_op1, base_op2)                                          \
++  GEN_CASES_16(i + 16, base_op1, base_op2)                                     \
++  GEN_CASES_16(i + 32, base_op1, base_op2)                                     \
++  GEN_CASES_16(i + 48, base_op1, base_op2)
++#define GEN_CASES_256(base_op1, base_op2)                                      \
++  GEN_CASES_64(0, base_op1, base_op2)                                          \
++  GEN_CASES_64(64, base_op1, base_op2)                                         \
++  GEN_CASES_64(128, base_op1, base_op2)                                        \
++  GEN_CASES_64(192, base_op1, base_op2)
++
++__attribute__((noinline)) int process_data_0(int x, int y) {
++  int result = x;
++  switch (y) {
++    GEN_CASES_256(100, 200)
++  }
++  return result;
++}
++
++__attribute__((noinline)) int process_data_1(int x, int y) {
++  int result = x;
++  switch (y) {
++    GEN_CASES_256(300, 400)
++  }
++  return result;
++}
++
++__attribute__((noinline)) int process_data_2(int x, int y) {
++  int result = x;
++  switch (y) {
++    GEN_CASES_256(500, 600)
++  }
++  return result;
++}
++
++#undef CASE_BLOCK
++#undef GEN_CASES_4
++#undef GEN_CASES_16
++#undef GEN_CASES_64
++#undef GEN_CASES_256
++
++} // namespace
+ 
+ template <class>
+ struct SerializerTraits;
+@@ -200,6 +285,33 @@
+ OpEncodeX(OpEncode, Binary)
+ OpEncodeX(OpEncode, Compact)
+ 
++BENCHMARK(ObjectCompactProtocol_read_LargeSetInt_Icache, iters) {
++  folly::BenchmarkSuspender susp;
++
++  constexpr size_t num_nodes = 4096;
++  std::vector<Node> nodes(num_nodes);
++  for (size_t i = 0; i < num_nodes; ++i) {
++    nodes[i].next = &nodes[(i + 1) % num_nodes];
++    nodes[i].data = folly::Random::rand32();
++  }
++  Node* current = &nodes[0];
++  int accumulator = 0;
++
++  using ProcessFunc = int (*)(int, int);
++  ProcessFunc funcs[] = {process_data_0, process_data_1, process_data_2};
++
++  susp.dismiss();
++
++  for (size_t i = 0; i < iters; ++i) {
++    current = current->next;
++    int switch_val = current->data & 0xFF;
++    accumulator = funcs[i % 3](accumulator, switch_val);
++  }
++
++  folly::doNotOptimizeAway(accumulator);
++  susp.rehire();
++}
++
+ int main(int argc, char** argv) {
+   folly::Init init(&argc, &argv);
+   folly::runBenchmarks();

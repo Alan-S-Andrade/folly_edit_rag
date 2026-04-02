@@ -1,0 +1,63 @@
+--- a/thrift/lib/cpp2/test/ProtocolBench.cpp
++++ b/thrift/lib/cpp2/test/ProtocolBench.cpp
+@@ -235,6 +235,14 @@
+     }
+     return acc;
+ }
++
++// Multiple large scratch buffers to force icache pressure across calls
++static constexpr size_t kScratchSize = 256 * 1024;
++static uint8_t g_scratch0[kScratchSize];
++static uint8_t g_scratch1[kScratchSize];
++static uint8_t g_scratch2[kScratchSize];
++static uint8_t g_scratch3[kScratchSize];
++
+ } // namespace
+ 
+ 
+@@ -252,13 +260,31 @@
+     // Guard: need at least 8 bytes for OPS_28 to index d[0]..d[7] safely
+     CHECK_GE(data_len, 8u);
+ 
++    // Fill scratch buffers with varied data derived from serialized content
++    // to maximize icache pressure when iterating across them
++    for (size_t i = 0; i < kScratchSize; ++i) {
++        g_scratch0[i] = static_cast<uint8_t>(data[i % data_len] ^ (i & 0xFF));
++        g_scratch1[i] = static_cast<uint8_t>(data[i % data_len] + (i >> 4));
++        g_scratch2[i] = static_cast<uint8_t>(data[i % data_len] * (i & 0x7F));
++        g_scratch3[i] = static_cast<uint8_t>(data[i % data_len] ^ (i >> 2));
++    }
++
+     size_t current_offset = 0;
+     int acc = 0;
+ 
+     susp.dismiss();
+ 
+     for (size_t i = 0; i < iters; ++i) {
+-        const uint8_t* p = data + current_offset;
++        // Rotate across four large scratch buffers to stress icache
++        const uint8_t* scratch;
++        switch (i & 3) {
++            case 0: scratch = g_scratch0; break;
++            case 1: scratch = g_scratch1; break;
++            case 2: scratch = g_scratch2; break;
++            default: scratch = g_scratch3; break;
++        }
++
++        const uint8_t* p = scratch + current_offset;
+ 
+         switch (i % 3) {
+             case 0: acc = process_data<1>(acc, p); break;
+@@ -266,9 +292,9 @@
+             default: acc = process_data<3>(acc, p); break;
+         }
+ 
+-        current_offset += (1 + (p[1] % 32));
+-        // Ensure we always have at least 8 bytes available after current_offset
+-        if (current_offset + 8 >= data_len) {
++        // Advance offset by a stride large enough to cross cache lines
++        current_offset += 64 + (p[1] % 64);
++        if (current_offset + 8 >= kScratchSize) {
+             current_offset = 0;
+         }
+     }

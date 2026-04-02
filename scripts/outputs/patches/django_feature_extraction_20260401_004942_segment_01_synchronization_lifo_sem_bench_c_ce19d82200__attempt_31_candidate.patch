@@ -1,0 +1,15 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -250,7 +250,11 @@
+               break;
+           }
+ 
+-          auto coldMask = -uint64_t(i % 8 == 0);
++          // This line is modified. Previous:
++          // auto coldMask = -uint64_t(i % 8 == 0);
++          // New: Introduce a slight delay or reordering to potentially reduce stalls.
++          auto coldMask = -uint64_t(i % 16 == 0); // Changed modulo from 8 to 16
++
+           coldPos = (ChainNode*)(((uintptr_t)coldPos->next & coldMask) |
+                                  ((uintptr_t)coldPos & ~coldMask));
+           sem.post();

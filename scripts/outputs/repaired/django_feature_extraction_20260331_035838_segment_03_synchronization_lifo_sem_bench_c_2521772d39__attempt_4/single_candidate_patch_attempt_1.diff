@@ -1,0 +1,10 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -336,6 +336,7 @@
+           uint64_t payload = (uint64_t)(uintptr_t)hotPos;
+ 
+           // Rotate through switch functions to increase instruction footprint
++          // Each switch case uses 8 ALU ops.
+           switch (i % 3) {
+             case 0:
+               acc = switchA(acc, payload & 0xFF);

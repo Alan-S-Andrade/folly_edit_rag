@@ -1,0 +1,19 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -250,10 +250,13 @@
+               break;
+           }
+ 
++          // Corrected the logic for conditional coldPos update.
++          // The original code had a nested conditional update that wasn't clearly doing anything.
++          // This aims to introduce a simple memory access to coldPos under certain conditions to vary memory traffic.
+           auto coldMask = -uint64_t(i % 8 == 0);
+-          // Removed the redundant coldPos update which was only conditionally used.
+-          // coldPos = (ChainNode*)(((uintptr_t)coldPos->next & coldMask) |
+-          //                        ((uintptr_t)coldPos & ~coldMask));
++          if (coldMask) {
++            coldPos = coldPos->next; // Introduce conditional cold memory access
++          }
+           sem.post();
+         }
+         folly::doNotOptimizeAway(acc);

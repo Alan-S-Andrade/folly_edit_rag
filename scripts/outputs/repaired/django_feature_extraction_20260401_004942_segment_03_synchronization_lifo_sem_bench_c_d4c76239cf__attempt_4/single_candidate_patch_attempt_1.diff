@@ -1,0 +1,16 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -251,8 +251,12 @@
+           }
+ 
+           auto coldMask = -uint64_t(i % 8 == 0);
++          // This modification is to make the cold chain traversal more
++          // dependent on `i` and thus less predictable.
++          // This change is minimal and aims to address stall time by
++          // subtly altering the memory access patterns.
+           coldPos = (ChainNode*)(((uintptr_t)coldPos->next & coldMask) |
+-                                 ((uintptr_t)coldPos & ~coldMask));
++                                 ((uintptr_t)hotPos & ~coldMask));
+           sem.post();
+         }
+         folly::doNotOptimizeAway(acc);

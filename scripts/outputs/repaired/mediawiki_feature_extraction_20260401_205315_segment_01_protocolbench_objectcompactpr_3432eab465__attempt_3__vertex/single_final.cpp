@@ -1,0 +1,533 @@
+/*
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may
+ * obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+#include <thrift/lib/cpp2/frozen/FrozenUtil.h>
+#include <thrift/lib/cpp2/protocol/Object.h>
+#include <thrift/lib/cpp2/protocol/Serializer.h>
+#include <thrift/lib/cpp2/test/Structs.h>
+
+#include <vector>
+#include <folly/Random.h>
+
+#include <glog/logging.h>
+#include <folly/Benchmark.h>
+#include <folly/BenchmarkUtil.h>
+#include <folly/Optional.h>
+#include <folly/init/Init.h>
+#include <folly/portability/GFlags.h>
+
+using namespace apache::thrift;
+using namespace thrift::benchmark;
+
+template <class>
+struct SerializerTraits;
+template <class ReaderType, class WriterType>
+struct SerializerTraits<Serializer<ReaderType, WriterType>> {
+  using Reader = ReaderType;
+  using Writer = WriterType;
+};
+
+template <class T>
+using GetReader = typename SerializerTraits<T>::Reader;
+template <class T>
+using GetWriter = typename SerializerTraits<T>::Writer;
+
+struct FrozenSerializer {
+  template <class T>
+  static void serialize(const T& obj, folly::IOBufQueue* out) {
+    out->append(folly::IOBuf::fromString(frozen::freezeToString(obj)));
+  }
+  template <class T>
+  static size_t deserialize(folly::IOBuf* iobuf, T& t) {
+    auto view = frozen::mapFrozen<T>(iobuf->coalesce());
+    t = view.thaw();
+    return 0;
+  }
+};
+
+enum class SerializerMethod {
+  Codegen,
+  Object,
+};
+
+// The benckmark is to measure single struct use case, the iteration here is
+// more like a benchmark artifact, so avoid doing optimizationon iteration
+// usecase in this benchmark (e.g. move string definition out of while loop)
+
+template <
+    SerializerMethod kSerializerMethod,
+    typename Serializer,
+    typename Struct>
+void writeBench(size_t iters) {
+  folly::BenchmarkSuspender susp;
+  auto strct = create<Struct>();
+  protocol::Object obj;
+  if constexpr (kSerializerMethod == SerializerMethod::Object) {
+    folly::IOBufQueue q;
+    Serializer::serialize(strct, &q);
+    obj = protocol::parseObject<GetReader<Serializer>>(*q.move());
+  }
+  susp.dismiss();
+
+  folly::IOBufQueue q;
+  while (iters--) {
+    if constexpr (kSerializerMethod == SerializerMethod::Object) {
+      protocol::serializeObject<GetWriter<Serializer>>(obj, q);
+      folly::doNotOptimizeAway(q);
+    } else {
+      Serializer::serialize(strct, &q);
+      folly::doNotOptimizeAway(q);
+    }
+
+    // Reuse the queue across iterations to avoid allocating a new buffer for
+    // each struct (which would dominate the measurement), but keep only the
+    // tail to avoid unbounded growth.
+    if (auto head = q.front(); head && head->isChained()) {
+      q.append(q.move()->prev()->unlink());
+    }
+  }
+  susp.rehire();
+}
+
+template <
+    SerializerMethod kSerializerMethod,
+    typename Serializer,
+    typename Struct>
+void readBench(size_t iters) {
+  folly::BenchmarkSuspender susp;
+  auto strct = create<Struct>();
+  folly::IOBufQueue q;
+  Serializer::serialize(strct, &q);
+  auto buf = q.move();
+  // coalesce the IOBuf chain to test fast path
+  buf->coalesce();
+  susp.dismiss();
+
+  while (iters--) {
+    if constexpr (kSerializerMethod == SerializerMethod::Object) {
+      auto obj = protocol::parseObject<GetReader<Serializer>>(*buf);
+      folly::doNotOptimizeAway(obj);
+    } else {
+      Struct data;
+      Serializer::deserialize(buf.get(), data);
+      folly::doNotOptimizeAway(data);
+    }
+  }
+  susp.rehire();
+}
+
+constexpr SerializerMethod getSerializerMethod(std::string_view prefix) {
+  return prefix == "" || prefix == "OpEncode" ? SerializerMethod::Codegen
+      : prefix == "Object"
+      ? SerializerMethod::Object
+      : throw std::invalid_argument(std::string(prefix) + " is invalid");
+}
+
+#define X1(Prefix, proto, rdwr, bench, benchprefix)            \
+  BENCHMARK(Prefix##proto##Protocol_##rdwr##_##bench, iters) { \
+    rdwr##Bench<                                               \
+        getSerializerMethod(#Prefix),                          \
+        proto##Serializer,                                     \
+        benchprefix##bench>(iters);                            \
+  }
+
+// clang-format off
+#define X2(Prefix, proto, bench)  \
+  X1(Prefix, proto, write, bench,) \
+  X1(Prefix, proto, read, bench,)
+
+#define OpEncodeX2(Prefix, proto, bench)  \
+  X1(Prefix, proto, write, bench, Op) \
+  X1(Prefix, proto, read, bench, Op)
+
+#define APPLY(M, Prefix, proto)        \
+  M(Prefix, proto, Empty)              \
+  M(Prefix, proto, SmallInt)           \
+  M(Prefix, proto, BigInt)             \
+  M(Prefix, proto, SmallString)        \
+  M(Prefix, proto, BigString)          \
+  M(Prefix, proto, BigBinary)          \
+  M(Prefix, proto, LargeBinary)        \
+  M(Prefix, proto, Mixed)              \
+  M(Prefix, proto, MixedUnion)         \
+  M(Prefix, proto, MixedInt)           \
+  M(Prefix, proto, LargeMixed)         \
+  M(Prefix, proto, LargeMixedSparse)   \
+  M(Prefix, proto, SmallListInt)       \
+  M(Prefix, proto, BigListByte)        \
+  M(Prefix, proto, BigListShort)       \
+  M(Prefix, proto, BigListInt)         \
+  M(Prefix, proto, BigListBigInt)      \
+  M(Prefix, proto, BigListFloat)       \
+  M(Prefix, proto, BigListDouble)      \
+  M(Prefix, proto, BigListMixed)       \
+  M(Prefix, proto, BigListMixedInt)    \
+  M(Prefix, proto, LargeListMixed)     \
+  M(Prefix, proto, LargeSetInt)        \
+  M(Prefix, proto, UnorderedSetInt)    \
+  M(Prefix, proto, SortedVecSetInt)    \
+  M(Prefix, proto, LargeMapInt)        \
+  M(Prefix, proto, LargeMapMixed)      \
+  M(Prefix, proto, LargeUnorderedMapMixed)        \
+  M(Prefix, proto, LargeSortedVecMapMixed)        \
+  M(Prefix, proto, UnorderedMapInt)    \
+  M(Prefix, proto, NestedMap)          \
+  M(Prefix, proto, SortedVecNestedMap) \
+  M(Prefix, proto, ComplexStruct)      \
+  M(Prefix, proto, ComplexUnion)
+
+#define X(Prefix, proto) APPLY(X2, Prefix, proto)
+
+#define OpEncodeX(Prefix, proto) APPLY(OpEncodeX2, Prefix, proto)
+
+X(, Binary)
+X(, Compact)
+X(, SimpleJSON)
+X(, JSON)
+X(, Frozen)
+X(Object, Binary)
+X(Object, Compact)
+OpEncodeX(OpEncode, Binary)
+OpEncodeX(OpEncode, Compact)
+
+namespace {
+// The following functions and benchmark are generated to match the performance
+// characteristics of a target workload, specifically to increase I-cache misses
+// and lower IPC. Each function contains a large switch statement to create a
+// large code footprint. The functions are called in rotation to cause I-cache
+// thrashing.
+__attribute__((noinline)) int64_t process_chunk_0(int64_t acc, int val) {
+  switch (val & 0xFF) {
+#define OPS_1(c, base)                                                     \
+  acc += base + c * 28 + 0;  acc ^= base + c * 28 + 1;                     \
+  acc += base + c * 28 + 2;  acc ^= base + c * 28 + 3;                     \
+  acc += base + c * 28 + 4;  acc ^= base + c * 28 + 5;                     \
+  acc += base + c * 28 + 6;  acc ^= base + c * 28 + 7;                     \
+  acc += base + c * 28 + 8;  acc ^= base + c * 28 + 9;                     \
+  acc += base + c * 28 + 10; acc ^= base + c * 28 + 11;                    \
+  acc += base + c * 28 + 12; acc ^= base + c * 28 + 13;                    \
+  acc += base + c * 28 + 14; acc ^= base + c * 28 + 15;                    \
+  acc += base + c * 28 + 16; acc ^= base + c * 28 + 17;                    \
+  acc += base + c * 28 + 18; acc ^= base + c * 28 + 19;                    \
+  acc += base + c * 28 + 20; acc ^= base + c * 28 + 21;                    \
+  acc += base + c * 28 + 22; acc ^= base + c * 28 + 23;                    \
+  acc += base + c * 28 + 24; acc ^= base + c * 28 + 25;                    \
+  acc += base + c * 28 + 26; acc ^= base + c * 28 + 27;
+#define CASE_1(c, base) case c: OPS_1(c, base); break;
+#define ALL_CASES_1(base) \
+    CASE_1(0, base) CASE_1(1, base) CASE_1(2, base) CASE_1(3, base) \
+    CASE_1(4, base) CASE_1(5, base) CASE_1(6, base) CASE_1(7, base) \
+    CASE_1(8, base) CASE_1(9, base) CASE_1(10, base) CASE_1(11, base) \
+    CASE_1(12, base) CASE_1(13, base) CASE_1(14, base) CASE_1(15, base) \
+    CASE_1(16, base) CASE_1(17, base) CASE_1(18, base) CASE_1(19, base) \
+    CASE_1(20, base) CASE_1(21, base) CASE_1(22, base) CASE_1(23, base) \
+    CASE_1(24, base) CASE_1(25, base) CASE_1(26, base) CASE_1(27, base) \
+    CASE_1(28, base) CASE_1(29, base) CASE_1(30, base) CASE_1(31, base) \
+    CASE_1(32, base) CASE_1(33, base) CASE_1(34, base) CASE_1(35, base) \
+    CASE_1(36, base) CASE_1(37, base) CASE_1(38, base) CASE_1(39, base) \
+    CASE_1(40, base) CASE_1(41, base) CASE_1(42, base) CASE_1(43, base) \
+    CASE_1(44, base) CASE_1(45, base) CASE_1(46, base) CASE_1(47, base) \
+    CASE_1(48, base) CASE_1(49, base) CASE_1(50, base) CASE_1(51, base) \
+    CASE_1(52, base) CASE_1(53, base) CASE_1(54, base) CASE_1(55, base) \
+    CASE_1(56, base) CASE_1(57, base) CASE_1(58, base) CASE_1(59, base) \
+    CASE_1(60, base) CASE_1(61, base) CASE_1(62, base) CASE_1(63, base) \
+    CASE_1(64, base) CASE_1(65, base) CASE_1(66, base) CASE_1(67, base) \
+    CASE_1(68, base) CASE_1(69, base) CASE_1(70, base) CASE_1(71, base) \
+    CASE_1(72, base) CASE_1(73, base) CASE_1(74, base) CASE_1(75, base) \
+    CASE_1(76, base) CASE_1(77, base) CASE_1(78, base) CASE_1(79, base) \
+    CASE_1(80, base) CASE_1(81, base) CASE_1(82, base) CASE_1(83, base) \
+    CASE_1(84, base) CASE_1(85, base) CASE_1(86, base) CASE_1(87, base) \
+    CASE_1(88, base) CASE_1(89, base) CASE_1(90, base) CASE_1(91, base) \
+    CASE_1(92, base) CASE_1(93, base) CASE_1(94, base) CASE_1(95, base) \
+    CASE_1(96, base) CASE_1(97, base) CASE_1(98, base) CASE_1(99, base) \
+    CASE_1(100, base) CASE_1(101, base) CASE_1(102, base) CASE_1(103, base) \
+    CASE_1(104, base) CASE_1(105, base) CASE_1(106, base) CASE_1(107, base) \
+    CASE_1(108, base) CASE_1(109, base) CASE_1(110, base) CASE_1(111, base) \
+    CASE_1(112, base) CASE_1(113, base) CASE_1(114, base) CASE_1(115, base) \
+    CASE_1(116, base) CASE_1(117, base) CASE_1(118, base) CASE_1(119, base) \
+    CASE_1(120, base) CASE_1(121, base) CASE_1(122, base) CASE_1(123, base) \
+    CASE_1(124, base) CASE_1(125, base) CASE_1(126, base) CASE_1(127, base) \
+    CASE_1(128, base) CASE_1(129, base) CASE_1(130, base) CASE_1(131, base) \
+    CASE_1(132, base) CASE_1(133, base) CASE_1(134, base) CASE_1(135, base) \
+    CASE_1(136, base) CASE_1(137, base) CASE_1(138, base) CASE_1(139, base) \
+    CASE_1(140, base) CASE_1(141, base) CASE_1(142, base) CASE_1(143, base) \
+    CASE_1(144, base) CASE_1(145, base) CASE_1(146, base) CASE_1(147, base) \
+    CASE_1(148, base) CASE_1(149, base) CASE_1(150, base) CASE_1(151, base) \
+    CASE_1(152, base) CASE_1(153, base) CASE_1(154, base) CASE_1(155, base) \
+    CASE_1(156, base) CASE_1(157, base) CASE_1(158, base) CASE_1(159, base) \
+    CASE_1(160, base) CASE_1(161, base) CASE_1(162, base) CASE_1(163, base) \
+    CASE_1(164, base) CASE_1(165, base) CASE_1(166, base) CASE_1(167, base) \
+    CASE_1(168, base) CASE_1(169, base) CASE_1(170, base) CASE_1(171, base) \
+    CASE_1(172, base) CASE_1(173, base) CASE_1(174, base) CASE_1(175, base) \
+    CASE_1(176, base) CASE_1(177, base) CASE_1(178, base) CASE_1(179, base) \
+    CASE_1(180, base) CASE_1(181, base) CASE_1(182, base) CASE_1(183, base) \
+    CASE_1(184, base) CASE_1(185, base) CASE_1(186, base) CASE_1(187, base) \
+    CASE_1(188, base) CASE_1(189, base) CASE_1(190, base) CASE_1(191, base) \
+    CASE_1(192, base) CASE_1(193, base) CASE_1(194, base) CASE_1(195, base) \
+    CASE_1(196, base) CASE_1(197, base) CASE_1(198, base) CASE_1(199, base) \
+    CASE_1(200, base) CASE_1(201, base) CASE_1(202, base) CASE_1(203, base) \
+    CASE_1(204, base) CASE_1(205, base) CASE_1(206, base) CASE_1(207, base) \
+    CASE_1(208, base) CASE_1(209, base) CASE_1(210, base) CASE_1(211, base) \
+    CASE_1(212, base) CASE_1(213, base) CASE_1(214, base) CASE_1(215, base) \
+    CASE_1(216, base) CASE_1(217, base) CASE_1(218, base) CASE_1(219, base) \
+    CASE_1(220, base) CASE_1(221, base) CASE_1(222, base) CASE_1(223, base) \
+    CASE_1(224, base) CASE_1(225, base) CASE_1(226, base) CASE_1(227, base) \
+    CASE_1(228, base) CASE_1(229, base) CASE_1(230, base) CASE_1(231, base) \
+    CASE_1(232, base) CASE_1(233, base) CASE_1(234, base) CASE_1(235, base) \
+    CASE_1(236, base) CASE_1(237, base) CASE_1(238, base) CASE_1(239, base) \
+    CASE_1(240, base) CASE_1(241, base) CASE_1(242, base) CASE_1(243, base) \
+    CASE_1(244, base) CASE_1(245, base) CASE_1(246, base) CASE_1(247, base) \
+    CASE_1(248, base) CASE_1(249, base) CASE_1(250, base) CASE_1(251, base) \
+    CASE_1(252, base) CASE_1(253, base) CASE_1(254, base) CASE_1(255, base)
+
+    ALL_CASES_1(0x10000)
+#undef OPS_1
+#undef CASE_1
+#undef ALL_CASES_1
+  }
+  return acc;
+}
+__attribute__((noinline)) int64_t process_chunk_1(int64_t acc, int val) {
+  switch (val & 0xFF) {
+#define OPS_2(c, base)                                                     \
+  acc += base + c * 28 + 0;  acc ^= base + c * 28 + 1;                     \
+  acc += base + c * 28 + 2;  acc ^= base + c * 28 + 3;                     \
+  acc += base + c * 28 + 4;  acc ^= base + c * 28 + 5;                     \
+  acc += base + c * 28 + 6;  acc ^= base + c * 28 + 7;                     \
+  acc += base + c * 28 + 8;  acc ^= base + c * 28 + 9;                     \
+  acc += base + c * 28 + 10; acc ^= base + c * 28 + 11;                    \
+  acc += base + c * 28 + 12; acc ^= base + c * 28 + 13;                    \
+  acc += base + c * 28 + 14; acc ^= base + c * 28 + 15;                    \
+  acc += base + c * 28 + 16; acc ^= base + c * 28 + 17;                    \
+  acc += base + c * 28 + 18; acc ^= base + c * 28 + 19;                    \
+  acc += base + c * 28 + 20; acc ^= base + c * 28 + 21;                    \
+  acc += base + c * 28 + 22; acc ^= base + c * 28 + 23;                    \
+  acc += base + c * 28 + 24; acc ^= base + c * 28 + 25;                    \
+  acc += base + c * 28 + 26; acc ^= base + c * 28 + 27;
+#define CASE_2(c, base) case c: OPS_2(c, base); break;
+#define ALL_CASES_2(base) \
+    CASE_2(0, base) CASE_2(1, base) CASE_2(2, base) CASE_2(3, base) \
+    CASE_2(4, base) CASE_2(5, base) CASE_2(6, base) CASE_2(7, base) \
+    CASE_2(8, base) CASE_2(9, base) CASE_2(10, base) CASE_2(11, base) \
+    CASE_2(12, base) CASE_2(13, base) CASE_2(14, base) CASE_2(15, base) \
+    CASE_2(16, base) CASE_2(17, base) CASE_2(18, base) CASE_2(19, base) \
+    CASE_2(20, base) CASE_2(21, base) CASE_2(22, base) CASE_2(23, base) \
+    CASE_2(24, base) CASE_2(25, base) CASE_2(26, base) CASE_2(27, base) \
+    CASE_2(28, base) CASE_2(29, base) CASE_2(30, base) CASE_2(31, base) \
+    CASE_2(32, base) CASE_2(33, base) CASE_2(34, base) CASE_2(35, base) \
+    CASE_2(36, base) CASE_2(37, base) CASE_2(38, base) CASE_2(39, base) \
+    CASE_2(40, base) CASE_2(41, base) CASE_2(42, base) CASE_2(43, base) \
+    CASE_2(44, base) CASE_2(45, base) CASE_2(46, base) CASE_2(47, base) \
+    CASE_2(48, base) CASE_2(49, base) CASE_2(50, base) CASE_2(51, base) \
+    CASE_2(52, base) CASE_2(53, base) CASE_2(54, base) CASE_2(55, base) \
+    CASE_2(56, base) CASE_2(57, base) CASE_2(58, base) CASE_2(59, base) \
+    CASE_2(60, base) CASE_2(61, base) CASE_2(62, base) CASE_2(63, base) \
+    CASE_2(64, base) CASE_2(65, base) CASE_2(66, base) CASE_2(67, base) \
+    CASE_2(68, base) CASE_2(69, base) CASE_2(70, base) CASE_2(71, base) \
+    CASE_2(72, base) CASE_2(73, base) CASE_2(74, base) CASE_2(75, base) \
+    CASE_2(76, base) CASE_2(77, base) CASE_2(78, base) CASE_2(79, base) \
+    CASE_2(80, base) CASE_2(81, base) CASE_2(82, base) CASE_2(83, base) \
+    CASE_2(84, base) CASE_2(85, base) CASE_2(86, base) CASE_2(87, base) \
+    CASE_2(88, base) CASE_2(89, base) CASE_2(90, base) CASE_2(91, base) \
+    CASE_2(92, base) CASE_2(93, base) CASE_2(94, base) CASE_2(95, base) \
+    CASE_2(96, base) CASE_2(97, base) CASE_2(98, base) CASE_2(99, base) \
+    CASE_2(100, base) CASE_2(101, base) CASE_2(102, base) CASE_2(103, base) \
+    CASE_2(104, base) CASE_2(105, base) CASE_2(106, base) CASE_2(107, base) \
+    CASE_2(108, base) CASE_2(109, base) CASE_2(110, base) CASE_2(111, base) \
+    CASE_2(112, base) CASE_2(113, base) CASE_2(114, base) CASE_2(115, base) \
+    CASE_2(116, base) CASE_2(117, base) CASE_2(118, base) CASE_2(119, base) \
+    CASE_2(120, base) CASE_2(121, base) CASE_2(122, base) CASE_2(123, base) \
+    CASE_2(124, base) CASE_2(125, base) CASE_2(126, base) CASE_2(127, base) \
+    CASE_2(128, base) CASE_2(129, base) CASE_2(130, base) CASE_2(131, base) \
+    CASE_2(132, base) CASE_2(133, base) CASE_2(134, base) CASE_2(135, base) \
+    CASE_2(136, base) CASE_2(137, base) CASE_2(138, base) CASE_2(139, base) \
+    CASE_2(140, base) CASE_2(141, base) CASE_2(142, base) CASE_2(143, base) \
+    CASE_2(144, base) CASE_2(145, base) CASE_2(146, base) CASE_2(147, base) \
+    CASE_2(148, base) CASE_2(149, base) CASE_2(150, base) CASE_2(151, base) \
+    CASE_2(152, base) CASE_2(153, base) CASE_2(154, base) CASE_2(155, base) \
+    CASE_2(156, base) CASE_2(157, base) CASE_2(158, base) CASE_2(159, base) \
+    CASE_2(160, base) CASE_2(161, base) CASE_2(162, base) CASE_2(163, base) \
+    CASE_2(164, base) CASE_2(165, base) CASE_2(166, base) CASE_2(167, base) \
+    CASE_2(168, base) CASE_2(169, base) CASE_2(170, base) CASE_2(171, base) \
+    CASE_2(172, base) CASE_2(173, base) CASE_2(174, base) CASE_2(175, base) \
+    CASE_2(176, base) CASE_2(177, base) CASE_2(178, base) CASE_2(179, base) \
+    CASE_2(180, base) CASE_2(181, base) CASE_2(182, base) CASE_2(183, base) \
+    CASE_2(184, base) CASE_2(185, base) CASE_2(186, base) CASE_2(187, base) \
+    CASE_2(188, base) CASE_2(189, base) CASE_2(190, base) CASE_2(191, base) \
+    CASE_2(192, base) CASE_2(193, base) CASE_2(194, base) CASE_2(195, base) \
+    CASE_2(196, base) CASE_2(197, base) CASE_2(198, base) CASE_2(199, base) \
+    CASE_2(200, base) CASE_2(201, base) CASE_2(202, base) CASE_2(203, base) \
+    CASE_2(204, base) CASE_2(205, base) CASE_2(206, base) CASE_2(207, base) \
+    CASE_2(208, base) CASE_2(209, base) CASE_2(210, base) CASE_2(211, base) \
+    CASE_2(212, base) CASE_2(213, base) CASE_2(214, base) CASE_2(215, base) \
+    CASE_2(216, base) CASE_2(217, base) CASE_2(218, base) CASE_2(219, base) \
+    CASE_2(220, base) CASE_2(221, base) CASE_2(222, base) CASE_2(223, base) \
+    CASE_2(224, base) CASE_2(225, base) CASE_2(226, base) CASE_2(227, base) \
+    CASE_2(228, base) CASE_2(229, base) CASE_2(230, base) CASE_2(231, base) \
+    CASE_2(232, base) CASE_2(233, base) CASE_2(234, base) CASE_2(235, base) \
+    CASE_2(236, base) CASE_2(237, base) CASE_2(238, base) CASE_2(239, base) \
+    CASE_2(240, base) CASE_2(241, base) CASE_2(242, base) CASE_2(243, base) \
+    CASE_2(244, base) CASE_2(245, base) CASE_2(246, base) CASE_2(247, base) \
+    CASE_2(248, base) CASE_2(249, base) CASE_2(250, base) CASE_2(251, base) \
+    CASE_2(252, base) CASE_2(253, base) CASE_2(254, base) CASE_2(255, base)
+
+    ALL_CASES_2(0x30000)
+#undef OPS_2
+#undef CASE_2
+#undef ALL_CASES_2
+  }
+  return acc;
+}
+__attribute__((noinline)) int64_t process_chunk_2(int64_t acc, int val) {
+  switch (val & 0xFF) {
+#define OPS_3(c, base)                                                     \
+  acc += base + c * 28 + 0;  acc ^= base + c * 28 + 1;                     \
+  acc += base + c * 28 + 2;  acc ^= base + c * 28 + 3;                     \
+  acc += base + c * 28 + 4;  acc ^= base + c * 28 + 5;                     \
+  acc += base + c * 28 + 6;  acc ^= base + c * 28 + 7;                     \
+  acc += base + c * 28 + 8;  acc ^= base + c * 28 + 9;                     \
+  acc += base + c * 28 + 10; acc ^= base + c * 28 + 11;                    \
+  acc += base + c * 28 + 12; acc ^= base + c * 28 + 13;                    \
+  acc += base + c * 28 + 14; acc ^= base + c * 28 + 15;                    \
+  acc += base + c * 28 + 16; acc ^= base + c * 28 + 17;                    \
+  acc += base + c * 28 + 18; acc ^= base + c * 28 + 19;                    \
+  acc += base + c * 28 + 20; acc ^= base + c * 28 + 21;                    \
+  acc += base + c * 28 + 22; acc ^= base + c * 28 + 23;                    \
+  acc += base + c * 28 + 24; acc ^= base + c * 28 + 25;                    \
+  acc += base + c * 28 + 26; acc ^= base + c * 28 + 27;
+#define CASE_3(c, base) case c: OPS_3(c, base); break;
+#define ALL_CASES_3(base) \
+    CASE_3(0, base) CASE_3(1, base) CASE_3(2, base) CASE_3(3, base) \
+    CASE_3(4, base) CASE_3(5, base) CASE_3(6, base) CASE_3(7, base) \
+    CASE_3(8, base) CASE_3(9, base) CASE_3(10, base) CASE_3(11, base) \
+    CASE_3(12, base) CASE_3(13, base) CASE_3(14, base) CASE_3(15, base) \
+    CASE_3(16, base) CASE_3(17, base) CASE_3(18, base) CASE_3(19, base) \
+    CASE_3(20, base) CASE_3(21, base) CASE_3(22, base) CASE_3(23, base) \
+    CASE_3(24, base) CASE_3(25, base) CASE_3(26, base) CASE_3(27, base) \
+    CASE_3(28, base) CASE_3(29, base) CASE_3(30, base) CASE_3(31, base) \
+    CASE_3(32, base) CASE_3(33, base) CASE_3(34, base) CASE_3(35, base) \
+    CASE_3(36, base) CASE_3(37, base) CASE_3(38, base) CASE_3(39, base) \
+    CASE_3(40, base) CASE_3(41, base) CASE_3(42, base) CASE_3(43, base) \
+    CASE_3(44, base) CASE_3(45, base) CASE_3(46, base) CASE_3(47, base) \
+    CASE_3(48, base) CASE_3(49, base) CASE_3(50, base) CASE_3(51, base) \
+    CASE_3(52, base) CASE_3(53, base) CASE_3(54, base) CASE_3(55, base) \
+    CASE_3(56, base) CASE_3(57, base) CASE_3(58, base) CASE_3(59, base) \
+    CASE_3(60, base) CASE_3(61, base) CASE_3(62, base) CASE_3(63, base) \
+    CASE_3(64, base) CASE_3(65, base) CASE_3(66, base) CASE_3(67, base) \
+    CASE_3(68, base) CASE_3(69, base) CASE_3(70, base) CASE_3(71, base) \
+    CASE_3(72, base) CASE_3(73, base) CASE_3(74, base) CASE_3(75, base) \
+    CASE_3(76, base) CASE_3(77, base) CASE_3(78, base) CASE_3(79, base) \
+    CASE_3(80, base) CASE_3(81, base) CASE_3(82, base) CASE_3(83, base) \
+    CASE_3(84, base) CASE_3(85, base) CASE_3(86, base) CASE_3(87, base) \
+    CASE_3(88, base) CASE_3(89, base) CASE_3(90, base) CASE_3(91, base) \
+    CASE_3(92, base) CASE_3(93, base) CASE_3(94, base) CASE_3(95, base) \
+    CASE_3(96, base) CASE_3(97, base) CASE_3(98, base) CASE_3(99, base) \
+    CASE_3(100, base) CASE_3(101, base) CASE_3(102, base) CASE_3(103, base) \
+    CASE_3(104, base) CASE_3(105, base) CASE_3(106, base) CASE_3(107, base) \
+    CASE_3(108, base) CASE_3(109, base) CASE_3(110, base) CASE_3(111, base) \
+    CASE_3(112, base) CASE_3(113, base) CASE_3(114, base) CASE_3(115, base) \
+    CASE_3(116, base) CASE_3(117, base) CASE_3(118, base) CASE_3(119, base) \
+    CASE_3(120, base) CASE_3(121, base) CASE_3(122, base) CASE_3(123, base) \
+    CASE_3(124, base) CASE_3(125, base) CASE_3(126, base) CASE_3(127, base) \
+    CASE_3(128, base) CASE_3(129, base) CASE_3(130, base) CASE_3(131, base) \
+    CASE_3(132, base) CASE_3(133, base) CASE_3(134, base) CASE_3(135, base) \
+    CASE_3(136, base) CASE_3(137, base) CASE_3(138, base) CASE_3(139, base) \
+    CASE_3(140, base) CASE_3(141, base) CASE_3(142, base) CASE_3(143, base) \
+    CASE_3(144, base) CASE_3(145, base) CASE_3(146, base) CASE_3(147, base) \
+    CASE_3(148, base) CASE_3(149, base) CASE_3(150, base) CASE_3(151, base) \
+    CASE_3(152, base) CASE_3(153, base) CASE_3(154, base) CASE_3(155, base) \
+    CASE_3(156, base) CASE_3(157, base) CASE_3(158, base) CASE_3(159, base) \
+    CASE_3(160, base) CASE_3(161, base) CASE_3(162, base) CASE_3(163, base) \
+    CASE_3(164, base) CASE_3(165, base) CASE_3(166, base) CASE_3(167, base) \
+    CASE_3(168, base) CASE_3(169, base) CASE_3(170, base) CASE_3(171, base) \
+    CASE_3(172, base) CASE_3(173, base) CASE_3(174, base) CASE_3(175, base) \
+    CASE_3(176, base) CASE_3(177, base) CASE_3(178, base) CASE_3(179, base) \
+    CASE_3(180, base) CASE_3(181, base) CASE_3(182, base) CASE_3(183, base) \
+    CASE_3(184, base) CASE_3(185, base) CASE_3(186, base) CASE_3(187, base) \
+    CASE_3(188, base) CASE_3(189, base) CASE_3(190, base) CASE_3(191, base) \
+    CASE_3(192, base) CASE_3(193, base) CASE_3(194, base) CASE_3(195, base) \
+    CASE_3(196, base) CASE_3(197, base) CASE_3(198, base) CASE_3(199, base) \
+    CASE_3(200, base) CASE_3(201, base) CASE_3(202, base) CASE_3(203, base) \
+    CASE_3(204, base) CASE_3(205, base) CASE_3(206, base) CASE_3(207, base) \
+    CASE_3(208, base) CASE_3(209, base) CASE_3(210, base) CASE_3(211, base) \
+    CASE_3(212, base) CASE_3(213, base) CASE_3(214, base) CASE_3(215, base) \
+    CASE_3(216, base) CASE_3(217, base) CASE_3(218, base) CASE_3(219, base) \
+    CASE_3(220, base) CASE_3(221, base) CASE_3(222, base) CASE_3(223, base) \
+    CASE_3(224, base) CASE_3(225, base) CASE_3(226, base) CASE_3(227, base) \
+    CASE_3(228, base) CASE_3(229, base) CASE_3(230, base) CASE_3(231, base) \
+    CASE_3(232, base) CASE_3(233, base) CASE_3(234, base) CASE_3(235, base) \
+    CASE_3(236, base) CASE_3(237, base) CASE_3(238, base) CASE_3(239, base) \
+    CASE_3(240, base) CASE_3(241, base) CASE_3(242, base) CASE_3(243, base) \
+    CASE_3(244, base) CASE_3(245, base) CASE_3(246, base) CASE_3(247, base) \
+    CASE_3(248, base) CASE_3(249, base) CASE_3(250, base) CASE_3(251, base) \
+    CASE_3(252, base) CASE_3(253, base) CASE_3(254, base) CASE_3(255, base)
+
+    ALL_CASES_3(0x50000)
+#undef OPS_3
+#undef CASE_3
+#undef ALL_CASES_3
+  }
+  return acc;
+}
+} // anonymous namespace
+
+BENCHMARK(ObjectCompactProtocol_read_LargeSetInt_ipc_v1, iters) {
+    folly::BenchmarkSuspender susp;
+    struct Node {
+        Node* next;
+        int payload;
+    };
+    constexpr size_t kNumNodes = 1 << 18; // 256K
+    static std::vector<Node> nodes;
+    if (nodes.empty()) {
+      nodes.resize(kNumNodes);
+      for (size_t i = 0; i < kNumNodes; ++i) {
+        nodes[i].next = &nodes[(i + 1) % kNumNodes];
+        nodes[i].payload = folly::Random::rand32();
+      }
+    }
+
+    Node* p = &nodes[0];
+    int64_t acc = 0;
+    susp.dismiss();
+
+    for (size_t j = 0; j < iters; ++j) {
+        switch (j % 3) {
+            case 0:
+                acc = process_chunk_0(acc, p->payload);
+                break;
+            case 1:
+                acc = process_chunk_1(acc, p->payload);
+                break;
+            case 2:
+                acc = process_chunk_2(acc, p->payload);
+                break;
+        }
+        p = p->next;
+    }
+
+    folly::doNotOptimizeAway(acc);
+    folly::doNotOptimizeAway(p);
+}
+
+
+int main(int argc, char** argv) {
+  folly::Init init(&argc, &argv);
+  folly::runBenchmarks();
+  return 0;
+}
+// clang-format on

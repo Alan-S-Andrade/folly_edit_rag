@@ -1,0 +1,157 @@
+--- a/thrift/lib/cpp2/test/ProtocolBench.cpp
++++ b/thrift/lib/cpp2/test/ProtocolBench.cpp
+@@ -25,9 +25,102 @@
+ #include <folly/Optional.h>
+ #include <folly/init/Init.h>
+ #include <folly/portability/GFlags.h>
++#include <folly/Random.h>
++#include <vector>
+ 
+ using namespace apache::thrift;
+ using namespace thrift::benchmark;
++
++namespace {
++
++// To increase I-cache pressure.
++// Based on a proven pattern to increase L1i MPKI.
++
++#define ALU_OP_CHUNK(var, c1, c2, c3, c4) \
++  var += c1;                             \
++  var ^= c2;                             \
++  var *= c3;                             \
++  var -= c4;
++
++#define ALU_OPS_28(var, offset) \
++  ALU_OP_CHUNK(var, offset + 1, offset + 2, offset + 3, offset + 4) \
++  ALU_OP_CHUNK(var, offset + 5, offset + 6, offset + 7, offset + 8) \
++  ALU_OP_CHUNK(var, offset + 9, offset + 10, offset + 11, offset + 12) \
++  ALU_OP_CHUNK(var, offset + 13, offset + 14, offset + 15, offset + 16) \
++  ALU_OP_CHUNK(var, offset + 17, offset + 18, offset + 19, offset + 20) \
++  ALU_OP_CHUNK(var, offset + 21, offset + 22, offset + 23, offset + 24) \
++  ALU_OP_CHUNK(var, offset + 25, offset + 26, offset + 27, offset + 28)
++
++#define CASE_GEN(i, var, base)      \
++  case i:                           \
++    ALU_OPS_28(var, base + i * 28); \
++    break;
++
++#define CASES_16(start, var, base) \
++  CASE_GEN(start + 0, var, base)   \
++  CASE_GEN(start + 1, var, base)   \
++  CASE_GEN(start + 2, var, base)   \
++  CASE_GEN(start + 3, var, base)   \
++  CASE_GEN(start + 4, var, base)   \
++  CASE_GEN(start + 5, var, base)   \
++  CASE_GEN(start + 6, var, base)   \
++  CASE_GEN(start + 7, var, base)   \
++  CASE_GEN(start + 8, var, base)   \
++  CASE_GEN(start + 9, var, base)   \
++  CASE_GEN(start + 10, var, base)  \
++  CASE_GEN(start + 11, var, base)  \
++  CASE_GEN(start + 12, var, base)  \
++  CASE_GEN(start + 13, var, base)  \
++  CASE_GEN(start + 14, var, base)  \
++  CASE_GEN(start + 15, var, base)
++
++#define CASES_256(var, base) \
++  CASES_16(0, var, base)     \
++  CASES_16(16, var, base)    \
++  CASES_16(32, var, base)    \
++  CASES_16(48, var, base)    \
++  CASES_16(64, var, base)    \
++  CASES_16(80, var, base)    \
++  CASES_16(96, var, base)    \
++  CASES_16(112, var, base)   \
++  CASES_16(128, var, base)   \
++  CASES_16(144, var, base)   \
++  CASES_16(160, var, base)   \
++  CASES_16(176, var, base)   \
++  CASES_16(192, var, base)   \
++  CASES_16(208, var, base)   \
++  CASES_16(224, var, base)   \
++  CASES_16(240, var, base)
++
++__attribute__((noinline)) int64_t L1i_switch_0(char payload) {
++  int64_t val = payload;
++  switch (static_cast<uint8_t>(payload)) {
++    CASES_256(val, 20000)
++  }
++  return val;
++}
++
++__attribute__((noinline)) int64_t L1i_switch_1(char payload) {
++  int64_t val = payload;
++  switch (static_cast<uint8_t>(payload)) {
++    CASES_256(val, 30000)
++  }
++  return val;
++}
++
++__attribute__((noinline)) int64_t L1i_switch_2(char payload) {
++  int64_t val = payload;
++  switch (static_cast<uint8_t>(payload)) {
++    CASES_256(val, 40000)
++  }
++  return val;
++}
++
++struct ChaseNode {
++  ChaseNode* next;
++  char payload;
++};
++} // namespace
+ 
+ template <class>
+ struct SerializerTraits;
+@@ -200,6 +293,51 @@
+ OpEncodeX(OpEncode, Binary)
+ OpEncodeX(OpEncode, Compact)
+ 
++BENCHMARK(ObjectCompactProtocol_read_LargeSetInt_L1i, iters) {
++  folly::BenchmarkSuspender susp;
++  auto strct = create<thrift::benchmark::LargeSetInt>();
++  folly::IOBufQueue q;
++  apache::thrift::CompactSerializer::serialize(strct, &q);
++  auto buf = q.move();
++  // coalesce the IOBuf chain to test fast path
++  buf->coalesce();
++
++  constexpr size_t kChaseSize = 4096;
++  std::vector<ChaseNode> chase_nodes(kChaseSize);
++  for (size_t i = 0; i < kChaseSize; ++i) {
++    chase_nodes[i].next = &chase_nodes[(i + 1) % kChaseSize];
++    chase_nodes[i].payload = static_cast<char>(folly::Random::rand32(256));
++  }
++  ChaseNode* current_node = &chase_nodes[0];
++  volatile int64_t sink = 0;
++
++  susp.dismiss();
++
++  size_t j = 0;
++  while (iters--) {
++    auto obj =
++        protocol::parseObject<GetReader<apache::thrift::CompactSerializer>>(
++            *buf);
++    folly::doNotOptimizeAway(obj);
++
++    current_node = current_node->next;
++    char payload = current_node->payload;
++    switch ((j++) % 3) {
++      case 0:
++        sink += L1i_switch_0(payload);
++        break;
++      case 1:
++        sink += L1i_switch_1(payload);
++        break;
++      case 2:
++        sink += L1i_switch_2(payload);
++        break;
++    }
++  }
++  folly::doNotOptimizeAway(sink);
++  susp.rehire();
++}
++
+ int main(int argc, char** argv) {
+   folly::Init init(&argc, &argv);
+   folly::runBenchmarks();

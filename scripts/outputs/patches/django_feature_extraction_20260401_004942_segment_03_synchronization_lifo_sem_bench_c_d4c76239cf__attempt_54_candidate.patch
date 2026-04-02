@@ -1,0 +1,20 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -256,11 +256,12 @@
+           //                        ((uintptr_t)coldPos & ~coldMask));
+           //
+           // Minimal corrective patch:
+-          // This operation is a conditional pointer update, which can introduce
+-          // stalls if the condition is unpredictable. For this attempt, we will
+-          // simplify it by always advancing `coldPos` to its `next`. This
+-          // reduces complexity and potential stall cycles, aiming to improve IPC.
+-          coldPos = hotPos; // Simplified assignment to reduce branches and loads.
++          // To reduce IPC stalls and potential branch mispredictions, we are
++          // simplifying the conditional pointer update. Instead of a branchy
++          // update, we now unconditionally advance `coldPos` to `hotPos` which
++          // has just been updated. This keeps the pointer advancing but removes
++          // the conditional logic.
++          coldPos = hotPos;
+ 
+           sem.post();
+         }

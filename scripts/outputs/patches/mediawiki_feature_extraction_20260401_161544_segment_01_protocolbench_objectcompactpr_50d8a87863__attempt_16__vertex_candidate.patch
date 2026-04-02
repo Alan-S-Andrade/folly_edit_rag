@@ -1,0 +1,158 @@
+--- a/thrift/lib/cpp2/test/ProtocolBench.cpp
++++ b/thrift/lib/cpp2/test/ProtocolBench.cpp
+@@ -200,6 +200,155 @@
+ OpEncodeX(OpEncode, Binary)
+ OpEncodeX(OpEncode, Compact)
+ 
++namespace {
++
++#define ALU_OPS_28(v, i, offset) \
++    v = (v * 3) ^ (i * 17 + offset + 0); \
++    v = (v * 5) + (i * 19 + offset + 1); \
++    v = (v * 7) ^ (i * 23 + offset + 2); \
++    v = (v * 11) + (i * 29 + offset + 3); \
++    v = (v * 13) ^ (i * 31 + offset + 4); \
++    v = (v * 3) + (i * 37 + offset + 5); \
++    v = (v * 5) ^ (i * 41 + offset + 6); \
++    v = (v * 7) + (i * 43 + offset + 7); \
++    v = (v * 11) ^ (i * 47 + offset + 8); \
++    v = (v * 13) + (i * 53 + offset + 9); \
++    v = (v * 3) ^ (i * 59 + offset + 10); \
++    v = (v * 5) + (i * 61 + offset + 11); \
++    v = (v * 7) ^ (i * 67 + offset + 12); \
++    v = (v * 11) + (i * 71 + offset + 13); \
++    v = (v * 13) ^ (i * 73 + offset + 14); \
++    v = (v * 3) + (i * 79 + offset + 15); \
++    v = (v * 5) ^ (i * 83 + offset + 16); \
++    v = (v * 7) + (i * 89 + offset + 17); \
++    v = (v * 11) ^ (i * 97 + offset + 18); \
++    v = (v * 13) + (i * 101 + offset + 19); \
++    v = (v * 3) ^ (i * 103 + offset + 20); \
++    v = (v * 5) + (i * 107 + offset + 21); \
++    v = (v * 7) ^ (i * 109 + offset + 22); \
++    v = (v * 11) + (i * 113 + offset + 23); \
++    v = (v * 13) ^ (i * 127 + offset + 24); \
++    v = (v * 3) + (i * 131 + offset + 25); \
++    v = (v * 5) ^ (i * 137 + offset + 26); \
++    v = (v * 7) + (i * 139 + offset + 27);
++
++#define CASE_BLOCK(i, offset) \
++    case i: \
++        ALU_OPS_28(val, i, offset); \
++        break;
++
++#define U(p,n) p##n
++#define G_INNER(n, offset) \
++  CASE_BLOCK(U(0x, n##0), offset) \
++  CASE_BLOCK(U(0x, n##1), offset) \
++  CASE_BLOCK(U(0x, n##2), offset) \
++  CASE_BLOCK(U(0x, n##3), offset) \
++  CASE_BLOCK(U(0x, n##4), offset) \
++  CASE_BLOCK(U(0x, n##5), offset) \
++  CASE_BLOCK(U(0x, n##6), offset) \
++  CASE_BLOCK(U(0x, n##7), offset) \
++  CASE_BLOCK(U(0x, n##8), offset) \
++  CASE_BLOCK(U(0x, n##9), offset) \
++  CASE_BLOCK(U(0x, n##a), offset) \
++  CASE_BLOCK(U(0x, n##b), offset) \
++  CASE_BLOCK(U(0x, n##c), offset) \
++  CASE_BLOCK(U(0x, n##d), offset) \
++  CASE_BLOCK(U(0x, n##e), offset) \
++  CASE_BLOCK(U(0x, n##f), offset)
++
++#define G(offset) \
++    G_INNER(0, offset) G_INNER(1, offset) G_INNER(2, offset) G_INNER(3, offset) \
++    G_INNER(4, offset) G_INNER(5, offset) G_INNER(6, offset) G_INNER(7, offset) \
++    G_INNER(8, offset) G_INNER(9, offset) G_INNER(a, offset) G_INNER(b, offset) \
++    G_INNER(c, offset) G_INNER(d, offset) G_INNER(e, offset) G_INNER(f, offset)
++
++__attribute__((noinline))
++int L1i_switch_func_0(int x, int y) {
++    int val = y;
++    switch (x & 0xFF) {
++    G(0)
++    default:
++        break;
++    }
++    return val;
++}
++
++__attribute__((noinline))
++int L1i_switch_func_1(int x, int y) {
++    int val = y;
++    switch (x & 0xFF) {
++    G(256 * 28)
++    default:
++        break;
++    }
++    return val;
++}
++
++__attribute__((noinline))
++int L1i_switch_func_2(int x, int y) {
++    int val = y;
++    switch (x & 0xFF) {
++    G(256 * 28 * 2)
++    default:
++        break;
++    }
++    return val;
++}
++
++#undef G
++#undef G_INNER
++#undef U
++#undef CASE_BLOCK
++#undef ALU_OPS_28
++
++} // namespace
++
++BENCHMARK(ObjectCompactProtocol_read_LargeSetInt_L1i_v1, iters) {
++    folly::BenchmarkSuspender susp;
++
++    struct Node {
++        int payload;
++        int next_idx;
++    };
++    constexpr size_t array_size = 1024 * 16;
++    std::vector<Node> node_array(array_size);
++
++    std::vector<int> indices(array_size);
++    for (size_t i = 0; i < array_size; ++i) {
++        indices[i] = i;
++    }
++    // simple shuffle
++    for (size_t i = 0; i < array_size - 1; ++i) {
++        size_t j = i + folly::Random::rand32() % (array_size - i);
++        std::swap(indices[i], indices[j]);
++    }
++
++    for (size_t i = 0; i < array_size; ++i) {
++        node_array[indices[i]].next_idx = indices[(i + 1) % array_size];
++        node_array[indices[i]].payload = folly::Random::rand32();
++    }
++    
++    int current_idx = 0;
++    int dep = 0;
++    
++    susp.dismiss();
++
++    for (size_t i = 0; i < iters; ++i) {
++        const auto& node = node_array[current_idx];
++        int val = node.payload;
++        
++        switch (i % 3) {
++            case 0: dep = L1i_switch_func_0(val, dep); break;
++            case 1: dep = L1i_switch_func_1(val, dep); break;
++            case 2: dep = L1i_switch_func_2(val, dep); break;
++        }
++        current_idx = node.next_idx;
++    }
++    
++    folly::doNotOptimizeAway(dep);
++    susp.rehire();
++}
++
+ int main(int argc, char** argv) {
+   folly::Init init(&argc, &argv);
+   folly::runBenchmarks();

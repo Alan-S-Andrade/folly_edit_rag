@@ -1,0 +1,173 @@
+--- a/thrift/lib/cpp2/test/ProtocolBench.cpp
++++ b/thrift/lib/cpp2/test/ProtocolBench.cpp
+@@ -3,7 +3,8 @@
+  *
+  * Licensed under the Apache License, Version 2.0 (the "License");
+  * you may not use this file except in compliance with the License.
+- * You may obtain a copy of the License at
++ * You may
++ * obtain a copy of the License at
+  *
+  *     http://www.apache.org/licenses/LICENSE-2.0
+  *
+@@ -25,6 +26,9 @@
+ #include <folly/Optional.h>
+ #include <folly/init/Init.h>
+ #include <folly/portability/GFlags.h>
++
++#include <numeric>
++#include <random>
+ 
+ using namespace apache::thrift;
+ using namespace thrift::benchmark;
+@@ -186,6 +190,150 @@
+   M(Prefix, proto, ComplexStruct)      \
+   M(Prefix, proto, ComplexUnion)
+ 
++namespace {
++
++struct ChaseNode {
++  ChaseNode* next;
++  uint64_t payload;
++};
++
++#define ALU_OPS_28(v, i, c1, c2, c3, c4)      \
++  v += c1 * (i + 1);                          \
++  v ^= c2 * (i + 1);                          \
++  v *= ((c3 * (i + 1)) | 1);                  \
++  v += c4 * (i + 1);                          \
++  v += (c1 + 1) * (i + 1);                    \
++  v ^= (c2 + 1) * (i + 1);                    \
++  v *= (((c3 + 1) * (i + 1)) | 1);            \
++  v += (c4 + 1) * (i + 1);                    \
++  v += (c1 + 2) * (i + 1);                    \
++  v ^= (c2 + 2) * (i + 1);                    \
++  v *= (((c3 + 2) * (i + 1)) | 1);            \
++  v += (c4 + 2) * (i + 1);                    \
++  v += (c1 + 3) * (i + 1);                    \
++  v ^= (c2 + 3) * (i + 1);                    \
++  v *= (((c3 + 3) * (i + 1)) | 1);            \
++  v += (c4 + 3) * (i + 1);                    \
++  v += (c1 + 4) * (i + 1);                    \
++  v ^= (c2 + 4) * (i + 1);                    \
++  v *= (((c3 + 4) * (i + 1)) | 1);            \
++  v += (c4 + 4) * (i + 1);                    \
++  v += (c1 + 5) * (i + 1);                    \
++  v ^= (c2 + 5) * (i + 1);                    \
++  v *= (((c3 + 5) * (i + 1)) | 1);            \
++  v += (c4 + 5) * (i + 1);                    \
++  v += (c1 + 6) * (i + 1);                    \
++  v ^= (c2 + 6) * (i + 1);                    \
++  v *= (((c3 + 6) * (i + 1)) | 1);            \
++  v += (c4 + 6) * (i + 1);
++
++#define GenCase(i, v, c1, c2, c3, c4) \
++  case i:                             \
++    ALU_OPS_28(v, i, c1, c2, c3, c4)  \
++    break;
++
++#define GenCases16(base, v, c1, c2, c3, c4) \
++  GenCase(base + 0, v, c1, c2, c3, c4)     \
++  GenCase(base + 1, v, c1, c2, c3, c4)     \
++  GenCase(base + 2, v, c1, c2, c3, c4)     \
++  GenCase(base + 3, v, c1, c2, c3, c4)     \
++  GenCase(base + 4, v, c1, c2, c3, c4)     \
++  GenCase(base + 5, v, c1, c2, c3, c4)     \
++  GenCase(base + 6, v, c1, c2, c3, c4)     \
++  GenCase(base + 7, v, c1, c2, c3, c4)     \
++  GenCase(base + 8, v, c1, c2, c3, c4)     \
++  GenCase(base + 9, v, c1, c2, c3, c4)     \
++  GenCase(base + 10, v, c1, c2, c3, c4)    \
++  GenCase(base + 11, v, c1, c2, c3, c4)    \
++  GenCase(base + 12, v, c1, c2, c3, c4)    \
++  GenCase(base + 13, v, c1, c2, c3, c4)    \
++  GenCase(base + 14, v, c1, c2, c3, c4)    \
++  GenCase(base + 15, v, c1, c2, c3, c4)
++
++#define GenCases256(v, c1, c2, c3, c4)  \
++  GenCases16(0, v, c1, c2, c3, c4)      \
++  GenCases16(16, v, c1, c2, c3, c4)     \
++  GenCases16(32, v, c1, c2, c3, c4)     \
++  GenCases16(48, v, c1, c2, c3, c4)     \
++  GenCases16(64, v, c1, c2, c3, c4)     \
++  GenCases16(80, v, c1, c2, c3, c4)     \
++  GenCases16(96, v, c1, c2, c3, c4)     \
++  GenCases16(112, v, c1, c2, c3, c4)    \
++  GenCases16(128, v, c1, c2, c3, c4)    \
++  GenCases16(144, v, c1, c2, c3, c4)    \
++  GenCases16(160, v, c1, c2, c3, c4)    \
++  GenCases16(176, v, c1, c2, c3, c4)    \
++  GenCases16(192, v, c1, c2, c3, c4)    \
++  GenCases16(208, v, c1, c2, c3, c4)    \
++  GenCases16(224, v, c1, c2, c3, c4)    \
++  GenCases16(240, v, c1, c2, c3, c4)
++
++__attribute__((noinline)) uint64_t
++icache_func0(uint64_t val, uint8_t switch_val) {
++  switch (switch_val) {
++    GenCases256(val, 0x10, 0x20, 0x30, 0x40)
++  }
++  return val;
++}
++
++__attribute__((noinline)) uint64_t
++icache_func1(uint64_t val, uint8_t switch_val) {
++  switch (switch_val) {
++    GenCases256(val, 0x50, 0x60, 0x70, 0x80)
++  }
++  return val;
++}
++
++__attribute__((noinline)) uint64_t
++icache_func2(uint64_t val, uint8_t switch_val) {
++  switch (switch_val) {
++    GenCases256(val, 0x90, 0xA0, 0xB0, 0xC0)
++  }
++  return val;
++}
++} // namespace
++
++BENCHMARK(ObjectCompactProtocol_read_LargeSetInt_icache_v7, iters) {
++  folly::BenchmarkSuspender susp;
++
++  constexpr size_t kNumNodes = 65536;
++  std::vector<ChaseNode> nodes(kNumNodes);
++  std::vector<int> indices(kNumNodes);
++  std::iota(indices.begin(), indices.end(), 0);
++
++  std::mt19937 g(12345);
++  std::shuffle(indices.begin(), indices.end(), g);
++
++  for (size_t i = 0; i < kNumNodes; ++i) {
++    nodes[indices[i]].next = &nodes[indices[(i + 1) % kNumNodes]];
++    nodes[indices[i]].payload = g();
++  }
++
++  ChaseNode* current = &nodes[0];
++  volatile uint64_t accum = 0;
++
++  susp.dismiss();
++
++  for (size_t j = 0; j < iters; ++j) {
++    uint8_t switch_idx = current->payload & 0xFF;
++    switch (j % 3) {
++      case 0:
++        accum = icache_func0(accum, switch_idx);
++        break;
++      case 1:
++        accum = icache_func1(accum, switch_idx);
++        break;
++      case 2:
++        accum = icache_func2(accum, switch_idx);
++        break;
++    }
++    current = current->next;
++  }
++
++  folly::doNotOptimizeAway(accum);
++}
++
++
+ #define X(Prefix, proto) APPLY(X2, Prefix, proto)              
+ 
+ #define OpEncodeX(Prefix, proto) APPLY(OpEncodeX2, Prefix, proto)              

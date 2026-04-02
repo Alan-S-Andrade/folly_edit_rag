@@ -29,8 +29,14 @@ def retrieve_context(query_text: str, top_k: int = TOP_K, rerank: bool = True) -
         )
         return []
 
-    import vertexai
-    from vertexai.preview import rag
+    try:
+        import vertexai
+        from vertexai.preview import rag
+    except ImportError:
+        print(
+            'vertexai SDK not installed: proceeding with empty retrieved context.',
+        )
+        return []
 
     vertexai.init(project=PROJECT_ID, location=LOCATION)
     corpus_name = load_corpus_name()

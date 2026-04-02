@@ -1,0 +1,36 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -249,13 +249,13 @@
+             auto idx = i * kInnerIters + j;
+             switch (idx % 3) {
+               case 0:
+-                acc = switchA(acc, payload & 0xFF);
++                acc = switchA(acc, (payload ^ acc) & 0xFF);
+                 break;
+               case 1:
+-                acc = switchB(acc, payload & 0xFF);
++                acc = switchB(acc, (payload ^ acc) & 0xFF);
+                 break;
+               case 2:
+-                acc = switchC(acc, payload & 0xFF);
++                acc = switchC(acc, (payload ^ acc) & 0xFF);
+                 break;
+             }
+             auto coldMask = -uint64_t((idx % 8) == 0);
+@@ -283,13 +283,13 @@
+             auto idx = i * kInnerIters + j;
+             switch (idx % 3) {
+               case 0:
+-                acc = switchA(acc, payload & 0xFF);
++                acc = switchA(acc, (payload ^ acc) & 0xFF);
+                 break;
+               case 1:
+-                acc = switchB(acc, payload & 0xFF);
++                acc = switchB(acc, (payload ^ acc) & 0xFF);
+                 break;
+               case 2:
+-                acc = switchC(acc, payload & 0xFF);
++                acc = switchC(acc, (payload ^ acc) & 0xFF);
+                 break;
+             }
+             auto coldMask = -uint64_t((idx % 8) == 0);

@@ -1,0 +1,120 @@
+--- a/thrift/lib/cpp2/test/ProtocolBench.cpp
++++ b/thrift/lib/cpp2/test/ProtocolBench.cpp
+@@ -25,9 +25,65 @@
+ #include <folly/Optional.h>
+ #include <folly/init/Init.h>
+ #include <folly/portability/GFlags.h>
++#include <folly/hash/Hash.h>
+ 
+ using namespace apache::thrift;
+ using namespace thrift::benchmark;
++
++namespace {
++struct PtrChaseNode {
++  PtrChaseNode* next;
++  uint64_t payload;
++};
++
++template <int N>
++__attribute__((noinline)) void func_impl(uintptr_t& val, uint64_t p) {
++  switch (p & 0xff) {
++#define R(X)                                           \
++  case X:                                              \
++    _Pragma("GCC unroll 18") for (int i = 0; i < 18; ++i) { \
++      val = (val ^ p) + i + N;                         \
++      asm volatile("" : "+r"(val));                    \
++    }                                                  \
++    break;
++#define R16(X) \
++  R(X)         \
++  R(X + 1)     \
++  R(X + 2)     \
++  R(X + 3)     \
++  R(X + 4)     \
++  R(X + 5)     \
++  R(X + 6)     \
++  R(X + 7)     \
++  R(X + 8)     \
++  R(X + 9)     \
++  R(X + 10)    \
++  R(X + 11)    \
++  R(X + 12)    \
++  R(X + 13)    \
++  R(X + 14)    \
++  R(X + 15)
++    R16(0)
++    R16(16)
++    R16(32)
++    R16(48)
++    R16(64)
++    R16(80)
++    R16(96)
++    R16(112)
++    R16(128)
++    R16(144)
++    R16(160)
++    R16(176)
++    R16(192)
++    R16(208)
++    R16(224)
++    R16(240)
++#undef R16
++#undef R
++  }
++}
++} // namespace
+ 
+ template <class>
+ struct SerializerTraits;
+@@ -197,6 +253,52 @@
+ X(, Frozen)
+ X(Object, Binary)
+ X(Object, Compact)
++
++BENCHMARK(SimpleJSONProtocol_read_UnorderedSetInt_v2, iters) {
++  folly::BenchmarkSuspender susp;
++  auto strct = create<thrift::benchmark::UnorderedSetInt>();
++  folly::IOBufQueue q;
++  apache::thrift::SimpleJSONSerializer::serialize(strct, &q);
++  auto buf = q.move();
++  buf->coalesce();
++
++  constexpr size_t kChaseArraySize = 1024;
++  std::vector<PtrChaseNode> chase_array(kChaseArraySize);
++  for (size_t i = 0; i < kChaseArraySize; ++i) {
++    chase_array[i].next = &chase_array[(i + 1) % kChaseArraySize];
++    chase_array[i].payload = folly::hash::twang_mix64(i);
++  }
++  PtrChaseNode* chase_ptr = &chase_array[0];
++  uintptr_t dependent_val = 0;
++  size_t j = 0;
++
++  susp.dismiss();
++
++  while (iters--) {
++    thrift::benchmark::UnorderedSetInt data;
++    apache::thrift::SimpleJSONSerializer::deserialize(buf.get(), data);
++    folly::doNotOptimizeAway(data);
++
++    uint64_t p = chase_ptr->payload;
++    switch (j++ % 3) {
++      case 0:
++        func_impl<0>(dependent_val, p);
++        break;
++      case 1:
++        func_impl<1>(dependent_val, p);
++        break;
++      case 2:
++        func_impl<2>(dependent_val, p);
++        break;
++    }
++    chase_ptr = chase_ptr->next;
++  }
++  folly::doNotOptimizeAway(dependent_val);
++  folly::doNotOptimizeAway(chase_ptr);
++
++  susp.rehire();
++}
++
+ OpEncodeX(OpEncode, Binary)
+ OpEncodeX(OpEncode, Compact)

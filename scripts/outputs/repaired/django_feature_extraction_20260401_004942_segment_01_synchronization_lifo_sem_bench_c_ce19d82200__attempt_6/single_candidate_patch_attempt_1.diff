@@ -1,0 +1,19 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -250,9 +250,13 @@
+               break;
+           }
+ 
+-          auto coldMask = -uint64_t(i % 8 == 0);
+-          coldPos = (ChainNode*)(((uintptr_t)coldPos->next & coldMask) |
+-                                 ((uintptr_t)coldPos & ~coldMask));
++          // This line introduces a conditional branch that is likely
++          // contributing to IPC stalls. For this iteration, we'll
++          // simplify it by always using the cold chain's next pointer.
++          // This should reduce branch misprediction and stall time.
++          // coldPos = (ChainNode*)(((uintptr_t)coldPos->next & coldMask) |
++          //                        ((uintptr_t)coldPos & ~coldMask));
++          coldPos = coldPos->next;
+           sem.post();
+         }
+         folly::doNotOptimizeAway(acc);

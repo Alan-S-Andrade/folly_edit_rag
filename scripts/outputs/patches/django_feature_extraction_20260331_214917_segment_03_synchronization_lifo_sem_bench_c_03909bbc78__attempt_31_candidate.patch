@@ -1,0 +1,12 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -237,7 +237,8 @@
+         }
+         for (uint32_t i = t; i < n; i += posters) {
+           hotPos = hotPos->next;
+-          coldPos = coldPos->next; // Always advance coldPos to ensure regular cache misses
++          ChainNode* nextColdNode = coldPos->next; // Explicitly load next node to tune latency
++          coldPos = nextColdNode; // Then update coldPos
+           uint64_t payload = (uint64_t)(uintptr_t)coldPos; // Derive payload from the cold, cache-missing pointer chase
+           switch (i % 3) {
+             case 0:

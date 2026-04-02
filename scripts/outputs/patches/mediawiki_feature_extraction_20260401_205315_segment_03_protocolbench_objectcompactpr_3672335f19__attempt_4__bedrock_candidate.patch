@@ -1,0 +1,53 @@
+--- a/thrift/lib/cpp2/test/ProtocolBench.cpp
++++ b/thrift/lib/cpp2/test/ProtocolBench.cpp
+@@ -120,6 +120,36 @@
+     } else {
+       Struct data;
+       Serializer::deserialize(buf.get(), data);
++      folly::doNotOptimizeAway(data);
++    }
++  }
++  susp.rehire();
++}
++
++template <
++    SerializerMethod kSerializerMethod,
++    typename Serializer,
++    typename Struct>
++void readBenchMultiBuffer(size_t iters) {
++  folly::BenchmarkSuspender susp;
++  auto strct = create<Struct>();
++  folly::IOBufQueue q;
++  Serializer::serialize(strct, &q);
++  auto buf = q.move();
++  // Do NOT coalesce - keep the IOBuf chain fragmented to stress memory
++  // access patterns and increase cache pressure, lowering IPC.
++  susp.dismiss();
++
++  while (iters--) {
++    if constexpr (kSerializerMethod == SerializerMethod::Object) {
++      // Clone so each iteration works on the original fragmented chain
++      auto clone = buf->clone();
++      auto obj = protocol::parseObject<GetReader<Serializer>>(*clone);
++      folly::doNotOptimizeAway(obj);
++    } else {
++      auto clone = buf->clone();
++      Struct data;
++      Serializer::deserialize(clone.get(), data);
+       folly::doNotOptimizeAway(data);
+     }
+   }
+@@ -200,6 +230,13 @@
+ OpEncodeX(OpEncode, Binary)
+ OpEncodeX(OpEncode, Compact)
+ 
++BENCHMARK(ObjectCompactProtocol_read_LargeSetInt_multiBuffer, iters) {
++  readBenchMultiBuffer<
++      SerializerMethod::Object,
++      CompactSerializer,
++      LargeSetInt>(iters);
++}
++
+ int main(int argc, char** argv) {
+   folly::Init init(&argc, &argv);
+   folly::runBenchmarks();

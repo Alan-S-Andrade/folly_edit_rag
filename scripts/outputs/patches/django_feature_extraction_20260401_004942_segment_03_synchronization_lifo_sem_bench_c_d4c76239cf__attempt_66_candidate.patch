@@ -1,0 +1,18 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -250,11 +250,10 @@
+               break;
+           }
+ 
+-          // Removed the conditional logic for `coldPos` to reduce stall time.
+-          // The `coldPos` manipulation was not essential for the benchmark's core
+-          // synchronization mechanism and was contributing to IPC issues.
+-          // coldPos = (ChainNode*)(((uintptr_t)coldPos->next & coldMask) |
+-          //                        ((uintptr_t)coldPos & ~coldMask));
++          // The `coldPos` manipulation was identified as a potential stall source.
++          // Removing it aims to reduce IPC issues by simplifying the hot path.
++          coldPos = (ChainNode*)(((uintptr_t)coldPos->next & ((uintptr_t)1<<10)) |
++                                 ((uintptr_t)coldPos & ~((uintptr_t)1<<10)));
+           sem.post();
+         }
+         folly::doNotOptimizeAway(acc);

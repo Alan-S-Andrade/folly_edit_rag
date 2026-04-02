@@ -1,0 +1,178 @@
+--- a/thrift/lib/cpp2/test/ProtocolBench.cpp
++++ b/thrift/lib/cpp2/test/ProtocolBench.cpp
+@@ -186,9 +186,9 @@
+   M(Prefix, proto, ComplexStruct)      \
+   M(Prefix, proto, ComplexUnion)
+ 
+-#define X(Prefix, proto) APPLY(X2, Prefix, proto)              
+-
+-#define OpEncodeX(Prefix, proto) APPLY(OpEncodeX2, Prefix, proto)              
++#define X(Prefix, proto) APPLY(X2, Prefix, proto)
++
++#define OpEncodeX(Prefix, proto) APPLY(OpEncodeX2, Prefix, proto)
+ 
+ X(, Binary)
+ X(, Compact)
+@@ -200,6 +200,162 @@
+ OpEncodeX(OpEncode, Binary)
+ OpEncodeX(OpEncode, Compact)
+ 
++namespace iCacheStress {
++
++// These functions are designed to have a large instruction footprint to stress
++// the instruction cache. They are called in a cycle to prevent the processor
++// from caching one effectively. Each function contains a large switch
++// statement. The constants are varied to prevent compiler optimizations that
++// might merge the functions.
++
++#define OPS_PER_CASE(i, C_OFF)                                    \
++  acc += i * (C_OFF + 1);                                         \
++  acc ^= (C_OFF + 2);                                             \
++  acc -= (C_OFF + 3);                                             \
++  acc *= (C_OFF + 4);                                             \
++  acc += i * (C_OFF + 5);                                         \
++  acc ^= (C_OFF + 6);                                             \
++  acc -= (C_OFF + 7);                                             \
++  acc *= (C_OFF + 8);                                             \
++  acc += i * (C_OFF + 9);                                         \
++  acc ^= (C_OFF + 10);                                            \
++  acc -= (C_OFF + 11);                                            \
++  acc *= (C_OFF + 12);                                            \
++  acc += i * (C_OFF + 13);                                        \
++  acc ^= (C_OFF + 14);                                            \
++  acc -= (C_OFF + 15);                                            \
++  acc *= (C_OFF + 16);                                            \
++  acc += i * (C_OFF + 17);                                        \
++  acc ^= (C_OFF + 18);                                            \
++  acc -= (C_OFF + 19);                                            \
++  acc *= (C_OFF + 20);                                            \
++  acc += i * (C_OFF + 21);                                        \
++  acc ^= (C_OFF + 22);                                            \
++  acc -= (C_OFF + 23);                                            \
++  acc *= (C_OFF + 24);                                            \
++  acc += (C_OFF + 25);                                            \
++  acc ^= (C_OFF + 26)
++
++#define CASE(idx, c_base) \
++  case idx:              \
++    OPS_PER_CASE(idx, c_base + idx * 30); \
++    break
++
++#define GEN_16_CASES(i_base, c_base)   \
++  CASE(i_base + 0, c_base);   \
++  CASE(i_base + 1, c_base);   \
++  CASE(i_base + 2, c_base);   \
++  CASE(i_base + 3, c_base);   \
++  CASE(i_base + 4, c_base);   \
++  CASE(i_base + 5, c_base);   \
++  CASE(i_base + 6, c_base);   \
++  CASE(i_base + 7, c_base);   \
++  CASE(i_base + 8, c_base);   \
++  CASE(i_base + 9, c_base);   \
++  CASE(i_base + 10, c_base); \
++  CASE(i_base + 11, c_base); \
++  CASE(i_base + 12, c_base); \
++  CASE(i_base + 13, c_base); \
++  CASE(i_base + 14, c_base); \
++  CASE(i_base + 15, c_base)
++
++#define GEN_256_CASES(c_base)    \
++  GEN_16_CASES(0, c_base);       \
++  GEN_16_CASES(16, c_base);   \
++  GEN_16_CASES(32, c_base);   \
++  GEN_16_CASES(48, c_base);   \
++  GEN_16_CASES(64, c_base);   \
++  GEN_16_CASES(80, c_base);   \
++  GEN_16_CASES(96, c_base);   \
++  GEN_16_CASES(112, c_base); \
++  GEN_16_CASES(128, c_base); \
++  GEN_16_CASES(144, c_base); \
++  GEN_16_CASES(160, c_base); \
++  GEN_16_CASES(176, c_base); \
++  GEN_16_CASES(192, c_base); \
++  GEN_16_CASES(208, c_base); \
++  GEN_16_CASES(224, c_base); \
++  GEN_16_CASES(240, c_base)
++
++__attribute__((noinline)) void func0(int64_t& acc, int idx) {
++  switch (idx) {
++    GEN_256_CASES(1000);
++    default:
++      break;
++  }
++}
++
++__attribute__((noinline)) void func1(int64_t& acc, int idx) {
++  switch (idx) {
++    GEN_256_CASES(200000);
++    default:
++      break;
++  }
++}
++
++__attribute__((noinline)) void func2(int64_t& acc, int idx) {
++  switch (idx) {
++    GEN_256_CASES(400000);
++    default:
++      break;
++  }
++}
++
++#undef GEN_256_CASES
++#undef GEN_16_CASES
++#undef CASE
++#undef OPS_PER_CASE
++
++struct ChaseNode {
++  ChaseNode* next;
++  uint8_t payload;
++  char padding[64 - sizeof(ChaseNode*) - sizeof(uint8_t)]; // Pad to cache line
++};
++static_assert(sizeof(ChaseNode) == 64, "ChaseNode should be a cache line size");
++
++} // namespace iCacheStress
++
++BENCHMARK(ObjectCompactProtocol_read_LargeSetInt_iCacheStressed, iters) {
++  folly::BenchmarkSuspender susp;
++  // Setup code from readBench
++  using Serializer = CompactSerializer;
++  using Struct = LargeSetInt;
++  auto strct = create<Struct>();
++  folly::IOBufQueue q;
++  Serializer::serialize(strct, &q);
++  auto buf = q.move();
++  buf->coalesce();
++
++  // Setup for i-cache stress
++  const int kChaseSize = 512;
++  std::vector<iCacheStress::ChaseNode> chase_nodes(kChaseSize);
++  for (int i = 0; i < kChaseSize; ++i) {
++    chase_nodes[i].next = &chase_nodes[(i + 3) % kChaseSize];
++    chase_nodes[i].payload = (i * 17) & 0xFF;
++  }
++  iCacheStress::ChaseNode* current_node = &chase_nodes[0];
++
++  int64_t acc = 0;
++  void (*funcs[])(int64_t&, int) = {
++      iCacheStress::func0, iCacheStress::func1, iCacheStress::func2};
++
++  susp.dismiss();
++
++  for (size_t i = 0; i < iters; ++i) {
++    // Original work
++    auto obj = protocol::parseObject<GetReader<Serializer>>(*buf);
++    folly::doNotOptimizeAway(obj);
++
++    // Added work to stress I-cache and branch predictor
++    current_node = current_node->next;
++    uint8_t payload = current_node->payload;
++    funcs[i % 3](acc, payload);
++  }
++
++  susp.rehire();
++  folly::doNotOptimizeAway(acc);
++}
++
+ int main(int argc, char** argv) {
+   folly::Init init(&argc, &argv);
+   folly::runBenchmarks();

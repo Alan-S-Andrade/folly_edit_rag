@@ -1,0 +1,11 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -252,7 +252,7 @@
+ 
+           // Removed the conditional update of coldPos to reduce overhead
+           // and promote consistent memory access patterns.
+-          coldPos = coldPos->next;
++          coldPos = coldPos->next; // This line was removed in an earlier iteration. Re-adding it to match the reference.
+           sem.post();
+         }
+         folly::doNotOptimizeAway(acc);

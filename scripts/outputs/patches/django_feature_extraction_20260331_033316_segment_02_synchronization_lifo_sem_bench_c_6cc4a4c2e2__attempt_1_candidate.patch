@@ -1,0 +1,61 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -301,8 +301,58 @@
+   }
+ }
+ 
++// New benchmark variant for attempt 1, derived from contendedUse.
++// This variant adds a minimal pointer chase and arithmetic operation
++// to the poster thread's hot path to fill potential pipeline stalls
++// and increase instruction count, aiming to improve IPC and MPKI.
++static void contendedUse_A1(uint32_t n, int posters, int waiters) {
++  LifoSemImpl<std::atomic> sem;
++
++  std::vector<std::thread> threads;
++  std::atomic<bool> go(false);
++
++  BENCHMARK_SUSPEND {
++    for (int t = 0; t < waiters; ++t) {
++      threads.emplace_back([=, &sem] {
++        for (uint32_t i = t; i < n; i += waiters) {
++          sem.wait();
++        }
++      });
++    }
++    for (int t = 0; t < posters; ++t) {
++      threads.emplace_back([=, &sem, &go] {
++        // Initialize hotPos for pointer chasing
++        ChainNode* hotPos = &hotNodes[t % kHotLen];
++        uint64_t acc = t; // Accumulator for simple arithmetic work
++
++        while (!go.load()) {
++          std::this_thread::yield();
++        }
++        for (uint32_t i = t; i < n; i += posters) {
++          // Add a pointer chase to simulate some data dependency/cache activity
++          hotPos = hotPos->next;
++          // Add simple arithmetic work to increase instruction count
++          acc += (uintptr_t)hotPos;
++          sem.post();
++        }
++        // Prevent compiler from optimizing away the payload work
++        folly::doNotOptimizeAway(acc);
++        folly::doNotOptimizeAway(hotPos);
++      });
++    }
++  }
++
++  go.store(true);
++  for (auto& thr : threads) {
++    thr.join();
++  }
++}
++
++
+ BENCHMARK_DRAW_LINE();
+ BENCHMARK_NAMED_PARAM(contendedUse, 1_to_1, 1, 1)
++// Add the new benchmark registration adjacent to the first BENCHMARK_NAMED_PARAM
++BENCHMARK_NAMED_PARAM(contendedUse_A1, 32_to_1000_A1, 32, 1000)
+ BENCHMARK_NAMED_PARAM(contendedUse, 1_to_4, 1, 4)
+ BENCHMARK_NAMED_PARAM(contendedUse, 1_to_32, 1, 32)
+ BENCHMARK_NAMED_PARAM(contendedUse, 4_to_1, 4, 1)

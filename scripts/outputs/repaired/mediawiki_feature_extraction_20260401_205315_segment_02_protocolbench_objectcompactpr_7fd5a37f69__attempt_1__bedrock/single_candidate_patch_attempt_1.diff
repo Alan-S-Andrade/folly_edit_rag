@@ -1,0 +1,43 @@
+--- a/thrift/lib/cpp2/test/ProtocolBench.cpp
++++ b/thrift/lib/cpp2/test/ProtocolBench.cpp
+@@ -122,6 +122,29 @@
+       Serializer::deserialize(buf.get(), data);
+       folly::doNotOptimizeAway(data);
+     }
++  }
++  susp.rehire();
++}
++
++// Variant of readBench for ObjectCompactProtocol_read_LargeSetInt that
++// performs two independent parse passes per iteration, introducing extra
++// frontend pressure (more branches and icache footprint) while keeping the
++// same deserialization character.
++template <typename Serializer, typename Struct>
++void readBenchDualPass(size_t iters) {
++  folly::BenchmarkSuspender susp;
++  auto strct = create<Struct>();
++  folly::IOBufQueue q;
++  Serializer::serialize(strct, &q);
++  auto buf = q.move();
++  buf->coalesce();
++  susp.dismiss();
++
++  while (iters--) {
++    auto obj0 = protocol::parseObject<GetReader<Serializer>>(*buf);
++    folly::doNotOptimizeAway(obj0);
++    auto obj1 = protocol::parseObject<GetReader<Serializer>>(*buf);
++    folly::doNotOptimizeAway(obj1);
+   }
+   susp.rehire();
+ }
+@@ -200,6 +223,10 @@
+ OpEncodeX(OpEncode, Binary)
+ OpEncodeX(OpEncode, Compact)
+ 
++BENCHMARK(ObjectCompactProtocol_read_LargeSetInt_DualPass, iters) {
++  readBenchDualPass<CompactSerializer, LargeSetInt>(iters);
++}
++
+ int main(int argc, char** argv) {
+   folly::Init init(&argc, &argv);
+   folly::runBenchmarks();

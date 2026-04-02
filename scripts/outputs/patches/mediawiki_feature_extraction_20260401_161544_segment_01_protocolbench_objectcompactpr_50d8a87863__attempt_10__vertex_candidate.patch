@@ -1,0 +1,163 @@
+--- a/thrift/lib/cpp2/test/ProtocolBench.cpp
++++ b/thrift/lib/cpp2/test/ProtocolBench.cpp
+@@ -23,8 +23,12 @@
+ #include <folly/Benchmark.h>
+ #include <folly/BenchmarkUtil.h>
+ #include <folly/Optional.h>
++#include <folly/Random.h>
+ #include <folly/init/Init.h>
+ #include <folly/portability/GFlags.h>
++
++#include <cstdint>
++#include <vector>
+ 
+ using namespace apache::thrift;
+ using namespace thrift::benchmark;
+@@ -186,9 +190,9 @@
+   M(Prefix, proto, ComplexStruct)      \
+   M(Prefix, proto, ComplexUnion)
+ 
+-#define X(Prefix, proto) APPLY(X2, Prefix, proto)              
+-
+-#define OpEncodeX(Prefix, proto) APPLY(OpEncodeX2, Prefix, proto)              
++#define X(Prefix, proto) APPLY(X2, Prefix, proto)
++
++#define OpEncodeX(Prefix, proto) APPLY(OpEncodeX2, Prefix, proto)
+ 
+ X(, Binary)
+ X(, Compact)
+@@ -200,6 +204,134 @@
+ OpEncodeX(OpEncode, Binary)
+ OpEncodeX(OpEncode, Compact)
+ 
++namespace {
++
++struct Node {
++  Node* next;
++  int payload;
++};
++
++#define ALU_OPS_IMPL(accu, i, j, salt)                                         \
++  accu += salt + 0x1000 * (j) + 0x100 * (i) + 0;                                \
++  accu ^= salt + 0x2000 * (j) + 0x100 * (i) + 1;                                \
++  accu *= salt + 0x3000 * (j) + 0x100 * (i) + 2;
++
++#define OPS_36(accu, i, salt)                                                  \
++  ALU_OPS_IMPL(accu, i, 0, salt)                                               \
++  ALU_OPS_IMPL(accu, i, 1, salt)                                               \
++  ALU_OPS_IMPL(accu, i, 2, salt)                                               \
++  ALU_OPS_IMPL(accu, i, 3, salt)                                               \
++  ALU_OPS_IMPL(accu, i, 4, salt)                                               \
++  ALU_OPS_IMPL(accu, i, 5, salt)                                               \
++  ALU_OPS_IMPL(accu, i, 6, salt)                                               \
++  ALU_OPS_IMPL(accu, i, 7, salt)                                               \
++  ALU_OPS_IMPL(accu, i, 8, salt)                                               \
++  ALU_OPS_IMPL(accu, i, 9, salt)                                               \
++  ALU_OPS_IMPL(accu, i, 10, salt)                                              \
++  ALU_OPS_IMPL(accu, i, 11, salt)
++
++#define CASE_IMPL(accu, i, salt)                                               \
++  case i:                                                                      \
++    OPS_36(accu, i, salt);                                                     \
++    break;
++
++#define CASES_16(accu, i, salt)                                                \
++  CASE_IMPL(accu, i + 0, salt)                                                 \
++  CASE_IMPL(accu, i + 1, salt)                                                 \
++  CASE_IMPL(accu, i + 2, salt)                                                 \
++  CASE_IMPL(accu, i + 3, salt)                                                 \
++  CASE_IMPL(accu, i + 4, salt)                                                 \
++  CASE_IMPL(accu, i + 5, salt)                                                 \
++  CASE_IMPL(accu, i + 6, salt)                                                 \
++  CASE_IMPL(accu, i + 7, salt)                                                 \
++  CASE_IMPL(accu, i + 8, salt)                                                 \
++  CASE_IMPL(accu, i + 9, salt)                                                 \
++  CASE_IMPL(accu, i + 10, salt)                                                \
++  CASE_IMPL(accu, i + 11, salt)                                                \
++  CASE_IMPL(accu, i + 12, salt)                                                \
++  CASE_IMPL(accu, i + 13, salt)                                                \
++  CASE_IMPL(accu, i + 14, salt)                                                \
++  CASE_IMPL(accu, i + 15, salt)
++
++#define CASES_256(accu, salt)                                                  \
++  CASES_16(accu, 0, salt)                                                      \
++  CASES_16(accu, 16, salt)                                                     \
++  CASES_16(accu, 32, salt)                                                     \
++  CASES_16(accu, 48, salt)                                                     \
++  CASES_16(accu, 64, salt)                                                     \
++  CASES_16(accu, 80, salt)                                                     \
++  CASES_16(accu, 96, salt)                                                     \
++  CASES_16(accu, 112, salt)                                                    \
++  CASES_16(accu, 128, salt)                                                    \
++  CASES_16(accu, 144, salt)                                                    \
++  CASES_16(accu, 160, salt)                                                    \
++  CASES_16(accu, 176, salt)                                                    \
++  CASES_16(accu, 192, salt)                                                    \
++  CASES_16(accu, 208, salt)                                                    \
++  CASES_16(accu, 224, salt)                                                    \
++  CASES_16(accu, 240, salt)
++
++__attribute__((noinline)) void switch_func_0(
++    unsigned long long& accu,
++    int payload) {
++  switch (payload & 0xFF) {
++    CASES_256(accu, 0)
++    default:
++      break;
++  }
++}
++
++__attribute__((noinline)) void switch_func_1(
++    unsigned long long& accu,
++    int payload) {
++  switch (payload & 0xFF) {
++    CASES_256(accu, 0x100000)
++    default:
++      break;
++  }
++}
++
++__attribute__((noinline)) void switch_func_2(
++    unsigned long long& accu,
++    int payload) {
++  switch (payload & 0xFF) {
++    CASES_256(accu, 0x200000)
++    default:
++      break;
++  }
++}
++
++} // namespace
++
++BENCHMARK(ObjectCompactProtocol_read_LargeSetInt_v1, iters) {
++  folly::BenchmarkSuspender susp;
++
++  constexpr size_t kNumNodes = 65536;
++  std::vector<Node> nodes(kNumNodes);
++  for (size_t i = 0; i < kNumNodes; ++i) {
++    // Semi-random permutation to defeat prefetchers
++    nodes[i].next = &nodes[((uint64_t)i * 3935559000370003845ULL +
++                            2691343689449562083ULL) %
++                           kNumNodes];
++    nodes[i].payload = folly::Random::rand32();
++  }
++
++  Node* current = &nodes[0];
++  unsigned long long accu = 0;
++
++  void (*funcs[])(unsigned long long&, int) = {
++      switch_func_0, switch_func_1, switch_func_2};
++
++  susp.dismiss();
++
++  for (size_t j = 0; j < iters; ++j) {
++    funcs[j % 3](accu, current->payload);
++    current = current->next;
++  }
++
++  folly::doNotOptimizeAway(accu);
++}
++
+ int main(int argc, char** argv) {
+   folly::Init init(&argc, &argv);
+   folly::runBenchmarks();

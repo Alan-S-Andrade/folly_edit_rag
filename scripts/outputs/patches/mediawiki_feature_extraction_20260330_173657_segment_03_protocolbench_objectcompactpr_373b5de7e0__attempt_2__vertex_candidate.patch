@@ -1,0 +1,280 @@
+--- a/thrift/lib/cpp2/test/ProtocolBench.cpp
++++ b/thrift/lib/cpp2/test/ProtocolBench.cpp
+@@ -26,8 +26,171 @@
+ #include <folly/init/Init.h>
+ #include <folly/portability/GFlags.h>
+ 
++#include <algorithm>
++#include <memory>
++#include <numeric>
++#include <random>
++#include <vector>
++
+ using namespace apache::thrift;
+ using namespace thrift::benchmark;
++
++namespace {
++
++// These functions are designed to increase I-cache misses.
++// Each function has a large switch statement. By rotating through them,
++// we can increase the hot code footprint.
++
++// To prevent compiler from optimizing away, and to make functions different.
++__attribute__((noinline))
++int icache_miss_func_1(int x, const uint8_t* p) {
++  int res = x;
++  // Each case needs unique constants to prevent deduplication
++#define ALU_OP(i, C) res = (res * 3) ^ (p[i] + C);
++#define CASE_BLOCK(i, C) \
++  case i:                \
++    ALU_OP(1, C + 1)     \
++    ALU_OP(2, C + 2)     \
++    ALU_OP(3, C + 3)     \
++    ALU_OP(4, C + 4)     \
++    ALU_OP(5, C + 5)     \
++    ALU_OP(6, C + 6)     \
++    ALU_OP(7, C + 7)     \
++    ALU_OP(8, C + 8)     \
++    ALU_OP(9, C + 9) break;
++
++  switch (p[0]) {
++#define CASES_16(i, C)   \
++  CASE_BLOCK(i + 0, C + 0)   \
++  CASE_BLOCK(i + 1, C + 1)   \
++  CASE_BLOCK(i + 2, C + 2)   \
++  CASE_BLOCK(i + 3, C + 3)   \
++  CASE_BLOCK(i + 4, C + 4)   \
++  CASE_BLOCK(i + 5, C + 5)   \
++  CASE_BLOCK(i + 6, C + 6)   \
++  CASE_BLOCK(i + 7, C + 7)   \
++  CASE_BLOCK(i + 8, C + 8)   \
++  CASE_BLOCK(i + 9, C + 9)   \
++  CASE_BLOCK(i + 10, C + 10) \
++  CASE_BLOCK(i + 11, C + 11) \
++  CASE_BLOCK(i + 12, C + 12) \
++  CASE_BLOCK(i + 13, C + 13) \
++  CASE_BLOCK(i + 14, C + 14) \
++  CASE_BLOCK(i + 15, C + 15)
++
++    CASES_16(0, 0x1000) CASES_16(16, 0x1100) CASES_16(32, 0x1200)
++        CASES_16(48, 0x1300) CASES_16(64, 0x1400) CASES_16(80, 0x1500)
++            CASES_16(96, 0x1600) CASES_16(112, 0x1700) CASES_16(128, 0x1800)
++                CASES_16(144, 0x1900) CASES_16(160, 0x1A00) CASES_16(176, 0x1B00)
++                    CASES_16(192, 0x1C00) CASES_16(208, 0x1D00)
++                        CASES_16(224, 0x1E00) CASES_16(240, 0x1F00)
++
++#undef CASES_16
++#undef CASE_BLOCK
++#undef ALU_OP
++  }
++  return res;
++}
++
++__attribute__((noinline))
++int icache_miss_func_2(int x, const uint8_t* p) {
++  int res = x;
++#define ALU_OP(i, C) res = (res + 5) * (p[i] ^ C);
++#define CASE_BLOCK(i, C) \
++  case i:                \
++    ALU_OP(1, C + 1)     \
++    ALU_OP(2, C + 2)     \
++    ALU_OP(3, C + 3)     \
++    ALU_OP(4, C + 4)     \
++    ALU_OP(5, C + 5)     \
++    ALU_OP(6, C + 6)     \
++    ALU_OP(7, C + 7)     \
++    ALU_OP(8, C + 8)     \
++    ALU_OP(9, C + 9) break;
++
++  switch (p[0]) {
++#define CASES_16(i, C)   \
++  CASE_BLOCK(i + 0, C + 0)   \
++  CASE_BLOCK(i + 1, C + 1)   \
++  CASE_BLOCK(i + 2, C + 2)   \
++  CASE_BLOCK(i + 3, C + 3)   \
++  CASE_BLOCK(i + 4, C + 4)   \
++  CASE_BLOCK(i + 5, C + 5)   \
++  CASE_BLOCK(i + 6, C + 6)   \
++  CASE_BLOCK(i + 7, C + 7)   \
++  CASE_BLOCK(i + 8, C + 8)   \
++  CASE_BLOCK(i + 9, C + 9)   \
++  CASE_BLOCK(i + 10, C + 10) \
++  CASE_BLOCK(i + 11, C + 11) \
++  CASE_BLOCK(i + 12, C + 12) \
++  CASE_BLOCK(i + 13, C + 13) \
++  CASE_BLOCK(i + 14, C + 14) \
++  CASE_BLOCK(i + 15, C + 15)
++
++    CASES_16(0, 0x2000) CASES_16(16, 0x2100) CASES_16(32, 0x2200)
++        CASES_16(48, 0x2300) CASES_16(64, 0x2400) CASES_16(80, 0x2500)
++            CASES_16(96, 0x2600) CASES_16(112, 0x2700) CASES_16(128, 0x2800)
++                CASES_16(144, 0x2900) CASES_16(160, 0x2A00) CASES_16(176, 0x2B00)
++                    CASES_16(192, 0x2C00) CASES_16(208, 0x2D00)
++                        CASES_16(224, 0x2E00) CASES_16(240, 0x2F00)
++
++#undef CASES_16
++#undef CASE_BLOCK
++#undef ALU_OP
++  }
++  return res;
++}
++
++__attribute__((noinline))
++int icache_miss_func_3(int x, const uint8_t* p) {
++  int res = x;
++#define ALU_OP(i, C) res = (res ^ 7) + (p[i] * C);
++#define CASE_BLOCK(i, C) \
++  case i:                \
++    ALU_OP(1, C + 1)     \
++    ALU_OP(2, C + 2)     \
++    ALU_OP(3, C + 3)     \
++    ALU_OP(4, C + 4)     \
++    ALU_OP(5, C + 5)     \
++    ALU_OP(6, C + 6)     \
++    ALU_OP(7, C + 7)     \
++    ALU_OP(8, C + 8)     \
++    ALU_OP(9, C + 9) break;
++
++  switch (p[0]) {
++#define CASES_16(i, C)   \
++  CASE_BLOCK(i + 0, C + 0)   \
++  CASE_BLOCK(i + 1, C + 1)   \
++  CASE_BLOCK(i + 2, C + 2)   \
++  CASE_BLOCK(i + 3, C + 3)   \
++  CASE_BLOCK(i + 4, C + 4)   \
++  CASE_BLOCK(i + 5, C + 5)   \
++  CASE_BLOCK(i + 6, C + 6)   \
++  CASE_BLOCK(i + 7, C + 7)   \
++  CASE_BLOCK(i + 8, C + 8)   \
++  CASE_BLOCK(i + 9, C + 9)   \
++  CASE_BLOCK(i + 10, C + 10) \
++  CASE_BLOCK(i + 11, C + 11) \
++  CASE_BLOCK(i + 12, C + 12) \
++  CASE_BLOCK(i + 13, C + 13) \
++  CASE_BLOCK(i + 14, C + 14) \
++  CASE_BLOCK(i + 15, C + 15)
++
++    CASES_16(0, 0x3000) CASES_16(16, 0x3100) CASES_16(32, 0x3200)
++        CASES_16(48, 0x3300) CASES_16(64, 0x3400) CASES_16(80, 0x3500)
++            CASES_16(96, 0x3600) CASES_16(112, 0x3700) CASES_16(128, 0x3800)
++                CASES_16(144, 0x3900) CASES_16(160, 0x3A00) CASES_16(176, 0x3B00)
++                    CASES_16(192, 0x3C00) CASES_16(208, 0x3D00)
++                        CASES_16(224, 0x3E00) CASES_16(240, 0x3F00)
++
++#undef CASES_16
++#undef CASE_BLOCK
++#undef ALU_OP
++  }
++  return res;
++}
++
++} // namespace
+ 
+ template <class>
+ struct SerializerTraits;
+@@ -124,6 +287,78 @@
+     }
+   }
+   susp.rehire();
++}
++
++template <
++    SerializerMethod kSerializerMethod,
++    typename Serializer,
++    typename Struct>
++void readBench_ipc_v2(size_t iters) {
++  folly::BenchmarkSuspender susp;
++  auto strct = create<Struct>();
++  folly::IOBufQueue q;
++  Serializer::serialize(strct, &q);
++  auto buf = q.move();
++  // coalesce the IOBuf chain to test fast path
++  buf->coalesce();
++
++  constexpr size_t kChaseNodes = 4096;
++  struct ChaseNode {
++    ChaseNode* next;
++    uint8_t payload[16];
++  };
++  auto chase_nodes_vec =
++      std::make_unique<std::vector<ChaseNode>>(kChaseNodes);
++  auto& chase_nodes = *chase_nodes_vec;
++
++  for (size_t i = 0; i < kChaseNodes; ++i) {
++    for (size_t j = 0; j < 16; ++j) {
++      chase_nodes[i].payload[j] = (i + j) & 0xff;
++    }
++  }
++
++  std::vector<ChaseNode*> ptrs(kChaseNodes);
++  for (size_t i = 0; i < kChaseNodes; ++i) {
++    ptrs[i] = &chase_nodes[i];
++  }
++  std::mt19937 g(12345);
++  std::shuffle(ptrs.begin(), ptrs.end(), g);
++
++  for (size_t i = 0; i < kChaseNodes; ++i) {
++    ptrs[i]->next = ptrs[(i + 1) % kChaseNodes];
++  }
++
++  ChaseNode* chase_ptr = ptrs[0];
++  volatile int accumulator = 0;
++
++  susp.dismiss();
++
++  for (size_t i = 0; i < iters; ++i) {
++    if constexpr (kSerializerMethod == SerializerMethod::Object) {
++      auto obj = protocol::parseObject<GetReader<Serializer>>(*buf);
++      folly::doNotOptimizeAway(obj);
++    } else {
++      Struct data;
++      Serializer::deserialize(buf.get(), data);
++      folly::doNotOptimizeAway(data);
++    }
++
++    chase_ptr = chase_ptr->next;
++    switch (i % 3) {
++      case 0:
++        accumulator = icache_miss_func_1(accumulator, chase_ptr->payload);
++        break;
++      case 1:
++        accumulator = icache_miss_func_2(accumulator, chase_ptr->payload);
++        break;
++      case 2:
++        accumulator = icache_miss_func_3(accumulator, chase_ptr->payload);
++        break;
++    }
++  }
++
++  susp.rehire();
++  folly::doNotOptimizeAway(accumulator);
+ }
+ 
+ constexpr SerializerMethod getSerializerMethod(std::string_view prefix) {
+@@ -186,9 +421,9 @@
+   M(Prefix, proto, ComplexStruct)      \
+   M(Prefix, proto, ComplexUnion)
+ 
+-#define X(Prefix, proto) APPLY(X2, Prefix, proto)              
+-
+-#define OpEncodeX(Prefix, proto) APPLY(OpEncodeX2, Prefix, proto)              
++#define X(Prefix, proto) APPLY(X2, Prefix, proto)
++
++#define OpEncodeX(Prefix, proto) APPLY(OpEncodeX2, Prefix, proto)
+ 
+ X(, Binary)
+ X(, Compact)
+@@ -200,6 +435,13 @@
+ OpEncodeX(OpEncode, Binary)
+ OpEncodeX(OpEncode, Compact)
+ 
++BENCHMARK(ObjectCompactProtocol_read_LargeSetInt_ipc_v2, iters) {
++  readBench_ipc_v2<
++      SerializerMethod::Object,
++      CompactSerializer,
++      LargeSetInt>(iters);
++}
++
+ int main(int argc, char** argv) {
+   folly::Init init(&argc, &argv);
+   folly::runBenchmarks();

@@ -1,0 +1,129 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -142,7 +142,11 @@
+   v ^= (v >> 7) ^ (uint64_t)(case_base + op_idx * 7) ^ ((uint64_t)c << 3);
+ 
+ // Macro to expand ALU operations per case block.
+-// Increased from 28 to 140 SINGLE_ALU_OP calls per case to increase L1i footprint.
++// Refinement: Reduced from 140 to 35 SINGLE_ALU_OP calls per case to better
++// match the L1i MPKI target, based on playbook's linear scaling examples for
++// smaller numbers of operations. This addresses the "insufficient hot code
++// footprint" diagnosis, as a large number of ops might have led to unexpected
++// compiler behavior or diminished returns on L1i misses.
+ #undef ALU_OPS_EXPANSION_28 // Undefine to redefine
+ #define ALU_OPS_EXPANSION_28(v, c, case_base) \
+   SINGLE_ALU_OP(v, c, case_base, 0); \
+@@ -179,112 +183,7 @@
+   SINGLE_ALU_OP(v, c, case_base, 31); \
+   SINGLE_ALU_OP(v, c, case_base, 32); \
+   SINGLE_ALU_OP(v, c, case_base, 33); \
+-  SINGLE_ALU_OP(v, c, case_base, 34); \
+-  SINGLE_ALU_OP(v, c, case_base, 35); \
+-  SINGLE_ALU_OP(v, c, case_base, 36); \
+-  SINGLE_ALU_OP(v, c, case_base, 37); \
+-  SINGLE_ALU_OP(v, c, case_base, 38); \
+-  SINGLE_ALU_OP(v, c, case_base, 39); \
+-  SINGLE_ALU_OP(v, c, case_base, 40); \
+-  SINGLE_ALU_OP(v, c, case_base, 41); \
+-  SINGLE_ALU_OP(v, c, case_base, 42); \
+-  SINGLE_ALU_OP(v, c, case_base, 43); \
+-  SINGLE_ALU_OP(v, c, case_base, 44); \
+-  SINGLE_ALU_OP(v, c, case_base, 45); \
+-  SINGLE_ALU_OP(v, c, case_base, 46); \
+-  SINGLE_ALU_OP(v, c, case_base, 47); \
+-  SINGLE_ALU_OP(v, c, case_base, 48); \
+-  SINGLE_ALU_OP(v, c, case_base, 49); \
+-  SINGLE_ALU_OP(v, c, case_base, 50); \
+-  SINGLE_ALU_OP(v, c, case_base, 51); \
+-  SINGLE_ALU_OP(v, c, case_base, 52); \
+-  SINGLE_ALU_OP(v, c, case_base, 53); \
+-  SINGLE_ALU_OP(v, c, case_base, 54); \
+-  SINGLE_ALU_OP(v, c, case_base, 55); \
+-  SINGLE_ALU_OP(v, c, case_base, 56); \
+-  SINGLE_ALU_OP(v, c, case_base, 57); \
+-  SINGLE_ALU_OP(v, c, case_base, 58); \
+-  SINGLE_ALU_OP(v, c, case_base, 59); \
+-  SINGLE_ALU_OP(v, c, case_base, 60); \
+-  SINGLE_ALU_OP(v, c, case_base, 61); \
+-  SINGLE_ALU_OP(v, c, case_base, 62); \
+-  SINGLE_ALU_OP(v, c, case_base, 63); \
+-  SINGLE_ALU_OP(v, c, case_base, 64); \
+-  SINGLE_ALU_OP(v, c, case_base, 65); \
+-  SINGLE_ALU_OP(v, c, case_base, 66); \
+-  SINGLE_ALU_OP(v, c, case_base, 67); \
+-  SINGLE_ALU_OP(v, c, case_base, 68); \
+-  SINGLE_ALU_OP(v, c, case_base, 69); \
+-  SINGLE_ALU_OP(v, c, case_base, 70); \
+-  SINGLE_ALU_OP(v, c, case_base, 71); \
+-  SINGLE_ALU_OP(v, c, case_base, 72); \
+-  SINGLE_ALU_OP(v, c, case_base, 73); \
+-  SINGLE_ALU_OP(v, c, case_base, 74); \
+-  SINGLE_ALU_OP(v, c, case_base, 75); \
+-  SINGLE_ALU_OP(v, c, case_base, 76); \
+-  SINGLE_ALU_OP(v, c, case_base, 77); \
+-  SINGLE_ALU_OP(v, c, case_base, 78); \
+-  SINGLE_ALU_OP(v, c, case_base, 79); \
+-  SINGLE_ALU_OP(v, c, case_base, 80); \
+-  SINGLE_ALU_OP(v, c, case_base, 81); \
+-  SINGLE_ALU_OP(v, c, case_base, 82); \
+-  SINGLE_ALU_OP(v, c, case_base, 83); \
+-  SINGLE_ALU_OP(v, c, case_base, 84); \
+-  SINGLE_ALU_OP(v, c, case_base, 85); \
+-  SINGLE_ALU_OP(v, c, case_base, 86); \
+-  SINGLE_ALU_OP(v, c, case_base, 87); \
+-  SINGLE_ALU_OP(v, c, case_base, 88); \
+-  SINGLE_ALU_OP(v, c, case_base, 89); \
+-  SINGLE_ALU_OP(v, c, case_base, 90); \
+-  SINGLE_ALU_OP(v, c, case_base, 91); \
+-  SINGLE_ALU_OP(v, c, case_base, 92); \
+-  SINGLE_ALU_OP(v, c, case_base, 93); \
+-  SINGLE_ALU_OP(v, c, case_base, 94); \
+-  SINGLE_ALU_OP(v, c, case_base, 95); \
+-  SINGLE_ALU_OP(v, c, case_base, 96); \
+-  SINGLE_ALU_OP(v, c, case_base, 97); \
+-  SINGLE_ALU_OP(v, c, case_base, 98); \
+-  SINGLE_ALU_OP(v, c, case_base, 99); \
+-  SINGLE_ALU_OP(v, c, case_base, 100); \
+-  SINGLE_ALU_OP(v, c, case_base, 101); \
+-  SINGLE_ALU_OP(v, c, case_base, 102); \
+-  SINGLE_ALU_OP(v, c, case_base, 103); \
+-  SINGLE_ALU_OP(v, c, case_base, 104); \
+-  SINGLE_ALU_OP(v, c, case_base, 105); \
+-  SINGLE_ALU_OP(v, c, case_base, 106); \
+-  SINGLE_ALU_OP(v, c, case_base, 107); \
+-  SINGLE_ALU_OP(v, c, case_base, 108); \
+-  SINGLE_ALU_OP(v, c, case_base, 109); \
+-  SINGLE_ALU_OP(v, c, case_base, 110); \
+-  SINGLE_ALU_OP(v, c, case_base, 111); \
+-  SINGLE_ALU_OP(v, c, case_base, 112); \
+-  SINGLE_ALU_OP(v, c, case_base, 113); \
+-  SINGLE_ALU_OP(v, c, case_base, 114); \
+-  SINGLE_ALU_OP(v, c, case_base, 115); \
+-  SINGLE_ALU_OP(v, c, case_base, 116); \
+-  SINGLE_ALU_OP(v, c, case_base, 117); \
+-  SINGLE_ALU_OP(v, c, case_base, 118); \
+-  SINGLE_ALU_OP(v, c, case_base, 119); \
+-  SINGLE_ALU_OP(v, c, case_base, 120); \
+-  SINGLE_ALU_OP(v, c, case_base, 121); \
+-  SINGLE_ALU_OP(v, c, case_base, 122); \
+-  SINGLE_ALU_OP(v, c, case_base, 123); \
+-  SINGLE_ALU_OP(v, c, case_base, 124); \
+-  SINGLE_ALU_OP(v, c, case_base, 125); \
+-  SINGLE_ALU_OP(v, c, case_base, 126); \
+-  SINGLE_ALU_OP(v, c, case_base, 127); \
+-  SINGLE_ALU_OP(v, c, case_base, 128); \
+-  SINGLE_ALU_OP(v, c, case_base, 129); \
+-  SINGLE_ALU_OP(v, c, case_base, 130); \
+-  SINGLE_ALU_OP(v, c, case_base, 131); \
+-  SINGLE_ALU_OP(v, c, case_base, 132); \
+-  SINGLE_ALU_OP(v, c, case_base, 133); \
+-  SINGLE_ALU_OP(v, c, case_base, 134); \
+-  SINGLE_ALU_OP(v, c, case_base, 135); \
+-  SINGLE_ALU_OP(v, c, case_base, 136); \
+-  SINGLE_ALU_OP(v, c, case_base, 137); \
+-  SINGLE_ALU_OP(v, c, case_base, 138); \
+-  SINGLE_ALU_OP(v, c, case_base, 139);
++  SINGLE_ALU_OP(v, c, case_base, 34);
+ 
+ #undef CASES_8
+ #define CASES_8(v, c, base)                                                    \

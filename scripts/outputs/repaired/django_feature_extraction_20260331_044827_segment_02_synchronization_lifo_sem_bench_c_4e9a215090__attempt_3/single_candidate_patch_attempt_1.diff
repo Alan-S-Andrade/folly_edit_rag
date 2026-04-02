@@ -1,0 +1,11 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -233,7 +233,7 @@
+         uint64_t acc = t;
+ 
+         while (!go.load()) {
+-          std::this_thread::yield();
++          asm_volatile_pause(); // Replaced std::this_thread::yield() with asm_volatile_pause()
+         }
+         for (uint32_t i = t; i < n; i += posters) {
+           hotPos = hotPos->next;

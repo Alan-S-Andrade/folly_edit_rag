@@ -1,0 +1,11 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -348,7 +348,7 @@
+ 
+ BENCHMARK_DRAW_LINE();
+ BENCHMARK_NAMED_PARAM(contendedUse, 1_to_1, 1, 1)
+-BENCHMARK_NAMED_PARAM(contendedUse_v2, 32_to_1000_L1i, 32, 1000) // Added variant for L1i pressure with 32 posters and 1000 waiters
++BENCHMARK_NAMED_PARAM(contendedUse_v2, 32_to_1000_L1i, 1000000, 32, 1000) // Added variant for L1i pressure with 32 posters and 1000 waiters
+ BENCHMARK_NAMED_PARAM(contendedUse, 1_to_4, 1, 4)
+ BENCHMARK_NAMED_PARAM(contendedUse, 1_to_32, 1, 32)
+ BENCHMARK_NAMED_PARAM(contendedUse, 4_to_1, 4, 1)

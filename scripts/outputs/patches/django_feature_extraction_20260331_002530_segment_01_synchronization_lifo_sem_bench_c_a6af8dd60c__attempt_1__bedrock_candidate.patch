@@ -1,0 +1,201 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -202,6 +202,104 @@
+   return v;
+ }
+ 
++// Additional 3 switch functions with more ALU ops per case to increase
++// L1i footprint for the contendedUse_icache variant.
++#define CASES_12(v, c, base)                                                   \
++  case base + 0:                                                               \
++    v = (v * 3) ^ ((uint64_t)c + base + 0);                                   \
++    v = (v + 0x1a2b3c4d) * 31;                                                \
++    v ^= (v >> 17) + base + 7;                                                \
++    v = (v * 0x9e3779b9) + (uint64_t)c;                                       \
++    break;                                                                     \
++  case base + 1:                                                               \
++    v = (v * 5) ^ ((uint64_t)c + base + 1);                                   \
++    v = (v + 0x2b3c4d5e) * 37;                                                \
++    v ^= (v >> 13) + base + 11;                                               \
++    v = (v * 0x6c62272e) + (uint64_t)c;                                       \
++    break;                                                                     \
++  case base + 2:                                                               \
++    v = (v * 7) ^ ((uint64_t)c + base + 2);                                   \
++    v = (v + 0x3c4d5e6f) * 41;                                                \
++    v ^= (v >> 19) + base + 13;                                               \
++    v = (v * 0xbf58476d) + (uint64_t)c;                                       \
++    break;                                                                     \
++  case base + 3:                                                               \
++    v = (v * 11) ^ ((uint64_t)c + base + 3);                                  \
++    v = (v + 0x4d5e6f70) * 43;                                                \
++    v ^= (v >> 11) + base + 17;                                               \
++    v = (v * 0x94d049bb) + (uint64_t)c;                                       \
++    break;                                                                     \
++  case base + 4:                                                               \
++    v = (v * 13) ^ ((uint64_t)c + base + 4);                                  \
++    v = (v + 0x5e6f7081) * 47;                                                \
++    v ^= (v >> 23) + base + 19;                                               \
++    v = (v * 0xff51afd7) + (uint64_t)c;                                       \
++    break;                                                                     \
++  case base + 5:                                                               \
++    v = (v * 17) ^ ((uint64_t)c + base + 5);                                  \
++    v = (v + 0x6f708192) * 53;                                                \
++    v ^= (v >> 7) + base + 23;                                                \
++    v = (v * 0xc4ceb9fe) + (uint64_t)c;                                       \
++    break;                                                                     \
++  case base + 6:                                                               \
++    v = (v * 19) ^ ((uint64_t)c + base + 6);                                  \
++    v = (v + 0x708192a3) * 59;                                                \
++    v ^= (v >> 29) + base + 29;                                               \
++    v = (v * 0x1b873593) + (uint64_t)c;                                       \
++    break;                                                                     \
++  case base + 7:                                                               \
++    v = (v * 23) ^ ((uint64_t)c + base + 7);                                  \
++    v = (v + 0x8192a3b4) * 61;                                                \
++    v ^= (v >> 3) + base + 31;                                                \
++    v = (v * 0x85ebca6b) + (uint64_t)c;                                       \
++    break;
++
++#define CASES_256_12(v, c)                                                     \
++  CASES_12(v, c, 0)                                                            \
++  CASES_12(v, c, 8) CASES_12(v, c, 16) CASES_12(v, c, 24)                     \
++      CASES_12(v, c, 32) CASES_12(v, c, 40) CASES_12(v, c, 48)                \
++          CASES_12(v, c, 56) CASES_12(v, c, 64) CASES_12(v, c, 72)            \
++              CASES_12(v, c, 80) CASES_12(v, c, 88) CASES_12(v, c, 96)        \
++                  CASES_12(v, c, 104) CASES_12(v, c, 112)                     \
++                      CASES_12(v, c, 120) CASES_12(v, c, 128)                 \
++                          CASES_12(v, c, 136) CASES_12(v, c, 144)             \
++                              CASES_12(v, c, 152) CASES_12(v, c, 160)         \
++                                  CASES_12(v, c, 168) CASES_12(v, c, 176)     \
++                                      CASES_12(v, c, 184) CASES_12(v, c, 192) \
++                                          CASES_12(v, c, 200)                 \
++                                              CASES_12(v, c, 208)             \
++                                                  CASES_12(v, c, 216)         \
++                                                      CASES_12(v, c, 224)     \
++                                                          CASES_12(v, c, 232) \
++                                                              CASES_12(        \
++                                                                  v, c, 240)  \
++                                                                  CASES_12(   \
++                                                                      v,      \
++                                                                      c,      \
++                                                                      248)
++
++__attribute__((noinline)) uint64_t switchD(uint64_t v, int c) {
++  switch (c) {
++    CASES_256_12(v, c);
++    default:;
++  }
++  return v;
++}
++__attribute__((noinline)) uint64_t switchE(uint64_t v, int c) {
++  switch (c) {
++    CASES_256_12(v, c * 7);
++    default:;
++  }
++  return v;
++}
++__attribute__((noinline)) uint64_t switchF(uint64_t v, int c) {
++  switch (c) {
++    CASES_256_12(v, c * 11);
++    default:;
++  }
++  return v;
++}
++
+ struct DepWorkInitializer {
+   DepWorkInitializer() {
+     coldNodes = new ChainNode[kColdLen];
+@@ -267,9 +365,12 @@
+     thr.join();
+   }
+ }
+-} // namespace
+-
+-static void contendedUse(uint32_t n, int posters, int waiters) {
++
++// contendedUse_icache: like contendedUse_v2 but uses 3 larger switch functions
++// (switchD/E/F with 12 ALU ops per case instead of 8) to increase L1i
++// footprint and branch-miss pressure while preserving overall benchmark
++// structure and IPC balance.
++static void contendedUse_icache(uint32_t n, int posters, int waiters) {
+   LifoSemImpl<std::atomic> sem;
+ 
+   std::vector<std::thread> threads;
+@@ -285,12 +386,33 @@
+     }
+     for (int t = 0; t < posters; ++t) {
+       threads.emplace_back([=, &sem, &go] {
++        ChainNode* hotPos = &hotNodes[t % kHotLen];
++        uint64_t acc = (uint64_t)t ^ 0xdeadbeefULL;
++
+         while (!go.load()) {
+           std::this_thread::yield();
+         }
+         for (uint32_t i = t; i < n; i += posters) {
++          hotPos = hotPos->next;
++          uint64_t payload = (uint64_t)(uintptr_t)hotPos;
++          int idx = (int)(payload & 0xFF);
++          // Rotate among three large-footprint switch functions so the
++          // instruction working set spans all three, thrashing L1i.
++          switch (i % 3) {
++            case 0:
++              acc = switchD(acc, idx);
++              break;
++            case 1:
++              acc = switchE(acc, idx);
++              break;
++            case 2:
++              acc = switchF(acc, idx);
++              break;
++          }
+           sem.post();
+         }
++        folly::doNotOptimizeAway(acc);
++        folly::doNotOptimizeAway(hotPos);
+       });
+     }
+   }
+@@ -301,8 +423,43 @@
+   }
+ }
+ 
++} // namespace
++
++static void contendedUse(uint32_t n, int posters, int waiters) {
++  LifoSemImpl<std::atomic> sem;
++
++  std::vector<std::thread> threads;
++  std::atomic<bool> go(false);
++
++  BENCHMARK_SUSPEND {
++    for (int t = 0; t < waiters; ++t) {
++      threads.emplace_back([=, &sem] {
++        for (uint32_t i = t; i < n; i += waiters) {
++          sem.wait();
++        }
++      });
++    }
++    for (int t = 0; t < posters; ++t) {
++      threads.emplace_back([=, &sem, &go] {
++        while (!go.load()) {
++          std::this_thread::yield();
++        }
++        for (uint32_t i = t; i < n; i += posters) {
++          sem.post();
++        }
++      });
++    }
++  }
++
++  go.store(true);
++  for (auto& thr : threads) {
++    thr.join();
++  }
++}
++
+ BENCHMARK_DRAW_LINE();
+ BENCHMARK_NAMED_PARAM(contendedUse, 1_to_1, 1, 1)
++BENCHMARK_NAMED_PARAM(contendedUse_icache, 32_to_32_icache, 32, 32)
+ BENCHMARK_NAMED_PARAM(contendedUse, 1_to_4, 1, 4)
+ BENCHMARK_NAMED_PARAM(contendedUse, 1_to_32, 1, 32)
+ BENCHMARK_NAMED_PARAM(contendedUse, 4_to_1, 4, 1)

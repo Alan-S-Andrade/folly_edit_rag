@@ -1,0 +1,19 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -302,13 +302,13 @@
+             size_t iter_idx = outer_iter * kInnerIters + j;
+             switch (iter_idx % 3) {
+               case 0:
+-                acc = switchA(acc, payload & 0xFF);
++                acc = switchA(acc, (payload >> 6) & 0xFF);
+                 break;
+               case 1:
+-                acc = switchB(acc, payload & 0xFF);
++                acc = switchB(acc, (payload >> 6) & 0xFF);
+                 break;
+               case 2:
+-                acc = switchC(acc, payload & 0xFF);
++                acc = switchC(acc, (payload >> 6) & 0xFF);
+                 break;
+             }
+ 

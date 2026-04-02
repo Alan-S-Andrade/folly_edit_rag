@@ -1,0 +1,63 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -140,8 +140,60 @@
+   }
+ }
+ 
++// Variant of contendedUse with batched post/wait bursts to reduce per-operation
++// synchronization overhead and shorten the critical dependency chain, giving the
++// CPU more independent work per iteration and raising IPC relative to the
++// 32_to_1000 baseline.
++static void contendedUseBatchedPost(
++    uint32_t n, int posters, int waiters, int batchSize) {
++  LifoSemImpl<std::atomic> sem;
++
++  std::vector<std::thread> threads;
++  std::atomic<bool> go(false);
++
++  BENCHMARK_SUSPEND {
++    for (int t = 0; t < waiters; ++t) {
++      threads.emplace_back([=, &sem] {
++        uint32_t count = 0;
++        for (uint32_t i = t; i < n; i += waiters) {
++          sem.wait();
++          ++count;
++          // Periodically do a tryWait to introduce a cheap non-blocking
++          // branch that breaks the pure wait-chain dependency depth.
++          if (count % static_cast<uint32_t>(batchSize) == 0) {
++            sem.tryWait();
++          }
++        }
++      });
++    }
++    for (int t = 0; t < posters; ++t) {
++      threads.emplace_back([=, &sem, &go] {
++        while (!go.load()) {
++          std::this_thread::yield();
++        }
++        int localBatch = 0;
++        for (uint32_t i = t; i < n; i += posters) {
++          sem.post();
++          ++localBatch;
++          // Post an extra token every batchSize posts to keep waiters fed
++          // and reduce waiter blocking stalls.
++          if (localBatch % batchSize == 0) {
++            sem.post();
++          }
++        }
++      });
++    }
++  }
++
++  go.store(true);
++  for (auto& thr : threads) {
++    thr.join();
++  }
++}
++
+ BENCHMARK_DRAW_LINE();
+ BENCHMARK_NAMED_PARAM(contendedUse, 1_to_1, 1, 1)
++BENCHMARK_NAMED_PARAM(contendedUseBatchedPost, 32_to_1000_batched, 32, 1000, 8)
+ BENCHMARK_NAMED_PARAM(contendedUse, 1_to_4, 1, 4)
+ BENCHMARK_NAMED_PARAM(contendedUse, 1_to_32, 1, 32)
+ BENCHMARK_NAMED_PARAM(contendedUse, 4_to_1, 4, 1)

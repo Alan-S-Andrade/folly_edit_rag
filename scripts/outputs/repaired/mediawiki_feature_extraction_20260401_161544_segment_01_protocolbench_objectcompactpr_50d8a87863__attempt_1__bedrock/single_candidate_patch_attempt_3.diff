@@ -1,0 +1,37 @@
+--- a/thrift/lib/cpp2/test/ProtocolBench.cpp
++++ b/thrift/lib/cpp2/test/ProtocolBench.cpp
+@@ -122,6 +122,34 @@
+       Serializer::deserialize(buf.get(), data);
+       folly::doNotOptimizeAway(data);
+     }
++  }
++  susp.rehire();
++}
++
++// Variant: re-parse the LargeSetInt object a second time per iteration,
++// interleaved with an unpredictable conditional on the first result's size.
++// This doubles the decode work and introduces a data-dependent branch that
++// the predictor cannot fully absorb, lowering IPC toward the target range.
++BENCHMARK(ObjectCompactProtocol_read_LargeSetInt_TwiceWithBranch, iters) {
++  folly::BenchmarkSuspender susp;
++  auto strct = create<LargeSetInt>();
++  folly::IOBufQueue q;
++  CompactSerializer::serialize(strct, &q);
++  auto buf = q.move();
++  buf->coalesce();
++  susp.dismiss();
++
++  while (iters--) {
++    auto obj1 = protocol::parseObject<
++        GetReader<CompactSerializer>>(*buf);
++    // Unpredictable branch on parsed content to prevent hoisting.
++    if (obj1.size() & 1) {
++      folly::doNotOptimizeAway(obj1);
++    }
++    auto obj2 = protocol::parseObject<
++        GetReader<CompactSerializer>>(*buf);
++    folly::doNotOptimizeAway(obj1);
++    folly::doNotOptimizeAway(obj2);
+   }
+   susp.rehire();
+ }

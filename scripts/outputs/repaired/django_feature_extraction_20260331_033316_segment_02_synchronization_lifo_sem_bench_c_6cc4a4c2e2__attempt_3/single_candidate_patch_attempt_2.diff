@@ -1,0 +1,56 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -28,7 +28,9 @@
+ 
+ BENCHMARK(lifo_sem_pingpong, iters) {
+   LifoSem a;
+-  LifoSem b;
++  LifoSem b; // Declare 'b' here
++  b.post();
++  b.post();
+   auto thr = std::thread([&] {
+     for (size_t i = 0; i < iters; ++i) {
+       a.wait();
+@@ -44,6 +46,7 @@
+ 
+ BENCHMARK(lifo_sem_oneway, iters) {
+   LifoSem a;
++  a.post();
+   auto thr = std::thread([&] {
+     for (size_t i = 0; i < iters; ++i) {
+       a.wait();
+@@ -180,21 +183,23 @@
+                                                       CASES_8(v, c, 240)       \
+                                                           CASES_8(v, c, 248)
+ 
+-__attribute__((noinline)) uint64_t switchA(uint64_t v, int c) {
++// Removed __attribute__((noinline)) to allow the compiler to inline these functions
++// and reduce call overhead, improving IPC.
++uint64_t switchA(uint64_t v, int c) {
+   switch (c) {
+     CASES_256(v, c);
+     default:;
+   }
+   return v;
+ }
+-__attribute__((noinline)) uint64_t switchB(uint64_t v, int c) {
++uint64_t switchB(uint64_t v, int c) {
+   switch (c) {
+     CASES_256(v, c * 3);
+     default:;
+   }
+   return v;
+ }
+-__attribute__((noinline)) uint64_t switchC(uint64_t v, int c) {
++uint64_t switchC(uint64_t v, int c) {
+   switch (c) {
+     CASES_256(v, c * 5);
+     default:;
+@@ -305,6 +310,7 @@
+ 
+ BENCHMARK_DRAW_LINE();
+ BENCHMARK_NAMED_PARAM(contendedUse, 1_to_1, 1, 1)
++BENCHMARK_NAMED_PARAM(contendedUse_v2, 1_to_1_complex, 1, 1) // New benchmark registration
+ BENCHMARK_NAMED_PARAM(contendedUse, 1_to_4, 1, 4)
+ BENCHMARK_NAMED_PARAM(contendedUse, 1_to_32, 1, 32)
+ BENCHMARK_NAMED_PARAM(contendedUse, 4_to_1, 4, 1)

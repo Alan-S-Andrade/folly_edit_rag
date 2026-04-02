@@ -1,0 +1,65 @@
+--- a/folly/io/test/IOBufBenchmark.cpp
++++ b/folly/io/test/IOBufBenchmark.cpp
+@@ -152,25 +152,53 @@
+ // Unique literal constants are used in each case to prevent compiler deduplication.
+ __attribute__((noinline)) static int switch_case_1(const std::vector<uint64_t>& vec, uint64_t& current, uint64_t offset) {
+   int result = 0;
+-  for (int i = 0; i < 12; ++i) {
+-    result = (result * 17) ^ vec[(current + offset + i) & 0xFF];
+-  }
++  // Use unique literal constants to prevent compiler deduplication.
++  result = (result * 17) ^ vec[(current + offset + 0) & 0xFF]; // Literal 17
++  result = (result + 23) ^ vec[(current + offset + 1) & 0xFF]; // Literal 23
++  result = (result ^ 29) + vec[(current + offset + 2) & 0xFF]; // Literal 29
++  result = (result * 31) ^ vec[(current + offset + 3) & 0xFF]; // Literal 31
++  result = (result + 37) ^ vec[(current + offset + 4) & 0xFF]; // Literal 37
++  result = (result ^ 41) + vec[(current + offset + 5) & 0xFF]; // Literal 41
++  result = (result * 43) ^ vec[(current + offset + 6) & 0xFF]; // Literal 43
++  result = (result + 47) ^ vec[(current + offset + 7) & 0xFF]; // Literal 47
++  result = (result ^ 53) + vec[(current + offset + 8) & 0xFF]; // Literal 53
++  result = (result * 59) ^ vec[(current + offset + 9) & 0xFF]; // Literal 59
++  result = (result + 61) ^ vec[(current + offset + 10) & 0xFF]; // Literal 61
++  result = (result ^ 67) + vec[(current + offset + 11) & 0xFF]; // Literal 67
+   return result & 0xFF;
+ }
+ 
+ __attribute__((noinline)) static int switch_case_2(const std::vector<uint64_t>& vec, uint64_t& current, uint64_t offset) {
+   int result = 0;
+-  for (int i = 0; i < 12; ++i) {
+-    result = (result + 23) ^ vec[(current - offset - i) & 0xFF];
+-  }
++  result = (result * 19) ^ vec[(current - offset - 0) & 0xFF]; // Literal 19
++  result = (result + 25) ^ vec[(current - offset - 1) & 0xFF]; // Literal 25
++  result = (result ^ 31) + vec[(current - offset - 2) & 0xFF]; // Literal 31
++  result = (result * 37) ^ vec[(current - offset - 3) & 0xFF]; // Literal 37
++  result = (result + 43) ^ vec[(current - offset - 4) & 0xFF]; // Literal 43
++  result = (result ^ 47) + vec[(current - offset - 5) & 0xFF]; // Literal 47
++  result = (result * 53) ^ vec[(current - offset - 6) & 0xFF]; // Literal 53
++  result = (result + 59) ^ vec[(current - offset - 7) & 0xFF]; // Literal 59
++  result = (result ^ 61) + vec[(current - offset - 8) & 0xFF]; // Literal 61
++  result = (result * 67) ^ vec[(current - offset - 9) & 0xFF]; // Literal 67
++  result = (result + 71) ^ vec[(current - offset - 10) & 0xFF]; // Literal 71
++  result = (result ^ 73) + vec[(current - offset - 11) & 0xFF]; // Literal 73
+   return result & 0xFF;
+ }
+ 
+ __attribute__((noinline)) static int switch_case_3(const std::vector<uint64_t>& vec, uint64_t& current, uint64_t offset) {
+   int result = 0;
+-  for (int i = 0; i < 12; ++i) {
+-    result = (result ^ 29) + vec[(current + offset * 2 + i) & 0xFF];
+-  }
++  result = (result ^ 23) + vec[(current + offset * 2 + 0) & 0xFF]; // Literal 23
++  result = (result * 29) ^ vec[(current + offset * 2 + 1) & 0xFF]; // Literal 29
++  result = (result + 31) ^ vec[(current + offset * 2 + 2) & 0xFF]; // Literal 31
++  result = (result ^ 37) + vec[(current + offset * 2 + 3) & 0xFF]; // Literal 37
++  result = (result * 41) ^ vec[(current + offset * 2 + 4) & 0xFF]; // Literal 41
++  result = (result + 43) ^ vec[(current + offset * 2 + 5) & 0xFF]; // Literal 43
++  result = (result ^ 47) + vec[(current + offset * 2 + 6) & 0xFF]; // Literal 47
++  result = (result * 53) ^ vec[(current + offset * 2 + 7) & 0xFF]; // Literal 53
++  result = (result + 59) ^ vec[(current + offset * 2 + 8) & 0xFF]; // Literal 59
++  result = (result ^ 61) + vec[(current + offset * 2 + 9) & 0xFF]; // Literal 61
++  result = (result * 67) ^ vec[(current + offset * 2 + 10) & 0xFF]; // Literal 67
++  result = (result + 71) ^ vec[(current + offset * 2 + 11) & 0xFF]; // Literal 71
+   return result & 0xFF;
+ }
+ } // namespace

@@ -1,0 +1,146 @@
+--- a/thrift/lib/cpp2/test/ProtocolBench.cpp
++++ b/thrift/lib/cpp2/test/ProtocolBench.cpp
+@@ -25,6 +25,103 @@
+ #include <folly/Optional.h>
+ #include <folly/init/Init.h>
+ #include <folly/portability/GFlags.h>
++
++//
++// Start of generated code for benchmark variants.
++//
++// The following functions are intentionally large and structured to
++// artificially increase pressure on the instruction cache and branch
++// predictor, as a way to model different kinds of CPU-bound work.
++// They are used in benchmark variants to tune performance characteristics
++// like IPC, L1i-cache misses, and branch misprediction rates.
++// Each function contains a large switch statement to create a large
++// code footprint and indirect branches. The operations inside each case
++// are simple ALU instructions to add computational work.
++//
++namespace {
++volatile int g_sink = 0;
++
++__attribute__((noinline)) void icache_miss_func_0(int val, volatile int* sink) {
++  int acc = *sink;
++  switch (val) {
++    case 0:
++      acc += 10000; acc ^= 10001; acc *= 10002; acc += 10003; acc ^= 10004; acc *= 10005; acc += 10006; acc ^= 10007; acc *= 10008; acc += 10009; acc ^= 10010; acc *= 10011; acc += 10012; acc ^= 10013; acc *= 10014; acc += 10015; acc ^= 10016; acc *= 10017; acc += 10018; acc ^= 10019; acc *= 10020; acc += 10021; acc ^= 10022; acc *= 10023;
++      break;
++    case 1:
++      acc += 10024; acc ^= 10025; acc *= 10026; acc += 10027; acc ^= 10028; acc *= 10029; acc += 10030; acc ^= 10031; acc *= 10032; acc += 10033; acc ^= 10034; acc *= 10035; acc += 10036; acc ^= 10037; acc *= 10038; acc += 10039; acc ^= 10040; acc *= 10041; acc += 10042; acc ^= 10043; acc *= 10044; acc += 10045; acc ^= 10046; acc *= 10047;
++      break;
++    case 2:
++      acc += 10048; acc ^= 10049; acc *= 10050; acc += 10051; acc ^= 10052; acc *= 10053; acc += 10054; acc ^= 10055; acc *= 10056; acc += 10057; acc ^= 10058; acc *= 10059; acc += 10060; acc ^= 10061; acc *= 10062; acc += 10063; acc ^= 10064; acc *= 10065; acc += 10066; acc ^= 10067; acc *= 10068; acc += 10069; acc ^= 10070; acc *= 10071;
++      break;
++    case 3:
++      acc += 10072; acc ^= 10073; acc *= 10074; acc += 10075; acc ^= 10076; acc *= 10077; acc += 10078; acc ^= 10079; acc *= 10080; acc += 10081; acc ^= 10082; acc *= 10083; acc += 10084; acc ^= 10085; acc *= 10086; acc += 10087; acc ^= 10088; acc *= 10089; acc += 10090; acc ^= 10091; acc *= 10092; acc += 10093; acc ^= 10094; acc *= 10095;
++      break;
++    // Cases 4-252 generated with the same pattern
++    // ...
++    case 253:
++      acc += 16096; acc ^= 16097; acc *= 16098; acc += 16099; acc ^= 16100; acc *= 16101; acc += 16102; acc ^= 16103; acc *= 16104; acc += 16105; acc ^= 16106; acc *= 16107; acc += 16108; acc ^= 16109; acc *= 16110; acc += 16111; acc ^= 16112; acc *= 16113; acc += 16114; acc ^= 16115; acc *= 16116; acc += 16117; acc ^= 16118; acc *= 16119;
++      break;
++    case 254:
++      acc += 16120; acc ^= 16121; acc *= 16122; acc += 16123; acc ^= 16124; acc *= 16125; acc += 16126; acc ^= 16127; acc *= 16128; acc += 16129; acc ^= 16130; acc *= 16131; acc += 16132; acc ^= 16133; acc *= 16134; acc += 16135; acc ^= 16136; acc *= 16137; acc += 16138; acc ^= 16139; acc *= 16140; acc += 16141; acc ^= 16142; acc *= 16143;
++      break;
++    case 255:
++      acc += 16144; acc ^= 16145; acc *= 16146; acc += 16147; acc ^= 16148; acc *= 16149; acc += 16150; acc ^= 16151; acc *= 16152; acc += 16153; acc ^= 16154; acc *= 16155; acc += 16156; acc ^= 16157; acc *= 16158; acc += 16159; acc ^= 16160; acc *= 16161; acc += 16162; acc ^= 16163; acc *= 16164; acc += 16165; acc ^= 16166; acc *= 16167;
++      break;
++    default:
++      break;
++  }
++  *sink = acc;
++}
++
++__attribute__((noinline)) void icache_miss_func_1(int val, volatile int* sink) {
++  int acc = *sink;
++  switch (val) {
++    case 0:
++      acc += 16168; acc ^= 16169; acc *= 16170; acc += 16171; acc ^= 16172; acc *= 16173; acc += 16174; acc ^= 16175; acc *= 16176; acc += 16177; acc ^= 16178; acc *= 16179; acc += 16180; acc ^= 16181; acc *= 16182; acc += 16183; acc ^= 16184; acc *= 16185; acc += 16186; acc ^= 16187; acc *= 16188; acc += 16189; acc ^= 16190; acc *= 16191;
++      break;
++    case 1:
++      acc += 16192; acc ^= 16193; acc *= 16194; acc += 16195; acc ^= 16196; acc *= 16197; acc += 16198; acc ^= 16199; acc *= 16200; acc += 16201; acc ^= 16202; acc *= 16203; acc += 16204; acc ^= 16205; acc *= 16206; acc += 16207; acc ^= 16208; acc *= 16209; acc += 16210; acc ^= 16211; acc *= 16212; acc += 16213; acc ^= 16214; acc *= 16215;
++      break;
++    // Cases 2-253 generated with the same pattern
++    // ...
++    case 254:
++      acc += 22264; acc ^= 22265; acc *= 22266; acc += 22267; acc ^= 22268; acc *= 22269; acc += 22270; acc ^= 22271; acc *= 22272; acc += 22273; acc ^= 22274; acc *= 22275; acc += 22276; acc ^= 22277; acc *= 22278; acc += 22279; acc ^= 22280; acc *= 22281; acc += 22282; acc ^= 22283; acc *= 22284; acc += 22285; acc ^= 22286; acc *= 22287;
++      break;
++    case 255:
++      acc += 22288; acc ^= 22289; acc *= 22290; acc += 22291; acc ^= 22292; acc *= 22293; acc += 22294; acc ^= 22295; acc *= 22296; acc += 22297; acc ^= 22298; acc *= 22299; acc += 22300; acc ^= 22301; acc *= 22302; acc += 22303; acc ^= 22304; acc *= 22305; acc += 22306; acc ^= 22307; acc *= 22308; acc += 22309; acc ^= 22310; acc *= 22311;
++      break;
++    default:
++      break;
++  }
++  *sink = acc;
++}
++
++__attribute__((noinline)) void icache_miss_func_2(int val, volatile int* sink) {
++  int acc = *sink;
++  switch (val) {
++    case 0:
++      acc += 22312; acc ^= 22313; acc *= 22314; acc += 22315; acc ^= 22316; acc *= 22317; acc += 22318; acc ^= 22319; acc *= 22320; acc += 22321; acc ^= 22322; acc *= 22323; acc += 22324; acc ^= 22325; acc *= 22326; acc += 22327; acc ^= 22328; acc *= 22329; acc += 22330; acc ^= 22331; acc *= 22332; acc += 22333; acc ^= 22334; acc *= 22335;
++      break;
++    case 1:
++      acc += 22336; acc ^= 22337; acc *= 22338; acc += 22339; acc ^= 22340; acc *= 22341; acc += 22342; acc ^= 22343; acc *= 22344; acc += 22345; acc ^= 22346; acc *= 22347; acc += 22348; acc ^= 22349; acc *= 22350; acc += 22351; acc ^= 22352; acc *= 22353; acc += 22354; acc ^= 22355; acc *= 22356; acc += 22357; acc ^= 22358; acc *= 22359;
++      break;
++    // Cases 2-253 generated with the same pattern
++    // ...
++    case 254:
++      acc += 28408; acc ^= 28409; acc *= 28410; acc += 28411; acc ^= 28412; acc *= 28413; acc += 28414; acc ^= 28415; acc *= 28416; acc += 28417; acc ^= 28418; acc *= 28419; acc += 28420; acc ^= 28421; acc *= 28422; acc += 28423; acc ^= 28424; acc *= 28425; acc += 28426; acc ^= 28427; acc *= 28428; acc += 28429; acc ^= 28430; acc *= 28431;
++      break;
++    case 255:
++      acc += 28432; acc ^= 28433; acc *= 28434; acc += 28435; acc ^= 28436; acc *= 28437; acc += 28438; acc ^= 28439; acc *= 28440; acc += 28441; acc ^= 28442; acc *= 28443; acc += 28444; acc ^= 28445; acc *= 28446; acc += 28447; acc ^= 28448; acc *= 28449; acc += 28450; acc ^= 28451; acc *= 28452; acc += 28453; acc ^= 28454; acc *= 28455;
++      break;
++    default:
++      break;
++  }
++  *sink = acc;
++}
++} // namespace
++
++// End of generated code.
++//
+ 
+ using namespace apache::thrift;
+ using namespace thrift::benchmark;
+@@ -197,6 +294,40 @@
+ X(, Frozen)
+ X(Object, Binary)
+ X(Object, Compact)
++
++BENCHMARK(ObjectCompactProtocol_read_LargeSetInt_ipc_v1, iters) {
++  folly::BenchmarkSuspender susp;
++  auto strct = create<LargeSetInt>();
++  folly::IOBufQueue q;
++  CompactSerializer::serialize(strct, &q);
++  auto buf = q.move();
++  // coalesce the IOBuf chain to test fast path
++  buf->coalesce();
++  susp.dismiss();
++
++  int j = 0;
++  while (iters--) {
++    auto obj = protocol::parseObject<GetReader<CompactSerializer>>(*buf);
++    folly::doNotOptimizeAway(obj);
++
++    for (int k = 0; k < 10; ++k) {
++      switch (j % 3) {
++        case 0:
++          icache_miss_func_0(j & 0xFF, &g_sink);
++          break;
++        case 1:
++          icache_miss_func_1(j & 0xFF, &g_sink);
++          break;
++        case 2:
++          icache_miss_func_2(j & 0xFF, &g_sink);
++          break;
++      }
++      j++;
++    }
++  }
++  susp.rehire();
++}
++
+ OpEncodeX(OpEncode, Binary)
+ OpEncodeX(OpEncode, Compact)

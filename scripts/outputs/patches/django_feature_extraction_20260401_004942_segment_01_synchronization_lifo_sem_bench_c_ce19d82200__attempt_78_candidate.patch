@@ -1,0 +1,14 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -250,6 +250,11 @@
+               break;
+           }
+ 
++          // The cold path access is intentionally made conditional to avoid
++          // becoming a primary bottleneck in the original benchmark.
++          // The original code `auto coldMask = -uint64_t(i % 8 == 0);` made this
++          // conditional access even more infrequent. We are preserving this
++          // structure as per the instruction to keep the shape intact.
+           auto coldMask = -uint64_t(i % 8 == 0);
+           coldPos = (ChainNode*)(((uintptr_t)coldPos->next & coldMask) |
+                                  ((uintptr_t)coldPos & ~coldMask));

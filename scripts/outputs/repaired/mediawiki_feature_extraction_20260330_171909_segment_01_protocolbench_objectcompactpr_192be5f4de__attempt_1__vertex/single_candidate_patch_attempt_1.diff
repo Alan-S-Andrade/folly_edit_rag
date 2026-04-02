@@ -1,0 +1,206 @@
+--- a/thrift/lib/cpp2/test/ProtocolBench.cpp
++++ b/thrift/lib/cpp2/test/ProtocolBench.cpp
+@@ -28,6 +28,152 @@
+ 
+ using namespace apache::thrift;
+ using namespace thrift::benchmark;
++
++namespace {
++#define OPS_10(V, C1, C2, C3, C4) \
++  V = (V ^ C1) + 2;               \
++  V = (V * C2) - 1;               \
++  V = (V ^ (C3 + V)) * 3;         \
++  V = V + (C4 - V);               \
++  V = (V * C1) ^ 4;               \
++  V = (V + C2) * 5;               \
++  V = (V - C3) ^ V;               \
++  V = (V * C4) + 6;               \
++  V = (V ^ (C1 + 2)) * 7;         \
++  V = V + (C2 - 3);
++
++#define OPS_30(V, C1, C2, C3, C4) \
++  OPS_10(V, C1, C2, C3, C4)       \
++  OPS_10(V, C2, C3, C4, C1)       \
++  OPS_10(V, C3, C4, C1, C2)
++
++__attribute__((noinline)) int stress_func_1(int v, int i) {
++  switch (i) {
++#define CASE(N) \
++  case N:       \
++    OPS_30(v, N + 0x1100, N + 0x2200, N + 0x3300, N + 0x4400); \
++    break;
++#define C4(N) \
++  CASE(N)     \
++  CASE(N + 1) \
++  CASE(N + 2) \
++  CASE(N + 3)
++#define C16(N) \
++  C4(N)        \
++  C4(N + 4)    \
++  C4(N + 8)    \
++  C4(N + 12)
++#define C64(N) \
++  C16(N)       \
++  C16(N + 16)  \
++  C16(N + 32)  \
++  C16(N + 48)
++#define C256(N) \
++  C64(N)        \
++  C64(N + 64)   \
++  C64(N + 128)  \
++  C64(N + 192)
++    C256(0)
++#undef CASE
++#undef C4
++#undef C16
++#undef C64
++#undef C256
++  }
++  return v;
++}
++
++__attribute__((noinline)) int stress_func_2(int v, int i) {
++  switch (i) {
++#define CASE(N) \
++  case N:       \
++    OPS_30(v, N + 0x5500, N + 0x6600, N + 0x7700, N + 0x8800); \
++    break;
++#define C4(N) \
++  CASE(N)     \
++  CASE(N + 1) \
++  CASE(N + 2) \
++  CASE(N + 3)
++#define C16(N) \
++  C4(N)        \
++  C4(N + 4)    \
++  C4(N + 8)    \
++  C4(N + 12)
++#define C64(N) \
++  C16(N)       \
++  C16(N + 16)  \
++  C16(N + 32)  \
++  C16(N + 48)
++#define C256(N) \
++  C64(N)        \
++  C64(N + 64)   \
++  C64(N + 128)  \
++  C64(N + 192)
++    C256(0)
++#undef CASE
++#undef C4
++#undef C16
++#undef C64
++#undef C256
++  }
++  return v;
++}
++
++__attribute__((noinline)) int stress_func_3(int v, int i) {
++  switch (i) {
++#define CASE(N) \
++  case N:       \
++    OPS_30(v, N + 0x9900, N + 0xaa00, N + 0xbb00, N + 0xcc00); \
++    break;
++#define C4(N) \
++  CASE(N)     \
++  CASE(N + 1) \
++  CASE(N + 2) \
++  CASE(N + 3)
++#define C16(N) \
++  C4(N)        \
++  C4(N + 4)    \
++  C4(N + 8)    \
++  C4(N + 12)
++#define C64(N) \
++  C16(N)       \
++  C16(N + 16)  \
++  C16(N + 32)  \
++  C16(N + 48)
++#define C256(N) \
++  C64(N)        \
++  C64(N + 64)   \
++  C64(N + 128)  \
++  C64(N + 192)
++    C256(0)
++#undef CASE
++#undef C4
++#undef C16
++#undef C64
++#undef C256
++  }
++  return v;
++}
++#undef OPS_10
++#undef OPS_30
++
++struct StressState {
++  std::vector<int> chase_arr;
++  StressState() {
++    constexpr int kChaseSize = 4096;
++    chase_arr.resize(kChaseSize);
++    for (int i = 0; i < kChaseSize; ++i) {
++      chase_arr[i] = i;
++    }
++
++    uint64_t state = 0xdeadbeefcafebabe;
++    for (int i = kChaseSize - 1; i > 0; --i) {
++      state = state * 6364136223846793005ULL + 1442695040888963407ULL;
++      std::swap(chase_arr[i], chase_arr[state % (i + 1)]);
++    }
++  }
++};
++} // namespace
+ 
+ template <class>
+ struct SerializerTraits;
+@@ -200,6 +346,50 @@
+ OpEncodeX(OpEncode, Binary)
+ OpEncodeX(OpEncode, Compact)
+ 
++BENCHMARK(ObjectCompactProtocol_read_LargeSetInt_ipc_v1, iters) {
++  folly::BenchmarkSuspender susp;
++  using Serializer = CompactSerializer;
++  using Struct = LargeSetInt;
++  using Reader = GetReader<Serializer>;
++
++  auto strct = create<Struct>();
++  folly::IOBufQueue q;
++  Serializer::serialize(strct, &q);
++  auto buf = q.move();
++  buf->coalesce();
++
++  static StressState stress_state; // initialized once
++  int chase_idx = 0;
++  int accum = 0;
++  unsigned int j = 0;
++
++  susp.dismiss();
++
++  while (iters--) {
++    auto obj = protocol::parseObject<Reader>(*buf);
++    folly::doNotOptimizeAway(obj);
++
++    chase_idx = stress_state.chase_arr[chase_idx];
++    auto payload_ptr = reinterpret_cast<const uint8_t*>(buf->data());
++    int switch_idx = payload_ptr[chase_idx % buf->length()];
++
++    switch (j++ % 3) {
++      case 0:
++        accum = stress_func_1(accum, switch_idx);
++        break;
++      case 1:
++        accum = stress_func_2(accum, switch_idx);
++        break;
++      default:
++        accum = stress_func_3(accum, switch_idx);
++        break;
++    }
++  }
++
++  folly::doNotOptimizeAway(accum);
++  susp.rehire();
++}
++
+ int main(int argc, char** argv) {
+   folly::Init init(&argc, &argv);
+   folly::runBenchmarks();

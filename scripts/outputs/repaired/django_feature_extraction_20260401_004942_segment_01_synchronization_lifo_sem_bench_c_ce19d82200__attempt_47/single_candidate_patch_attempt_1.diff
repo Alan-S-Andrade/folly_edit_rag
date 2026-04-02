@@ -1,0 +1,13 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -250,6 +250,10 @@
+               break;
+           }
+ 
++          // Introduce a small, localized bit of work to improve cache locality and
++          // reduce stall cycles. The bitwise operations here are cheap and
++          // effectively toggle between two pointers, subtly affecting memory
++          // access patterns without drastically changing the overall structure.
+           auto coldMask = -uint64_t(i % 8 == 0);
+           coldPos = (ChainNode*)(((uintptr_t)coldPos->next & coldMask) |
+                                  ((uintptr_t)coldPos & ~coldMask));

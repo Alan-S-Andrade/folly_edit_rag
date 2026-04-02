@@ -1,0 +1,31 @@
+--- a/thrift/lib/cpp2/test/ProtocolBench.cpp
++++ b/thrift/lib/cpp2/test/ProtocolBench.cpp
+@@ -270,7 +270,6 @@
+   }
+   PtrChaseNode* chase_ptr = &chase_array[0];
+   uintptr_t dependent_val = 0;
+-  size_t j = 0;
+ 
+   susp.dismiss();
+ 
+@@ -279,18 +278,8 @@
+     apache::thrift::SimpleJSONSerializer::deserialize(buf.get(), data);
+     folly::doNotOptimizeAway(data);
+ 
+-    uint64_t p = chase_ptr->payload;
+-    switch (j++ % 3) {
+-      case 0:
+-        func_impl<0>(dependent_val, p);
+-        break;
+-      case 1:
+-        func_impl<1>(dependent_val, p);
+-        break;
+-      case 2:
+-        func_impl<2>(dependent_val, p);
+-        break;
+-    }
++    uint64_t p = chase_ptr->payload ^ dependent_val;
++    func_impl<0>(dependent_val, p);
+     chase_ptr = chase_ptr->next;
+   }
+   folly::doNotOptimizeAway(dependent_val);

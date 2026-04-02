@@ -1,0 +1,96 @@
+--- a/thrift/lib/cpp2/test/ProtocolBench.cpp
++++ b/thrift/lib/cpp2/test/ProtocolBench.cpp
+@@ -186,9 +186,9 @@
+   M(Prefix, proto, ComplexStruct)      \
+   M(Prefix, proto, ComplexUnion)
+ 
+-#define X(Prefix, proto) APPLY(X2, Prefix, proto)              
+-
+-#define OpEncodeX(Prefix, proto) APPLY(OpEncodeX2, Prefix, proto)              
++#define X(Prefix, proto) APPLY(X2, Prefix, proto)
++
++#define OpEncodeX(Prefix, proto) APPLY(OpEncodeX2, Prefix, proto)
+ 
+ X(, Binary)
+ X(, Compact)
+@@ -200,6 +200,80 @@
+ OpEncodeX(OpEncode, Binary)
+ OpEncodeX(OpEncode, Compact)
+ 
++namespace {
++
++FOLLY_NOINLINE int64_t process_for_ipc_v1(int32_t v) {
++  int32_t result = v;
++  // A few dependent operations
++  result = (result * 3) + (result >> 5);
++  result ^= 0xADDE;
++  if (result % 17 > 8) {
++    result -= 1;
++  }
++  return result;
++}
++
++FOLLY_NOINLINE int64_t process_for_ipc_v2(int32_t v) {
++  int32_t result = v;
++  // Mix of arithmetic and bitwise ops
++  result = (v + 99) * (v & 0xFF);
++  result = (result << 3) | (result >> 29);
++  if (result % 13 < 5) {
++    result += 7;
++  }
++  return result;
++}
++
++FOLLY_NOINLINE int64_t process_for_ipc_v3(int32_t v) {
++  int32_t result = v;
++  // Yet another pattern
++  for (int i = 0; i < 3; ++i) {
++    result = (result / ((result & 0xF) + 1)) ^ 0xBEEF;
++  }
++  if (result % 19 == 0) {
++    result = 0;
++  }
++  return result;
++}
++
++} // namespace
++
++BENCHMARK(SimpleJSONProtocol_read_UnorderedSetInt_v1, iters) {
++  folly::BenchmarkSuspender susp;
++  auto strct = create<UnorderedSetInt>();
++  folly::IOBufQueue q;
++  SimpleJSONSerializer::serialize(strct, &q);
++  auto buf = q.move();
++  buf->coalesce();
++  susp.dismiss();
++
++  while (iters--) {
++    UnorderedSetInt data;
++    SimpleJSONSerializer::deserialize(buf.get(), data);
++
++    if (data.a_ref()) {
++      int64_t sum = 0;
++      int i = 0;
++      for (const auto& val : *data.a_ref()) {
++        switch ((i++) % 3) {
++          case 0:
++            sum += process_for_ipc_v1(val);
++            break;
++          case 1:
++            sum += process_for_ipc_v2(val);
++            break;
++          default:
++            sum += process_for_ipc_v3(val);
++            break;
++        }
++      }
++      folly::doNotOptimizeAway(sum);
++    }
++    folly::doNotOptimizeAway(data);
++  }
++  susp.rehire();
++}
++
+ int main(int argc, char** argv) {
+   folly::Init init(&argc, &argv);
+   folly::runBenchmarks();

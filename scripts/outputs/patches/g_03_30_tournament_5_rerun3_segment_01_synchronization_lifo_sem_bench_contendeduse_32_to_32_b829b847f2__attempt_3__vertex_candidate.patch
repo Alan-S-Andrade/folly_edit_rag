@@ -1,0 +1,11 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -34,7 +34,7 @@
+   char pad[56];
+ };
+ 
+-static constexpr size_t kHotLen = 16384; // 1MB
++static constexpr size_t kHotLen = 65536; // 4MB
+ static std::unique_ptr<ChainNode[]> hotNodes;
+ 
+ static constexpr size_t kColdLen = 1u << 20; // 128MB

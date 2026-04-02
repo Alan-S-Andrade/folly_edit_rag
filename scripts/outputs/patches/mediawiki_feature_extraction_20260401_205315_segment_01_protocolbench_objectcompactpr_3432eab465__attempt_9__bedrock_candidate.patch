@@ -1,0 +1,38 @@
+--- a/thrift/lib/cpp2/test/ProtocolBench.cpp
++++ b/thrift/lib/cpp2/test/ProtocolBench.cpp
+@@ -200,6 +200,35 @@
+ OpEncodeX(OpEncode, Binary)
+ OpEncodeX(OpEncode, Compact)
+ 
++BENCHMARK(ObjectCompactProtocol_read_LargeSetInt_icache_pressure, iters) {
++  folly::BenchmarkSuspender susp;
++  auto strct = create<LargeSetInt>();
++  folly::IOBufQueue q;
++  CompactSerializer::serialize(strct, &q);
++  auto buf = q.move();
++  buf->coalesce();
++  // Build many distinct parse lambdas to thrash the instruction cache
++  static constexpr int kFanout = 64;
++  using ParseFn = std::function<void(folly::IOBuf*)>;
++  std::vector<ParseFn> parsers;
++  parsers.reserve(kFanout);
++  for (int i = 0; i < kFanout; ++i) {
++    parsers.emplace_back([i](folly::IOBuf* b) __attribute__((noinline)) {
++      auto obj = protocol::parseObject<CompactProtocolReader>(*b);
++      folly::doNotOptimizeAway(obj);
++      folly::doNotOptimizeAway(i);
++    });
++  }
++  susp.dismiss();
++
++  int idx = 0;
++  while (iters--) {
++    parsers[idx & (kFanout - 1)](buf.get());
++    ++idx;
++  }
++  susp.rehire();
++}
++
+ int main(int argc, char** argv) {
+   folly::Init init(&argc, &argv);
+   folly::runBenchmarks();

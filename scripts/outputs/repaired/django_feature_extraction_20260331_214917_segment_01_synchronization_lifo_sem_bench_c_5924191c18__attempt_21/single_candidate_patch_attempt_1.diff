@@ -1,0 +1,91 @@
+--- a/folly/synchronization/test/LifoSemBench.cpp
++++ b/folly/synchronization/test/LifoSemBench.cpp
+@@ -136,6 +136,16 @@
+   }
+ }
+ 
++// Helper macro to generate 7 ALU operations with unique constants based on offset_group
++#define ALU_OPS_7_BLOCK(v, c, case_val, offset_group) \
++  v = (v * (113 + offset_group)) + (uint64_t)c + (case_val + (offset_group * 10)); \
++  v = (v ^ (129 + offset_group + case_val)) + ((uint64_t)c * (131 + offset_group + case_val)); \
++  v = (v + (137 + offset_group + case_val)) * (((uint64_t)c | (141 + offset_group + case_val)) + 1); \
++  v = (v - (153 + offset_group + case_val)) ^ ((uint64_t)c + (159 * case_val + 1 + (offset_group * 10))); \
++  v = (v << ((case_val + (offset_group * 10)) % 7 + 1)) | (v >> ((case_val + (offset_group * 10)) % 5 + 1)) + ((uint64_t)c * (167 + offset_group + case_val)); \
++  v = (v & (171 + offset_group + case_val)) * ((uint64_t)c + (173 + offset_group + case_val)) - (179 + offset_group + case_val); \
++  v = (v + (183 + offset_group + case_val)) / ((v % (197 + offset_group)) + 1) + ((uint64_t)c ^ (189 + offset_group + case_val));
++
+ #define CASES_8(v, c, base)                                                    \
+   case base + 0:                                                               \
+     v = (v * 3) + (uint64_t)c + (base + 0);                                    \
+@@ -146,6 +156,8 @@
+     v = (v & (71 + (base + 0))) * ((uint64_t)c + (73 + (base + 0))) - (79 + (base + 0)); \
+     v = (v + (83 + (base + 0))) / ((v % 97) + 1) + ((uint64_t)c ^ (89 + (base + 0))); \
+     v = (v % (101 + (base + 0))) + (v | (103 + (base + 0))) * ((uint64_t)c - (107 + (base + 0))); \
++    ALU_OPS_7_BLOCK(v, c, (base + 0), 100)                                     \
++    ALU_OPS_7_BLOCK(v, c, (base + 0), 200)                                     \
+     break;                                                                     \
+   case base + 1:                                                               \
+     v = (v * 5) + (uint64_t)c + (base + 1);                                    \
+@@ -156,6 +168,8 @@
+     v = (v & (71 + (base + 1))) * ((uint64_t)c + (73 + (base + 1))) - (79 + (base + 1)); \
+     v = (v + (83 + (base + 1))) / ((v % 97) + 1) + ((uint64_t)c ^ (89 + (base + 1))); \
+     v = (v % (101 + (base + 1))) + (v | (103 + (base + 1))) * ((uint64_t)c - (107 + (base + 1))); \
++    ALU_OPS_7_BLOCK(v, c, (base + 1), 100)                                     \
++    ALU_OPS_7_BLOCK(v, c, (base + 1), 200)                                     \
+     break;                                                                     \
+   case base + 2:                                                               \
+     v = (v * 7) + (uint64_t)c + (base + 2);                                    \
+@@ -166,6 +180,8 @@
+     v = (v & (71 + (base + 2))) * ((uint64_t)c + (73 + (base + 2))) - (79 + (base + 2)); \
+     v = (v + (83 + (base + 2))) / ((v % 97) + 1) + ((uint64_t)c ^ (89 + (base + 2))); \
+     v = (v % (101 + (base + 2))) + (v | (103 + (base + 2))) * ((uint64_t)c - (107 + (base + 2))); \
++    ALU_OPS_7_BLOCK(v, c, (base + 2), 100)                                     \
++    ALU_OPS_7_BLOCK(v, c, (base + 2), 200)                                     \
+     break;                                                                     \
+   case base + 3:                                                               \
+     v = (v * 11) + (uint64_t)c + (base + 3);                                   \
+@@ -176,6 +192,8 @@
+     v = (v & (71 + (base + 3))) * ((uint64_t)c + (73 + (base + 3))) - (79 + (base + 3)); \
+     v = (v + (83 + (base + 3))) / ((v % 97) + 1) + ((uint64_t)c ^ (89 + (base + 3))); \
+     v = (v % (101 + (base + 3))) + (v | (103 + (base + 3))) * ((uint64_t)c - (107 + (base + 3))); \
++    ALU_OPS_7_BLOCK(v, c, (base + 3), 100)                                     \
++    ALU_OPS_7_BLOCK(v, c, (base + 3), 200)                                     \
+     break;                                                                     \
+   case base + 4:                                                               \
+     v = (v * 13) + (uint64_t)c + (base + 4);                                   \
+@@ -186,6 +204,8 @@
+     v = (v & (71 + (base + 4))) * ((uint64_t)c + (73 + (base + 4))) - (79 + (base + 4)); \
+     v = (v + (83 + (base + 4))) / ((v % 97) + 1) + ((uint64_t)c ^ (89 + (base + 4))); \
+     v = (v % (101 + (base + 4))) + (v | (103 + (base + 4))) * ((uint64_t)c - (107 + (base + 4))); \
++    ALU_OPS_7_BLOCK(v, c, (base + 4), 100)                                     \
++    ALU_OPS_7_BLOCK(v, c, (base + 4), 200)                                     \
+     break;                                                                     \
+   case base + 5:                                                               \
+     v = (v * 17) + (uint64_t)c + (base + 5);                                   \
+@@ -196,6 +216,8 @@
+     v = (v & (71 + (base + 5))) * ((uint64_t)c + (73 + (base + 5))) - (79 + (base + 5)); \
+     v = (v + (83 + (base + 5))) / ((v % 97) + 1) + ((uint64_t)c ^ (89 + (base + 5))); \
+     v = (v % (101 + (base + 5))) + (v | (103 + (base + 5))) * ((uint64_t)c - (107 + (base + 5))); \
++    ALU_OPS_7_BLOCK(v, c, (base + 5), 100)                                     \
++    ALU_OPS_7_BLOCK(v, c, (base + 5), 200)                                     \
+     break;                                                                     \
+   case base + 6:                                                               \
+     v = (v * 19) + (uint64_t)c + (base + 6);                                   \
+@@ -206,6 +228,8 @@
+     v = (v & (71 + (base + 6))) * ((uint64_t)c + (73 + (base + 6))) - (79 + (base + 6)); \
+     v = (v + (83 + (base + 6))) / ((v % 97) + 1) + ((uint64_t)c ^ (89 + (base + 6))); \
+     v = (v % (101 + (base + 6))) + (v | (103 + (base + 6))) * ((uint64_t)c - (107 + (base + 6))); \
++    ALU_OPS_7_BLOCK(v, c, (base + 6), 100)                                     \
++    ALU_OPS_7_BLOCK(v, c, (base + 6), 200)                                     \
+     break;                                                                     \
+   case base + 7:                                                               \
+     v = (v * 23) + (uint64_t)c + (base + 7);                                   \
+@@ -216,6 +240,8 @@
+     v = (v & (71 + (base + 7))) * ((uint64_t)c + (73 + (base + 7))) - (79 + (base + 7)); \
+     v = (v + (83 + (base + 7))) / ((v % 97) + 1) + ((uint64_t)c ^ (89 + (base + 7))); \
+     v = (v % (101 + (base + 7))) + (v | (103 + (base + 7))) * ((uint64_t)c - (107 + (base + 7))); \
++    ALU_OPS_7_BLOCK(v, c, (base + 7), 100)                                     \
++    ALU_OPS_7_BLOCK(v, c, (base + 7), 200)                                     \
+     break;
+ 
+ #define CASES_256(v, c)                                                        \
