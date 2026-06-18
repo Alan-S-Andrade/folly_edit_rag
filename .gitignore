@@ -1,2 +1,25 @@
-# Exclude files over 100MB (GitHub limit)
-scripts/outputs/compile_logs/mediawiki_feature_extraction_20260401_205315_segment_02_protocolbench_objectcompactpr_7fd5a37f69__attempt_7__vertex.json
+# Python bytecode
+__pycache__/
+*.py[cod]
+
+# ---------------------------------------------------------------------------
+# Raw pipeline scratch outputs: large and fully regenerable from a run.
+# The useful signal is normalized into scripts/data/successful_edits/ by
+# scripts/08_materialize_successful_edits.py and baked into the tuning set by
+# scripts/06_build_tuning_dataset.py, so these do not belong in git.
+# ---------------------------------------------------------------------------
+scripts/outputs/compile_logs/
+scripts/outputs/patches/
+scripts/outputs/repaired/
+scripts/outputs/runs/
+
+# Keep scripts/outputs/retrievals/ tracked: it is small and is the retrieval
+# context referenced by data/successful_edits/*/metadata.json -> retrieval_json,
+# which 06_build_tuning_dataset.py reads when rebuilding train.jsonl.
+
+# Stray top-level cloud-run scratch (234GB of cloud_tuning working state); never commit.
+/outputs/
+
+# Generated tuning artifact: 500MB+, rebuildable from data/successful_edits via
+# scripts/06_build_tuning_dataset.py. Keep the source exemplars, not this output.
+scripts/data/tuning/*.jsonl

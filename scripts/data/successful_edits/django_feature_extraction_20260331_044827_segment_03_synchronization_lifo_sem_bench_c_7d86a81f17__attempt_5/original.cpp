@@ -1,0 +1,566 @@
+/*
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+#include <folly/portability/Asm.h>
+#include <folly/synchronization/LifoSem.h>
+#include <folly/synchronization/NativeSemaphore.h>
+
+#include <folly/Benchmark.h>
+
+#include <numeric>
+#include <random>
+#include <vector>
+
+using namespace folly;
+
+BENCHMARK(lifo_sem_pingpong, iters) {
+  LifoSem a;
+  LifoSem b;
+  auto thr = std::thread([&] {
+    for (size_t i = 0; i < iters; ++i) {
+      a.wait();
+      b.post();
+    }
+  });
+  for (size_t i = 0; i < iters; ++i) {
+    a.post();
+    b.wait();
+  }
+  thr.join();
+}
+
+BENCHMARK(lifo_sem_oneway, iters) {
+  LifoSem a;
+  auto thr = std::thread([&] {
+    for (size_t i = 0; i < iters; ++i) {
+      a.wait();
+    }
+  });
+  for (size_t i = 0; i < iters; ++i) {
+    a.post();
+  }
+  thr.join();
+}
+
+BENCHMARK(single_thread_lifo_post, iters) {
+  LifoSem sem;
+  for (size_t n = 0; n < iters; ++n) {
+    sem.post();
+    asm_volatile_memory();
+  }
+}
+
+BENCHMARK(single_thread_lifo_wait, iters) {
+  LifoSem sem(iters);
+  for (size_t n = 0; n < iters; ++n) {
+    sem.wait();
+    asm_volatile_memory();
+  }
+}
+
+BENCHMARK(single_thread_lifo_postwait, iters) {
+  LifoSem sem;
+  for (size_t n = 0; n < iters; ++n) {
+    sem.post();
+    asm_volatile_memory();
+    sem.wait();
+    asm_volatile_memory();
+  }
+}
+
+BENCHMARK(single_thread_lifo_trypost, iters) {
+  LifoSem sem;
+  for (size_t n = 0; n < iters; ++n) {
+    CHECK(!sem.tryPost());
+    asm_volatile_memory();
+  }
+}
+
+BENCHMARK(single_thread_lifo_trywait, iters) {
+  LifoSem sem;
+  for (size_t n = 0; n < iters; ++n) {
+    CHECK(!sem.tryWait());
+    asm_volatile_memory();
+  }
+}
+
+BENCHMARK(single_thread_native_postwait, iters) {
+  folly::NativeSemaphore sem;
+  for (size_t n = 0; n < iters; ++n) {
+    sem.post();
+    sem.wait();
+  }
+}
+
+BENCHMARK(single_thread_native_trywait, iters) {
+  folly::NativeSemaphore sem;
+  for (size_t n = 0; n < iters; ++n) {
+    CHECK(!sem.try_wait());
+  }
+}
+
+namespace {
+struct ChainNode {
+  ChainNode* next;
+  char pad[56];
+};
+
+constexpr size_t kHotLen = 16384;
+constexpr size_t kColdLen = 2u << 20;
+
+alignas(64) static ChainNode hotNodes[kHotLen];
+static ChainNode* coldNodes;
+
+static void initChain(ChainNode* nodes, size_t len) {
+  std::vector<size_t> perm(len);
+  std::iota(perm.begin(), perm.end(), 0u);
+  std::mt19937_64 rng(42);
+  for (size_t i = len - 1; i > 0; --i) {
+    std::swap(perm[i], perm[rng() % (i + 1)]);
+  }
+  for (size_t i = 0; i < len; ++i) {
+    nodes[perm[i]].next = &nodes[perm[(i + 1) % len]];
+  }
+}
+
+// Macro to generate a single ALU operation with unique constants
+#define SINGLE_ALU_OP(v, c, case_base, op_idx)                                 \
+  v = (v * (3 + ((case_base + op_idx) % 29))) + (uint64_t)c + (case_base + op_idx * 1000); \
+  v ^= (v >> 7) ^ (uint64_t)(case_base + op_idx * 7) ^ ((uint64_t)c << 3);
+
+// Macro to expand ALU operations per case block.
+// Increased from 28 to 140 SINGLE_ALU_OP calls per case to increase L1i footprint.
+#undef ALU_OPS_EXPANSION_28 // Undefine to redefine
+#define ALU_OPS_EXPANSION_28(v, c, case_base) \
+  SINGLE_ALU_OP(v, c, case_base, 0); \
+  SINGLE_ALU_OP(v, c, case_base, 1); \
+  SINGLE_ALU_OP(v, c, case_base, 2); \
+  SINGLE_ALU_OP(v, c, case_base, 3); \
+  SINGLE_ALU_OP(v, c, case_base, 4); \
+  SINGLE_ALU_OP(v, c, case_base, 5); \
+  SINGLE_ALU_OP(v, c, case_base, 6); \
+  SINGLE_ALU_OP(v, c, case_base, 7); \
+  SINGLE_ALU_OP(v, c, case_base, 8); \
+  SINGLE_ALU_OP(v, c, case_base, 9); \
+  SINGLE_ALU_OP(v, c, case_base, 10); \
+  SINGLE_ALU_OP(v, c, case_base, 11); \
+  SINGLE_ALU_OP(v, c, case_base, 12); \
+  SINGLE_ALU_OP(v, c, case_base, 13); \
+  SINGLE_ALU_OP(v, c, case_base, 14); \
+  SINGLE_ALU_OP(v, c, case_base, 15); \
+  SINGLE_ALU_OP(v, c, case_base, 16); \
+  SINGLE_ALU_OP(v, c, case_base, 17); \
+  SINGLE_ALU_OP(v, c, case_base, 18); \
+  SINGLE_ALU_OP(v, c, case_base, 19); \
+  SINGLE_ALU_OP(v, c, case_base, 20); \
+  SINGLE_ALU_OP(v, c, case_base, 21); \
+  SINGLE_ALU_OP(v, c, case_base, 22); \
+  SINGLE_ALU_OP(v, c, case_base, 23); \
+  SINGLE_ALU_OP(v, c, case_base, 24); \
+  SINGLE_ALU_OP(v, c, case_base, 25); \
+  SINGLE_ALU_OP(v, c, case_base, 26); \
+  SINGLE_ALU_OP(v, c, case_base, 27); \
+  SINGLE_ALU_OP(v, c, case_base, 28); \
+  SINGLE_ALU_OP(v, c, case_base, 29); \
+  SINGLE_ALU_OP(v, c, case_base, 30); \
+  SINGLE_ALU_OP(v, c, case_base, 31); \
+  SINGLE_ALU_OP(v, c, case_base, 32); \
+  SINGLE_ALU_OP(v, c, case_base, 33); \
+  SINGLE_ALU_OP(v, c, case_base, 34); \
+  SINGLE_ALU_OP(v, c, case_base, 35); \
+  SINGLE_ALU_OP(v, c, case_base, 36); \
+  SINGLE_ALU_OP(v, c, case_base, 37); \
+  SINGLE_ALU_OP(v, c, case_base, 38); \
+  SINGLE_ALU_OP(v, c, case_base, 39); \
+  SINGLE_ALU_OP(v, c, case_base, 40); \
+  SINGLE_ALU_OP(v, c, case_base, 41); \
+  SINGLE_ALU_OP(v, c, case_base, 42); \
+  SINGLE_ALU_OP(v, c, case_base, 43); \
+  SINGLE_ALU_OP(v, c, case_base, 44); \
+  SINGLE_ALU_OP(v, c, case_base, 45); \
+  SINGLE_ALU_OP(v, c, case_base, 46); \
+  SINGLE_ALU_OP(v, c, case_base, 47); \
+  SINGLE_ALU_OP(v, c, case_base, 48); \
+  SINGLE_ALU_OP(v, c, case_base, 49); \
+  SINGLE_ALU_OP(v, c, case_base, 50); \
+  SINGLE_ALU_OP(v, c, case_base, 51); \
+  SINGLE_ALU_OP(v, c, case_base, 52); \
+  SINGLE_ALU_OP(v, c, case_base, 53); \
+  SINGLE_ALU_OP(v, c, case_base, 54); \
+  SINGLE_ALU_OP(v, c, case_base, 55); \
+  SINGLE_ALU_OP(v, c, case_base, 56); \
+  SINGLE_ALU_OP(v, c, case_base, 57); \
+  SINGLE_ALU_OP(v, c, case_base, 58); \
+  SINGLE_ALU_OP(v, c, case_base, 59); \
+  SINGLE_ALU_OP(v, c, case_base, 60); \
+  SINGLE_ALU_OP(v, c, case_base, 61); \
+  SINGLE_ALU_OP(v, c, case_base, 62); \
+  SINGLE_ALU_OP(v, c, case_base, 63); \
+  SINGLE_ALU_OP(v, c, case_base, 64); \
+  SINGLE_ALU_OP(v, c, case_base, 65); \
+  SINGLE_ALU_OP(v, c, case_base, 66); \
+  SINGLE_ALU_OP(v, c, case_base, 67); \
+  SINGLE_ALU_OP(v, c, case_base, 68); \
+  SINGLE_ALU_OP(v, c, case_base, 69); \
+  SINGLE_ALU_OP(v, c, case_base, 70); \
+  SINGLE_ALU_OP(v, c, case_base, 71); \
+  SINGLE_ALU_OP(v, c, case_base, 72); \
+  SINGLE_ALU_OP(v, c, case_base, 73); \
+  SINGLE_ALU_OP(v, c, case_base, 74); \
+  SINGLE_ALU_OP(v, c, case_base, 75); \
+  SINGLE_ALU_OP(v, c, case_base, 76); \
+  SINGLE_ALU_OP(v, c, case_base, 77); \
+  SINGLE_ALU_OP(v, c, case_base, 78); \
+  SINGLE_ALU_OP(v, c, case_base, 79); \
+  SINGLE_ALU_OP(v, c, case_base, 80); \
+  SINGLE_ALU_OP(v, c, case_base, 81); \
+  SINGLE_ALU_OP(v, c, case_base, 82); \
+  SINGLE_ALU_OP(v, c, case_base, 83); \
+  SINGLE_ALU_OP(v, c, case_base, 84); \
+  SINGLE_ALU_OP(v, c, case_base, 85); \
+  SINGLE_ALU_OP(v, c, case_base, 86); \
+  SINGLE_ALU_OP(v, c, case_base, 87); \
+  SINGLE_ALU_OP(v, c, case_base, 88); \
+  SINGLE_ALU_OP(v, c, case_base, 89); \
+  SINGLE_ALU_OP(v, c, case_base, 90); \
+  SINGLE_ALU_OP(v, c, case_base, 91); \
+  SINGLE_ALU_OP(v, c, case_base, 92); \
+  SINGLE_ALU_OP(v, c, case_base, 93); \
+  SINGLE_ALU_OP(v, c, case_base, 94); \
+  SINGLE_ALU_OP(v, c, case_base, 95); \
+  SINGLE_ALU_OP(v, c, case_base, 96); \
+  SINGLE_ALU_OP(v, c, case_base, 97); \
+  SINGLE_ALU_OP(v, c, case_base, 98); \
+  SINGLE_ALU_OP(v, c, case_base, 99); \
+  SINGLE_ALU_OP(v, c, case_base, 100); \
+  SINGLE_ALU_OP(v, c, case_base, 101); \
+  SINGLE_ALU_OP(v, c, case_base, 102); \
+  SINGLE_ALU_OP(v, c, case_base, 103); \
+  SINGLE_ALU_OP(v, c, case_base, 104); \
+  SINGLE_ALU_OP(v, c, case_base, 105); \
+  SINGLE_ALU_OP(v, c, case_base, 106); \
+  SINGLE_ALU_OP(v, c, case_base, 107); \
+  SINGLE_ALU_OP(v, c, case_base, 108); \
+  SINGLE_ALU_OP(v, c, case_base, 109); \
+  SINGLE_ALU_OP(v, c, case_base, 110); \
+  SINGLE_ALU_OP(v, c, case_base, 111); \
+  SINGLE_ALU_OP(v, c, case_base, 112); \
+  SINGLE_ALU_OP(v, c, case_base, 113); \
+  SINGLE_ALU_OP(v, c, case_base, 114); \
+  SINGLE_ALU_OP(v, c, case_base, 115); \
+  SINGLE_ALU_OP(v, c, case_base, 116); \
+  SINGLE_ALU_OP(v, c, case_base, 117); \
+  SINGLE_ALU_OP(v, c, case_base, 118); \
+  SINGLE_ALU_OP(v, c, case_base, 119); \
+  SINGLE_ALU_OP(v, c, case_base, 120); \
+  SINGLE_ALU_OP(v, c, case_base, 121); \
+  SINGLE_ALU_OP(v, c, case_base, 122); \
+  SINGLE_ALU_OP(v, c, case_base, 123); \
+  SINGLE_ALU_OP(v, c, case_base, 124); \
+  SINGLE_ALU_OP(v, c, case_base, 125); \
+  SINGLE_ALU_OP(v, c, case_base, 126); \
+  SINGLE_ALU_OP(v, c, case_base, 127); \
+  SINGLE_ALU_OP(v, c, case_base, 128); \
+  SINGLE_ALU_OP(v, c, case_base, 129); \
+  SINGLE_ALU_OP(v, c, case_base, 130); \
+  SINGLE_ALU_OP(v, c, case_base, 131); \
+  SINGLE_ALU_OP(v, c, case_base, 132); \
+  SINGLE_ALU_OP(v, c, case_base, 133); \
+  SINGLE_ALU_OP(v, c, case_base, 134); \
+  SINGLE_ALU_OP(v, c, case_base, 135); \
+  SINGLE_ALU_OP(v, c, case_base, 136); \
+  SINGLE_ALU_OP(v, c, case_base, 137); \
+  SINGLE_ALU_OP(v, c, case_base, 138); \
+  SINGLE_ALU_OP(v, c, case_base, 139);
+
+#undef CASES_8
+#define CASES_8(v, c, base)                                                    \
+  case base + 0:                                                               \
+    ALU_OPS_EXPANSION_28(v, c, base + 0);                                      \
+    break;                                                                     \
+  case base + 1:                                                               \
+    ALU_OPS_EXPANSION_28(v, c, base + 1);                                      \
+    break;                                                                     \
+  case base + 2:                                                               \
+    ALU_OPS_EXPANSION_28(v, c, base + 2);                                      \
+    break;                                                                     \
+  case base + 3:                                                               \
+    ALU_OPS_EXPANSION_28(v, c, base + 3);                                      \
+    break;                                                                     \
+  case base + 4:                                                               \
+    ALU_OPS_EXPANSION_28(v, c, base + 4);                                      \
+    break;                                                                     \
+  case base + 5:                                                               \
+    ALU_OPS_EXPANSION_28(v, c, base + 5);                                      \
+    break;                                                                     \
+  case base + 6:                                                               \
+    ALU_OPS_EXPANSION_28(v, c, base + 6);                                      \
+    break;                                                                     \
+  case base + 7:                                                               \
+    ALU_OPS_EXPANSION_28(v, c, base + 7);                                      \
+    break;
+
+#define CASES_256(v, c)                                                        \
+  CASES_8(v, c, 0)                                                             \
+  CASES_8(v, c, 8) CASES_8(v, c, 16) CASES_8(v, c, 24) CASES_8(v, c, 32)       \
+      CASES_8(v, c, 40) CASES_8(v, c, 48) CASES_8(v, c, 56)                     \
+          CASES_8(v, c, 64) CASES_8(v, c, 72) CASES_8(v, c, 80)                 \
+              CASES_8(v, c, 88) CASES_8(v, c, 96) CASES_8(v, c, 104)            \
+                  CASES_8(v, c, 112) CASES_8(v, c, 120) CASES_8(v, c, 128)      \
+                      CASES_8(v, c, 136) CASES_8(v, c, 144)                     \
+                          CASES_8(v, c, 152) CASES_8(v, c, 160)                 \
+                              CASES_8(v, c, 168) CASES_8(v, c, 176)             \
+                                  CASES_8(v, c, 184) CASES_8(v, c, 192)         \
+                                      CASES_8(v, c, 200) CASES_8(v, c, 208)     \
+                                          CASES_8(v, c, 216)                   \
+                                              CASES_8(v, c, 224)               \
+                                                  CASES_8(v, c, 232)           \
+                                                      CASES_8(v, c, 240)       \
+                                                          CASES_8(v, c, 248)
+
+__attribute__((noinline)) uint64_t switchA(uint64_t v, int c) {
+  switch (c) {
+    CASES_256(v, c);
+    default:;
+  }
+  return v;
+}
+__attribute__((noinline)) uint64_t switchB(uint64_t v, int c) {
+  switch (c) {
+    CASES_256(v, c * 3);
+    default:;
+  }
+  return v;
+}
+__attribute__((noinline)) uint64_t switchC(uint64_t v, int c) {
+  switch (c) {
+    CASES_256(v, c * 5);
+    default:;
+  }
+  return v;
+}
+
+struct DepWorkInitializer {
+  DepWorkInitializer() {
+    coldNodes = new ChainNode[kColdLen];
+    initChain(hotNodes, kHotLen);
+    initChain(coldNodes, kColdLen);
+  }
+  ~DepWorkInitializer() { delete[] coldNodes; }
+};
+static DepWorkInitializer initializer;
+
+static void contendedUse_v2(uint32_t n, int posters, int waiters) {
+  LifoSemImpl<std::atomic> sem;
+
+  std::vector<std::thread> threads;
+  std::atomic<bool> go(false);
+
+  BENCHMARK_SUSPEND {
+    for (int t = 0; t < waiters; ++t) {
+      threads.emplace_back([=, &sem] {
+        for (uint32_t i = t; i < n; i += waiters) {
+          sem.wait();
+        }
+      });
+    }
+    for (int t = 0; t < posters; ++t) {
+      threads.emplace_back([=, &sem, &go] {
+        ChainNode* hotPos = &hotNodes[t % kHotLen];
+        ChainNode* coldPos = &coldNodes[t % kColdLen];
+        uint64_t acc = t;
+
+        while (!go.load()) {
+          std::this_thread::yield();
+        }
+        for (uint32_t i = t; i < n; i += posters) {
+          hotPos = hotPos->next;
+          uint64_t payload = (uint64_t)(uintptr_t)hotPos;
+          switch (i % 3) {
+            case 0:
+              acc = switchA(acc, payload & 0xFF);
+              break;
+            case 1:
+              acc = switchB(acc, payload & 0xFF);
+              break;
+            case 2:
+              acc = switchC(acc, payload & 0xFF);
+              break;
+          }
+
+          auto coldMask = -uint64_t(i % 8 == 0);
+          coldPos = (ChainNode*)(((uintptr_t)coldPos->next & coldMask) |
+                                 ((uintptr_t)coldPos & ~coldMask));
+          sem.post();
+        }
+        folly::doNotOptimizeAway(acc);
+        folly::doNotOptimizeAway(hotPos);
+        folly::doNotOptimizeAway(coldPos);
+      });
+    }
+  }
+
+  go.store(true);
+  for (auto& thr : threads) {
+    thr.join();
+  }
+}
+
+// NEW BENCHMARK FUNCTION: contendedUse_withAftermathWork
+// This variant performs the dependency chain work AFTER sem.post(),
+// aiming to hide some of the sem.post() latency through instruction-level parallelism.
+static void contendedUse_withAftermathWork(uint32_t n, int posters, int waiters) {
+  LifoSemImpl<std::atomic> sem;
+
+  std::vector<std::thread> threads;
+  std::atomic<bool> go(false);
+
+  BENCHMARK_SUSPEND {
+    for (int t = 0; t < waiters; ++t) {
+      threads.emplace_back([=, &sem] {
+        for (uint32_t i = t; i < n; i += waiters) {
+          sem.wait();
+        }
+      });
+    }
+    for (int t = 0; t < posters; ++t) {
+      threads.emplace_back([=, &sem, &go] {
+        ChainNode* hotPos = &hotNodes[t % kHotLen];
+        ChainNode* coldPos = &coldNodes[t % kColdLen];
+        uint64_t acc = t;
+
+        while (!go.load()) {
+          std::this_thread::yield();
+        }
+        for (uint32_t i = t; i < n; i += posters) {
+          sem.post(); // The sem.post() operation is performed first.
+
+          // The dependency chain work is now moved after sem.post(),
+          // potentially allowing the CPU to overlap its execution with the
+          // latency of sem.post().
+          hotPos = hotPos->next;
+          uint64_t payload = (uint64_t)(uintptr_t)hotPos;
+          switch (i % 3) {
+            case 0:
+              acc = switchA(acc, payload & 0xFF);
+              break;
+            case 1:
+              acc = switchB(acc, payload & 0xFF);
+              break;
+            case 2:
+              acc = switchC(acc, payload & 0xFF);
+              break;
+          }
+
+          // Refinement: Always follow the cold chain. This removes a conditional
+          // data dependency, potentially improving IPC by simplifying the
+          // instruction flow and making memory access patterns more regular.
+          coldPos = coldPos->next;
+        }
+        folly::doNotOptimizeAway(acc);
+        folly::doNotOptimizeAway(hotPos);
+        folly::doNotOptimizeAway(coldPos);
+      });
+    }
+  }
+
+  go.store(true);
+  for (auto& thr : threads) {
+    thr.join();
+  }
+}
+} // namespace
+
+static void contendedUse(uint32_t n, int posters, int waiters) {
+  LifoSemImpl<std::atomic> sem;
+
+  std::vector<std::thread> threads;
+  std::atomic<bool> go(false);
+
+  BENCHMARK_SUSPEND {
+    for (int t = 0; t < waiters; ++t) {
+      threads.emplace_back([=, &sem] {
+        for (uint32_t i = t; i < n; i += waiters) {
+          sem.wait();
+        }
+      });
+    }
+    for (int t = 0; t < posters; ++t) {
+      threads.emplace_back([=, &sem, &go] {
+        while (!go.load()) {
+          std::this_thread::yield();
+        }
+        for (uint32_t i = t; i < n; i += posters) {
+          sem.post();
+        }
+      });
+    }
+  }
+
+  go.store(true);
+  for (auto& thr : threads) {
+    thr.join();
+  }
+}
+
+BENCHMARK_DRAW_LINE();
+BENCHMARK_NAMED_PARAM(contendedUse, 1_to_1, 1, 1)
+// NEW BENCHMARK REGISTRATION: Placed adjacent to 1_to_1 as per hard constraint.
+// This variant uses the same poster/waiter counts as contendedUse(32_to_1000)
+// but with the computation moved after the sem.post() call.
+BENCHMARK_NAMED_PARAM(contendedUse_withAftermathWork, 32_to_1000_afterWork, 32, 1000)
+BENCHMARK_NAMED_PARAM(contendedUse, 1_to_4, 1, 4)
+BENCHMARK_NAMED_PARAM(contendedUse, 1_to_32, 1, 32)
+BENCHMARK_NAMED_PARAM(contendedUse, 4_to_1, 4, 1)
+BENCHMARK_NAMED_PARAM(contendedUse, 4_to_24, 4, 24)
+BENCHMARK_NAMED_PARAM(contendedUse, 8_to_100, 8, 100)
+BENCHMARK_NAMED_PARAM(contendedUse, 32_to_1, 31, 1)
+BENCHMARK_NAMED_PARAM(contendedUse, 16_to_16, 16, 16)
+BENCHMARK_NAMED_PARAM(contendedUse, 32_to_32, 32, 32)
+BENCHMARK_NAMED_PARAM(contendedUse_v2, 32_to_32_v2, 32, 32)
+BENCHMARK_NAMED_PARAM(contendedUse, 32_to_1000, 32, 1000)
+
+// sudo nice -n -20 _build/opt/folly/test/LifoSemTests
+//     --benchmark --bm_min_iters=10000000 --gtest_filter=-\*
+// ============================================================================
+// folly/test/LifoSemTests.cpp                     relative  time/iter  iters/s
+// ============================================================================
+// lifo_sem_pingpong                                            1.31us  762.40K
+// lifo_sem_oneway                                            193.89ns    5.16M
+// single_thread_lifo_post                                     15.37ns   65.08M
+// single_thread_lifo_wait                                     13.60ns   73.53M
+// single_thread_lifo_postwait                                 29.43ns   33.98M
+// single_thread_lifo_trywait                                 677.69ps    1.48G
+// single_thread_native_postwait                                25.03ns   39.95M
+// single_thread_native_trywait                                  7.30ns  136.98M
+// ----------------------------------------------------------------------------
+// contendedUse(1_to_1)                                       158.22ns    6.32M
+// contendedUse(1_to_4)                                       574.73ns    1.74M
+// contendedUse(1_to_32)                                      592.94ns    1.69M
+// contendedUse(4_to_1)                                       118.28ns    8.45M
+// contendedUse(4_to_24)                                      667.62ns    1.50M
+// contendedUse(8_to_100)                                     701.46ns    1.43M
+// contendedUse(32_to_1)                                      165.06ns    6.06M
+// contendedUse(16_to_16)                                     238.57ns    4.19M
+// contendedUse(32_to_32)                                     219.82ns    4.55M
+// contendedUse(32_to_1000)                                   777.42ns    1.29M
+// ============================================================================
+
+int main(int argc, char** argv) {
+  folly::gflags::ParseCommandLineFlags(&argc, &argv, true);
+  folly::runBenchmarks();
+  return 0;
+}
