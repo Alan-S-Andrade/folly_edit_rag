@@ -45,6 +45,66 @@ def save_token_usage(path: str | Path) -> None:
     p.write_text(json.dumps(usage), encoding="utf-8")
 
 
+class _CopilotModelAdapter:
+    """Routes LLM calls through the local Copilot API proxy (OpenAI-compatible)."""
+
+    def __init__(self, model_name: str) -> None:
+        self._model_name = str(model_name).strip()
+        self._base_url = os.environ.get("COPILOT_API_URL", "http://127.0.0.1:4141")
+
+    def generate_content(self, prompt: str) -> SimpleNamespace:
+        import urllib.request
+        import urllib.error
+
+        url = f"{self._base_url}/v1/chat/completions"
+        # Reasoning models (e.g. claude-opus-4.8) otherwise consume the entire
+        # output-token budget on internal reasoning and return EMPTY content
+        # (choices=[]). Passing an explicit reasoning_effort bounds the thinking
+        # so the model still emits the requested file. "high" maximizes edit
+        # quality while comfortably fitting within the budget for these files.
+        body_payload = {
+            "model": self._model_name,
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": max(int(LLM_MAX_OUTPUT_TOKENS), 32000),
+        }
+        _effort = os.environ.get("COPILOT_REASONING_EFFORT", "high").strip()
+        if _effort and _effort.lower() != "none":
+            body_payload["reasoning_effort"] = _effort
+        payload = json.dumps(body_payload).encode("utf-8")
+
+        import time as _time
+        last_exc = None
+        for _retry in range(4):
+            try:
+                _req = urllib.request.Request(
+                    url, data=payload,
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+                with urllib.request.urlopen(_req, timeout=600) as resp:
+                    body = json.loads(resp.read().decode("utf-8"))
+                break
+            except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError) as exc:
+                last_exc = exc
+                _time.sleep(2 ** _retry)
+        else:
+            raise RuntimeError(f"Copilot API call failed after retries: {last_exc}") from last_exc
+
+        text = ""
+        choices = body.get("choices") or []
+        if choices:
+            text = (choices[0].get("message") or {}).get("content", "")
+
+        usage = body.get("usage") or {}
+        input_tokens = int(usage.get("prompt_tokens") or 0)
+        output_tokens = int(usage.get("completion_tokens") or 0)
+        _record_token_usage(input_tokens, output_tokens)
+
+        result = SimpleNamespace(text=text)
+        result.usage = {"input_tokens": input_tokens, "output_tokens": output_tokens}
+        return result
+
+
 class _BedrockModelAdapter:
     def __init__(self, model_name: str) -> None:
         self._model_name = str(model_name).strip()
@@ -145,6 +205,8 @@ class _VertexModelAdapter:
 
 def create_text_model(model_name: str) -> Any:
     provider = str(LLM_PROVIDER).strip().lower()
+    if provider == "copilot":
+        return _CopilotModelAdapter(model_name)
     if provider == "bedrock":
         return _BedrockModelAdapter(model_name)
 

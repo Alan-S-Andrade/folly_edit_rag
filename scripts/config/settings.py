@@ -3,7 +3,13 @@ import os
 
 LLM_PROVIDER = os.environ.get('LLM_PROVIDER', 'vertex').strip().lower() or 'vertex'
 
-if LLM_PROVIDER == 'bedrock':
+if LLM_PROVIDER == 'copilot':
+    PROJECT_ID = ''
+    LOCATION = ''
+    MODEL_NAME = os.environ.get('COPILOT_MODEL_NAME', 'claude-opus-4.6')
+    GENERATION_MODEL_NAME = os.environ.get('COPILOT_GENERATION_MODEL_NAME', MODEL_NAME)
+    REPAIR_MODEL_NAME = os.environ.get('COPILOT_REPAIR_MODEL_NAME', MODEL_NAME)
+elif LLM_PROVIDER == 'bedrock':
     PROJECT_ID = os.environ.get('VERTEX_PROJECT_ID', '')
     LOCATION = os.environ.get('AWS_REGION', os.environ.get('AWS_DEFAULT_REGION', 'us-east-1'))
     MODEL_NAME = os.environ.get('BEDROCK_MODEL_NAME', 'us.anthropic.claude-sonnet-4-6')

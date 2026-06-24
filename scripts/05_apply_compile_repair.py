@@ -418,6 +418,98 @@ def _bootstrap_fbthrift_generated_targets(
     return logs, None
 
 
+def _parse_flags_make(flags_make: Path) -> dict[str, str]:
+    """Parse a CMake-generated flags.make into {CXX_DEFINES, CXX_INCLUDES, CXX_FLAGS}."""
+    flags: dict[str, str] = {}
+    text = flags_make.read_text(encoding="utf-8", errors="ignore")
+    # flags.make lines look like:  CXX_FLAGS = -g -std=gnu++20 ...
+    for line in text.splitlines():
+        for key in ("CXX_DEFINES", "CXX_INCLUDES", "CXX_FLAGS"):
+            prefix = f"{key} = "
+            if line.startswith(prefix):
+                flags[key] = line[len(prefix):].strip()
+    return flags
+
+
+def _incremental_object_relink(
+    binary_name: str,
+    build_dir: Path,
+    source_root: Path,
+    timeout_sec: int,
+) -> tuple[int, str, str] | None:
+    """Fast-path build: recompile only the target's own object(s) and relink via
+    the CMake-generated link.txt, reusing the already-built ``libfolly.a`` and
+    sibling static libs.
+
+    This avoids ``cmake --build --target`` re-walking the whole folly dependency
+    graph (which can fail to recompile unrelated library sources, e.g. io_uring
+    code that needs a newer system liburing than is installed). The benchmark
+    binary only needs its own translation unit plus the prebuilt archives.
+
+    Returns ``(rc, stdout, stderr)`` when a compile+link was actually attempted
+    (including legitimate compile errors in the patched source, which must flow
+    back into the repair loop), or ``None`` when the fast-path is not applicable
+    so the caller can fall back to the full ``cmake --build``.
+    """
+    target_dir = build_dir / "CMakeFiles" / f"{binary_name}.dir"
+    flags_make = target_dir / "flags.make"
+    link_txt = target_dir / "link.txt"
+    if not (flags_make.is_file() and link_txt.is_file()):
+        return None
+
+    flags = _parse_flags_make(flags_make)
+    if "CXX_FLAGS" not in flags:
+        return None
+
+    link_cmd = link_txt.read_text(encoding="utf-8", errors="ignore").strip()
+    if not link_cmd:
+        return None
+
+    # Object files that belong to *this* target (under its .dir). These are the
+    # only ones we must recompile from the (possibly patched) sources.
+    rel_prefix = f"CMakeFiles/{binary_name}.dir/"
+    object_rels = [
+        tok
+        for tok in shlex.split(link_cmd)
+        if tok.startswith(rel_prefix) and tok.endswith(".o")
+    ]
+    if not object_rels:
+        return None
+
+    compile_words = (
+        shlex.split(flags.get("CXX_DEFINES", ""))
+        + shlex.split(flags.get("CXX_INCLUDES", ""))
+        + shlex.split(flags.get("CXX_FLAGS", ""))
+    )
+
+    logs: list[str] = []
+    for obj_rel in object_rels:
+        obj_path = build_dir / obj_rel
+        # Map object back to its source: strip the target.dir prefix and the
+        # trailing ``.o`` (CMake names objects ``<source-rel>.o``).
+        src_rel = obj_rel[len(rel_prefix):]
+        if src_rel.endswith(".o"):
+            src_rel = src_rel[:-2]
+        src_path = (source_root / src_rel).resolve()
+        if not src_path.is_file():
+            return None  # unexpected layout -> fall back to full build
+        obj_path.parent.mkdir(parents=True, exist_ok=True)
+        cmd = ["/usr/bin/c++", *compile_words, "-o", str(obj_path), "-c", str(src_path)]
+        rc, so, se = run(cmd, cwd=build_dir, timeout=timeout_sec)
+        if so:
+            logs.append(so)
+        if rc != 0:
+            # Genuine compile error in the (patched) source -> surface it so the
+            # repair loop can react. Do NOT fall back to the full build.
+            return rc, "\n".join(logs), se
+
+    # Relink the binary from the freshly built objects + prebuilt archives.
+    rc, so, se = run(["bash", "-c", link_cmd], cwd=build_dir, timeout=timeout_sec)
+    if so:
+        logs.append(so)
+    return rc, "\n".join(logs), se
+
+
 def compile_binary(
     binary_name: str,
     build_dir: Path,
@@ -432,6 +524,19 @@ def compile_binary(
     timeout_sec = resolve_build_timeout_sec(binary_name, RUN_TIMEOUT_SEC)
     if timeout_override_sec is not None:
         timeout_sec = max(1, min(timeout_sec, int(max(1.0, timeout_override_sec))))
+
+    # Fast-path: if CMake has already configured this target (flags.make +
+    # link.txt present), recompile only the target's own object(s) and relink
+    # against the prebuilt static libs. This is both faster and avoids a full
+    # dependency rebuild that can fail on unrelated library sources.
+    incremental = _incremental_object_relink(
+        binary_name, effective_build_dir, source_root, timeout_sec
+    )
+    if incremental is not None:
+        inc_rc, inc_so, inc_se = incremental
+        if stdout_prefix:
+            inc_so = "\n".join(stdout_prefix + ([inc_so] if inc_so else []))
+        return inc_rc, inc_so, inc_se, effective_build_dir
 
     if effective_build_dir != build_dir.resolve():
         stdout_prefix.append(
